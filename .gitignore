@@ -12,3 +12,9 @@ tmp
 *-BKUP
 
 .#*
+
+# Generated when sil runs against test data, eg test/data/manifest.txt:
+# manifest logs (REQ-08) and any library temp folder
+*.txt.err
+*.txt.md
+.tmp/
