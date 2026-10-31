@@ -1,0 +1,9 @@
+# SIL library: files that are not shared through git
+# Copied into each new library as .gitignore - see REQ-10
+
+# Temporary files made while sil runs
+.tmp/
+
+# Logs written beside manifests (REQ-08)
+*.txt.err
+*.txt.md

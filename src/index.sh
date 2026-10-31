@@ -78,19 +78,38 @@ function indexHas {
 }
 
 #######################################
-# Add an image to the fingerprint index, unless already present.
+# Write a fingerprint index: the header, then entry lines sorted by hash
+# with repeats removed. Sorting (in the C locale, so it is identical on
+# every machine) keeps git diffs and merges small (REQ-10).
+# Arguments:
+#   $1 - Path to write to (overwritten)
+# Inputs:
+#   Entry lines on STDIN; comment lines are dropped
+#######################################
+function indexWriteSorted {
+    indexWriteHeader "$1"
+    grep -v '^#' | LC_ALL=C sort -u >> "$1"
+}
+
+#######################################
+# Add an image to the fingerprint index, unless already present, keeping
+# the index sorted.
 # Arguments:
 #   $1 - Image hash
 #   $2 - Raw fingerprint (base64)
 # Returns:
-#   0 on success, 1 if the fingerprint is malformed
+#   0 on success, 1 if the fingerprint is malformed or the index can't
+#   be written
 #######################################
 function indexAdd {
-    local index hex
+    local index hex tmp
     index="$(indexFile)"
     hex="$(fingerprintToHex "$2")" || return 1
-    [[ -f "$index" ]] || indexWriteHeader "$index"
-    indexHas "$1" || printf '%s %s\n' "$1" "$hex" >> "$index"
+    indexHas "$1" && return 0
+    tmp="$(silMktemp)" || return 1
+    { [[ -f "$index" ]] && cat -- "$index"; printf '%s %s\n' "$1" "$hex"; } \
+        | indexWriteSorted "$tmp"
+    mv -- "$tmp" "$index"
 }
 
 #######################################

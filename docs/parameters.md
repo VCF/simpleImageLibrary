@@ -211,11 +211,13 @@ Checks the library for problems and reports them, without changing anything
 
 * Flag parameter; an action, so can't be set in configuration files
 
-Regenerates the library's fingerprint index (`images/fingerprints.txt`) from the
-stored images (see `REQ-09`)
+Repairs the library from its stored images (see `REQ-09`), keeping tags wherever
+possible: restores missing library files, renames images whose content or place
+no longer matches their name, updates their tag links, and regenerates the
+fingerprint index (`images/fingerprints.txt`)
 
-* Use after `CHECK` reports index problems, or after adding or removing files in
-  `images` by hand
+* Use after `CHECK` reports problems, after editing or adding files in `images`
+  by hand, or after a `git pull` (`REQ-10`)
 * Fingerprints every stored image, so takes a while on a large library
 * If combined with `CHECK`, the rebuild runs first
 

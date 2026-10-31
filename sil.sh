@@ -33,7 +33,7 @@ status=0
 
 ## REQ-09 maintenance actions; rebuild first so a check sees the result
 if flagIsSet REBUILD; then
-    indexRebuild || status=1
+    libraryRebuild || status=1
 fi
 if flagIsSet CHECK; then
     libraryCheck || status=1

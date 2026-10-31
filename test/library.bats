@@ -42,11 +42,41 @@ teardown() {
   assert_failure
 }
 
-@test "initLibrary creates folders and copies the template" {
+@test "initLibrary creates folders and copies the templates" {
   initLibrary "$TEST_SANDBOX/new"
   assert_dir_exists new/images
   assert_dir_exists new/tags
+  assert_file_exists new/tags/.gitkeep
+  assert_file_exists new/images/fingerprints.txt
   assert_files_equal new/sil.conf "$PROJECT_ROOT/templates/sil.conf"
+  assert_files_equal new/.gitignore "$PROJECT_ROOT/templates/gitignore"
+  assert_files_equal new/.gitattributes "$PROJECT_ROOT/templates/gitattributes"
+}
+
+## Minimal git identity so commits work anywhere
+gitq() {
+  git -c user.name=Test -c user.email=test@example.com \
+    -c init.defaultBranch=main "$@" > /dev/null 2>&1
+}
+
+@test "a cloned library is still a library; temp files and logs are ignored" {
+  initLibrary "$TEST_SANDBOX/lib"
+  gitq -C lib init
+  gitq -C lib add -A
+  gitq -C lib commit -m init
+  gitq clone lib copy
+  isLibrary copy
+  mkdir -p lib/.tmp
+  touch lib/.tmp/sil.abc lib/memes.txt.err lib/memes.txt.md
+  run git -C lib status --porcelain
+  assert_output ""
+}
+
+@test "the fingerprint index merges by union" {
+  initLibrary "$TEST_SANDBOX/lib"
+  gitq -C lib init
+  run git -C lib check-attr merge images/fingerprints.txt
+  assert_output "images/fingerprints.txt: merge: union"
 }
 
 @test "initLibrary keeps an existing sil.conf" {

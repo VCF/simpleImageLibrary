@@ -75,7 +75,7 @@ function hasTransparency {
 #######################################
 function imageFingerprint {
     local tmp fp
-    tmp="$(mktemp --suffix=.png)" || return 1
+    tmp="$(silMktemp .png)" || return 1
     if convert "$1[0]" -strip "$tmp" 2> /dev/null; then
         fp="$(findimagedupes --no-compare --verbosity=fingerprint -- "$tmp" \
             2> /dev/null | cut -d' ' -f1)"

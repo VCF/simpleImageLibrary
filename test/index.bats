@@ -12,8 +12,9 @@ setup() {
   myDir="$PROJECT_ROOT"
   source "$PROJECT_ROOT/src/utils.sh"
   srcLib "index"
+  srcLib "library"
   SIL_LIBRARY="$TEST_SANDBOX/lib"
-  mkdir -p lib/images lib/tags
+  initLibrary "$SIL_LIBRARY" 2> /dev/null
   DATA="$PROJECT_ROOT/test/data/images"
 }
 
@@ -48,7 +49,28 @@ teardown() {
 @test "storeImage refuses non-images" {
   run storeImage "$DATA/not-an-image.jpg" hash
   assert_failure
-  assert_file_not_exists lib/images/fingerprints.txt
+  run grep -c -v '^#' lib/images/fingerprints.txt
+  assert_output 0
+}
+
+@test "the index stays sorted by hash as images are added" {
+  local f
+  for f in plasma.png animated.gif transparent.png; do
+    storeImage "$DATA/$f" hash
+  done
+  run diff <(grep -v '^#' lib/images/fingerprints.txt) \
+    <(grep -v '^#' lib/images/fingerprints.txt | LC_ALL=C sort)
+  assert_success
+}
+
+@test "temp files go in the library's .tmp folder" {
+  ## An unusable system temp folder proves it isn't used
+  export TMPDIR="$TEST_SANDBOX/no-such-dir"
+  storeImage "$DATA/plasma.png" hash
+  assert_dir_exists lib/.tmp
+  assert_dir_not_exists "$TMPDIR"
+  run find lib/.tmp -type f
+  assert_output ""
 }
 
 @test "findStoredImage finds by hash whatever the suffix" {
@@ -75,6 +97,7 @@ teardown() {
 }
 
 @test "indexMatch prints nothing for a new image or empty library" {
+  rm lib/images/fingerprints.txt
   run indexMatch "$(imageFingerprint "$DATA/plasma.png")" 90
   assert_success
   assert_output ""

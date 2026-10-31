@@ -33,7 +33,8 @@ teardown() {
 @test "sil creates a library from LIBRARY alone and reports settings" {
   run "$PROJECT_ROOT/sil" LIBRARY=newlib SHRINK=500kb
   assert_success
-  assert_output --partial "Created new library"
+  assert_output --partial "Creating new library"
+  assert_output --partial "Library: $TEST_SANDBOX/newlib"
   assert_output --partial "SHRINK = 512000 (500.0 KB)"
   assert_output --partial "nothing more to do"
   assert_dir_exists newlib/images

@@ -185,3 +185,34 @@ function humanSize {
         printf (i == 1 ? "%d %s\n" : "%.1f %s\n"), b, u[i]
     }'
 }
+
+#######################################
+# Folder for temporary files: <library>/.tmp once a library is known
+# (REQ-04), otherwise the system default. Created if needed.
+# Globals:
+#   SIL_LIBRARY, TMPDIR
+# Outputs:
+#   Folder path to STDOUT
+# Returns:
+#   0 on success, 1 if it can't be created
+#######################################
+function silTempDir {
+    local dir="${TMPDIR:-/tmp}"
+    [[ -n "${SIL_LIBRARY:-}" ]] && dir="$SIL_LIBRARY/.tmp"
+    mkdir -p -- "$dir" && printf '%s\n' "$dir"
+}
+
+#######################################
+# Create a temporary file in silTempDir. Callers remove it when done.
+# Arguments:
+#   $1 - Optional suffix, eg .png
+# Outputs:
+#   File path to STDOUT
+# Returns:
+#   0 on success, 1 otherwise
+#######################################
+function silMktemp {
+    local dir
+    dir="$(silTempDir)" || return 1
+    mktemp --tmpdir="$dir" --suffix="${1:-}" sil.XXXXXX
+}

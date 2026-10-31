@@ -79,6 +79,10 @@ SIL will locate images through the following URIs:
 * Local files (via filepath) are copied to a temp directory pending later processing
 * Files in the temp directory are saved without a suffix, so their format is
   judged by content alone (`REQ-05`)
+* All temporary files SIL makes, for any operation, are kept in the library's
+  own `.tmp` folder, never the system temp folder. This keeps them on the same
+  disk as the library, so moving finished files into place is instant, and
+  leftovers are easy to find. `.tmp` is excluded from git (`REQ-10`)
 * Image hashes simply identify an already-ingested file for further operations
 
 # REQ-05 Image hashing, fingerprints and storage
@@ -134,6 +138,8 @@ Each stored image has two identifiers with different jobs:
 * Fingerprints of all stored images are kept in `images/fingerprints.txt`, a
   plain text file. Lines starting with `#` are comments; every other line is:
   * `<hash> <fingerprint as 64 hexadecimal characters>`
+  * Lines are kept sorted by hash (C locale), so changes and merges stay small
+    under git (`REQ-10`)
 * It contains hashes, not paths, so a library can be moved or renamed freely
 * A new image is compared against every fingerprint in the index at the
   `THRESHOLD` similarity
@@ -265,10 +271,47 @@ stored images. Run as action parameters, eg `sil CHECK` (see
     no stored image
   * A malformed or repeated index line
   * A tag symlink whose target no longer exists
-* `REBUILD` regenerates the fingerprint index from the stored images, replacing
-  the existing index only once the new one is complete
+* `REBUILD` repairs what can be derived from the stored images, keeping tags
+  wherever possible:
+  * Adds any missing standard library files (`REQ-10`)
+  * Renames each stored image to its current `sha1sum` and format suffix, in
+    its correct `images/xx/yy/` folder. This covers images edited after
+    storage, misplaced files and wrong suffixes
+  * Tag links to a renamed image are replaced by links named after, and
+    pointing to, its new file name
+  * If an image's correct name is already taken by an identical image, the
+    extra copy is removed and its tags moved to the remaining one
+  * Files not named like stored images, or not readable as images, are left
+    alone and reported
+  * Finally regenerates the fingerprint index, replacing the existing index
+    only once the new one is complete
 * Each problem found by `CHECK` is reported with the action that would fix it,
   eg running `REBUILD`
+
+# REQ-10 Git-friendly libraries
+
+A library can be shared as a git repository: others `git clone` it, keep up to
+date with `git pull`, and can add images themselves and `git push`
+
+* A library is git-ready from creation. New libraries (and `REBUILD`, for
+  older ones) get these files from `templates/`:
+  * `.gitignore` - excludes the `.tmp` folder and manifest log files
+    (`*.txt.err`, `*.txt.md`, `REQ-08`)
+  * `.gitattributes` - merges `images/fingerprints.txt` with git's built-in
+    `union` driver, so images added by two people are combined rather than
+    reported as a conflict
+* Git does not keep empty folders, so `tags/.gitkeep` and the fingerprint
+  index header keep `tags` and `images` in a fresh clone, which is then still
+  recognized as a library
+* Everything in a library is plain files and relative symlinks, so the same
+  repository works wherever it is cloned
+* SIL does not run git itself; sharing is up to the user. After a `git pull`,
+  `sil CHECK` confirms the library is consistent, and `sil REBUILD` repairs a
+  merged fingerprint index (eg a line repeated by a union merge)
+* Known limits:
+  * Tag links are symlinks, which git on Windows does not create by default
+  * Git keeps every version of every image, so a repository only grows; images
+    removed later still take space in its history
 
 # TAG-01 Tagging
 

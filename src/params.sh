@@ -434,13 +434,16 @@ function loadParams {
 
 #######################################
 # Second stage of REQ-02 precedence: apply the library's sil.conf, then
-# the command line again so it still wins.
+# the command line again so it still wins. SIL_LIBRARY keeps the
+# absolute path from resolveLibrary, rather than the command line text.
 # Globals:
 #   SIL_LIBRARY; sets SIL_<NAME>
 #######################################
 function loadLibraryParams {
-    parseParamFile "$SIL_LIBRARY/sil.conf" library || :
+    local lib="$SIL_LIBRARY"
+    parseParamFile "$lib/sil.conf" library || :
     applyCliParams
+    SIL_LIBRARY="$lib"
 }
 
 #######################################

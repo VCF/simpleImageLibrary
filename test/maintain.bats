@@ -12,8 +12,9 @@ setup() {
   myDir="$PROJECT_ROOT"
   source "$PROJECT_ROOT/src/utils.sh"
   srcLib "maintain"
+  srcLib "library"
   SIL_LIBRARY="$TEST_SANDBOX/lib"
-  mkdir -p lib/images lib/tags
+  initLibrary "$SIL_LIBRARY" 2> /dev/null
   DATA="$PROJECT_ROOT/test/data/images"
   storeImage "$DATA/plasma.png" plasma
   storeImage "$DATA/animated.gif" anim
@@ -44,7 +45,7 @@ teardown() {
   run libraryCheck
   assert_failure
   assert_output --partial "Stored in the wrong folder"
-  assert_output --partial "Fix: move it to images/${plasma:0:2}/${plasma:2:2}/"
+  assert_output --partial "sil REBUILD moves it to images/${plasma:0:2}/${plasma:2:2}/"
 }
 
 @test "CHECK finds unexpected files" {
@@ -99,11 +100,97 @@ teardown() {
 
 @test "REBUILD skips unexpected files and leaves no temp files" {
   touch lib/images/holiday.jpg
-  indexRebuild
+  libraryRebuild
   run grep -c -v '^#' lib/images/fingerprints.txt
   assert_output 2
-  run find lib/images -maxdepth 1 -name 'fingerprints.txt.*'
+  assert_file_exists lib/images/holiday.jpg
+  run find lib/.tmp lib/images -name 'sil.*'
   assert_output ""
+}
+
+@test "CHECK reports missing library files; REBUILD restores them" {
+  rm lib/.gitignore lib/tags/.gitkeep
+  run libraryCheck
+  assert_failure
+  assert_output --partial "Missing library file: .gitignore"
+  assert_output --partial "Missing library file: tags/.gitkeep"
+  libraryRebuild
+  assert_files_equal lib/.gitignore "$PROJECT_ROOT/templates/gitignore"
+  assert_file_exists lib/tags/.gitkeep
+}
+
+## Tag an image by hand, as tagging will: tags/<tag>/<file> -> image
+tagImage() {
+  local image="$1" tag="$2"
+  mkdir -p "lib/tags/$tag"
+  ln -s "$(relativePath "lib/tags/$tag" "$image")" "lib/tags/$tag/$(basename "$image")"
+}
+
+@test "REBUILD renames an edited image and keeps its tags" {
+  tagImage "$PLASMA" Animal/Dog
+  tagImage "$PLASMA" Meme
+  ## Edit in place: still a PNG, but new content and so a new hash
+  convert "$PLASMA" -rotate 180 "$PLASMA"
+  local new
+  new="$(sha1sum "$PLASMA" | cut -c1-40)"
+  libraryRebuild
+  assert_file_not_exists "$PLASMA"
+  assert_file_exists "lib/images/${new:0:2}/${new:2:2}/$new.png"
+  assert_file_exists "lib/tags/Animal/Dog/$new.png"
+  assert_file_exists "lib/tags/Meme/$new.png"
+  run readlink "lib/tags/Animal/Dog/$new.png"
+  assert_output "../../../images/${new:0:2}/${new:2:2}/$new.png"
+  assert_not_exists "lib/tags/Animal/Dog/$plasma.png"
+  run libraryCheck
+  assert_success
+}
+
+@test "REBUILD moves a misplaced image and keeps its tags" {
+  mkdir -p lib/images/zz/zz
+  mv "$PLASMA" lib/images/zz/zz/
+  tagImage "lib/images/zz/zz/$plasma.png" Bird
+  libraryRebuild
+  assert_file_exists "$PLASMA"
+  assert_dir_not_exists lib/images/zz
+  run readlink "lib/tags/Bird/$plasma.png"
+  assert_output "../../images/${plasma:0:2}/${plasma:2:2}/$plasma.png"
+  run libraryCheck
+  assert_success
+}
+
+@test "REBUILD fixes a wrong suffix and keeps tags" {
+  local wrong="${PLASMA%.png}.jpg"
+  mv "$PLASMA" "$wrong"
+  tagImage "$wrong" Bird
+  libraryRebuild
+  assert_file_exists "$PLASMA"
+  assert_file_exists "lib/tags/Bird/$plasma.png"
+  run libraryCheck
+  assert_success
+}
+
+@test "REBUILD merges a second copy, keeping both copies' tags" {
+  ## A copy edited to match another stored image exactly
+  local anim="lib/images/${anim:0:2}/${anim:2:2}/$anim.gif"
+  tagImage "$PLASMA" Original
+  tagImage "$anim" Copy
+  cp "$PLASMA" "$anim"
+  libraryRebuild
+  assert_file_not_exists "$anim"
+  assert_file_exists "lib/tags/Original/$plasma.png"
+  assert_file_exists "lib/tags/Copy/$plasma.png"
+  run libraryCheck
+  assert_success
+}
+
+@test "REBUILD leaves unreadable images alone and reports them" {
+  local h="0123456789abcdef0123456789abcdef01234567"
+  mkdir -p "lib/images/01/23"
+  cp "$DATA/not-an-image.jpg" "lib/images/01/23/$h.jpg"
+  run libraryRebuild
+  assert_failure
+  assert_output --partial "Not a readable, supported image, left alone"
+  assert_file_exists "lib/images/01/23/$h.jpg"
 }
 
 @test "sil REBUILD CHECK runs both, rebuild first" {
@@ -113,6 +200,7 @@ teardown() {
   cd lib
   run "$PROJECT_ROOT/sil" CHECK REBUILD
   assert_success
+  assert_output --partial "Added images/fingerprints.txt"
   assert_output --partial "Fingerprint index rebuilt: 2 images"
   assert_output --partial "No problems found"
 }

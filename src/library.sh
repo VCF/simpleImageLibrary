@@ -34,10 +34,53 @@ function findLibrary {
 }
 
 #######################################
-# Create a new library: the folder (if needed), 'images', 'tags', and
-# a sil.conf copied from templates/sil.conf.
+# Create any of a library's standard folders and files that are missing
+# (REQ-10). Existing files are never changed:
+#   images/, tags/, tags/.gitkeep, images/fingerprints.txt (header only),
+#   sil.conf, .gitignore and .gitattributes (from templates/)
+# The .gitkeep and index header ensure git keeps both folders, so a
+# fresh clone is still recognized as a library.
 # Globals:
 #   myDir
+# Arguments:
+#   $1 - Library path
+# Outputs:
+#   One msgInfo line per file created, to STDERR
+# Returns:
+#   0 on success; halts (msgError) if folders can't be created
+#######################################
+function libraryEnsureFiles {
+    local lib="$1"
+    local errTxt src dest
+    if ! errTxt="$(mkdir -p -- "$lib/images" "$lib/tags" 2>&1)"; then
+        msgError "[!] Could not create library at: $lib
+    $errTxt"
+    fi
+    local -A templates=(
+        [sil.conf]=sil.conf
+        [.gitignore]=gitignore
+        [.gitattributes]=gitattributes
+    )
+    for dest in sil.conf .gitignore .gitattributes; do
+        src="$myDir/templates/${templates[$dest]}"
+        if [[ ! -e "$lib/$dest" ]]; then
+            cp -- "$src" "$lib/$dest"
+            msgInfo "  Added $dest"
+        fi
+    done
+    if [[ ! -e "$lib/tags/.gitkeep" ]]; then
+        : > "$lib/tags/.gitkeep"
+        msgInfo "  Added tags/.gitkeep"
+    fi
+    if [[ ! -e "$lib/images/fingerprints.txt" ]]; then
+        srcLib "index"
+        indexWriteHeader "$lib/images/fingerprints.txt"
+        msgInfo "  Added images/fingerprints.txt"
+    fi
+}
+
+#######################################
+# Create a new library with its standard folders and files.
 # Arguments:
 #   $1 - Library path
 # Returns:
@@ -45,14 +88,10 @@ function findLibrary {
 #######################################
 function initLibrary {
     local lib="$1"
-    local errTxt
-    if ! errTxt="$(mkdir -p -- "$lib/images" "$lib/tags" 2>&1)"; then
-        msgError "[!] Could not create library at: $lib
-    $errTxt"
-    fi
-    [[ -e "$lib/sil.conf" ]] || cp -- "$myDir/templates/sil.conf" "$lib/sil.conf"
-    msgInfo "Created new library at: $lib
-    Library settings can be changed in: $lib/sil.conf"
+    msgInfo "Creating new library at: $lib"
+    libraryEnsureFiles "$lib"
+    msgInfo "Library settings can be changed in: $lib/sil.conf
+    To share it, it can be made a git repository: git -C '$lib' init"
 }
 
 #######################################

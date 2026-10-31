@@ -13,28 +13,101 @@ function listImageFiles {
     find "$SIL_LIBRARY/images" -type f ! -path "$(indexFile)" | sort
 }
 
+## Moves made by repairStoredImages: old absolute path -> new absolute
+## path. Read by retargetTagLinks
+declare -gA _silMoved=()
+
+#######################################
+# Give every stored image its correct name and place (REQ-05): named by
+# its current sha1sum, with the suffix of its current format, in its
+# images/xx/yy/ folder. Fixes images edited after storage, misplaced
+# files, and wrong suffixes. If the correct name is already taken (the
+# same image stored twice), the extra copy is removed. Files not named
+# like stored images, or not readable as images, are left alone.
+# Globals:
+#   SIL_LIBRARY, _silStoredNameRe; sets _silMoved
+# Outputs:
+#   One line per change, and problems, to STDERR
+# Returns:
+#   0 on success, 1 if any file could not be repaired
+#######################################
+function repairStoredImages {
+    local f name format hash want failed=0
+    _silMoved=()
+    while IFS= read -r f; do
+        name="$(basename -- "$f")"
+        [[ "$name" =~ $_silStoredNameRe ]] || continue
+        if ! format="$(imageFormat "$f")"; then
+            msgWarn "[!] Not a readable, supported image, left alone: ${f#"$SIL_LIBRARY"/}"
+            failed=$(( failed + 1 ))
+            continue
+        fi
+        hash="$(fileHash "$f")"
+        want="$(storedImagePath "$hash" "${_silImageSuffix[$format]}")"
+        [[ "$f" == "$want" ]] && continue
+
+        if [[ -f "$want" ]]; then
+            rm -f -- "$f"
+            msgInfo "  Removed second copy: ${f#"$SIL_LIBRARY"/} (same as ${want#"$SIL_LIBRARY"/})"
+        elif mkdir -p -- "$(dirname -- "$want")" && mv -- "$f" "$want"; then
+            msgInfo "  Renamed: ${f#"$SIL_LIBRARY"/} -> ${want#"$SIL_LIBRARY"/}"
+        else
+            msgWarn "[!] Could not move ${f#"$SIL_LIBRARY"/} to ${want#"$SIL_LIBRARY"/}"
+            failed=$(( failed + 1 ))
+            continue
+        fi
+        _silMoved["$f"]="$want"
+    done < <(listImageFiles)
+
+    ## Folders emptied by moves
+    find "$SIL_LIBRARY/images" -mindepth 1 -type d -empty -delete
+    (( failed == 0 ))
+}
+
+#######################################
+# Point tag links at images moved by repairStoredImages. Each link is
+# replaced by one named after the image's new file name, with a new
+# relative target. Links to images that weren't moved are untouched.
+# Globals:
+#   SIL_LIBRARY, _silMoved
+# Outputs:
+#   One line per link updated, to STDERR
+#######################################
+function retargetTagLinks {
+    (( ${#_silMoved[@]} )) || return 0
+    local link dir target new newLink
+    while IFS= read -r link; do
+        dir="$(dirname -- "$link")"
+        target="$(realpath -m -- "$dir/$(readlink -- "$link")")"
+        new="${_silMoved[$target]:-}"
+        [[ -n "$new" ]] || continue
+        newLink="$dir/$(basename -- "$new")"
+        rm -f -- "$link"
+        [[ -L "$newLink" ]] || ln -s -- "$(relativePath "$dir" "$new")" "$newLink"
+        msgInfo "  Updated tag: ${link#"$SIL_LIBRARY"/} -> ${newLink#"$SIL_LIBRARY"/}"
+    done < <(find "$SIL_LIBRARY/tags" -type l | sort)
+}
+
 #######################################
 # Regenerate the fingerprint index from the stored images. The new index
-# replaces the old one only once complete.
+# is built in the library's temp folder and replaces the old one only
+# once complete.
 # Globals:
 #   SIL_LIBRARY, _silStoredNameRe
 # Outputs:
 #   Progress and problems to STDERR
 # Returns:
 #   0 on success, 1 if any stored image could not be fingerprinted;
-#   halts (msgError) if needed tools are missing
+#   halts (msgError) if the index can't be written
 #######################################
 function indexRebuild {
-    requireTool convert imagemagick "fingerprint stored images"
-    requireTool findimagedupes findimagedupes "fingerprint stored images"
-
-    local index new f name hash fp hex
+    local entries new f name hash fp hex
     local count=0 failed=0
-    index="$(indexFile)"
-    new="$(mktemp "$index.XXXXXX")" || msgError "[!] Could not write to: $SIL_LIBRARY/images"
-    indexWriteHeader "$new"
+    if ! entries="$(silMktemp)" || ! new="$(silMktemp)"; then
+        msgError "[!] Could not write to the library's temp folder: $SIL_LIBRARY/.tmp"
+    fi
 
-    msgInfo "Rebuilding fingerprint index: $index"
+    msgInfo "Rebuilding fingerprint index"
     while IFS= read -r f; do
         name="$(basename -- "$f")"
         ## Unexpected files are reported by CHECK, not indexed
@@ -45,14 +118,40 @@ function indexRebuild {
             failed=$(( failed + 1 ))
             continue
         fi
-        printf '%s %s\n' "$hash" "$hex" >> "$new"
+        printf '%s %s\n' "$hash" "$hex" >> "$entries"
         count=$(( count + 1 ))
         (( count % 100 == 0 )) && msgInfo "  $count images fingerprinted"
     done < <(listImageFiles)
 
-    mv -- "$new" "$index"
+    indexWriteSorted "$new" < "$entries"
+    rm -f -- "$entries"
+    mv -- "$new" "$(indexFile)"
     msgInfo "Fingerprint index rebuilt: $count images"
     (( failed == 0 ))
+}
+
+#######################################
+# REBUILD (REQ-09): restore missing library files, repair stored image
+# names and places while keeping their tags, then regenerate the
+# fingerprint index.
+# Globals:
+#   SIL_LIBRARY
+# Outputs:
+#   Progress and problems to STDERR
+# Returns:
+#   0 on success, 1 if anything could not be repaired; halts (msgError)
+#   if needed tools are missing
+#######################################
+function libraryRebuild {
+    requireTool convert imagemagick "inspect and fingerprint stored images"
+    requireTool findimagedupes findimagedupes "fingerprint stored images"
+    local rv=0
+    msgInfo "Rebuilding library: $SIL_LIBRARY"
+    libraryEnsureFiles "$SIL_LIBRARY"
+    repairStoredImages || rv=1
+    retargetTagLinks
+    indexRebuild || rv=1
+    return "$rv"
 }
 
 #######################################
@@ -73,6 +172,14 @@ function libraryCheck {
 
     msgInfo "Checking library: $SIL_LIBRARY"
 
+    for f in sil.conf .gitignore .gitattributes tags/.gitkeep images/fingerprints.txt; do
+        if [[ ! -e "$SIL_LIBRARY/$f" ]]; then
+            msgWarn "[!] Missing library file: $f
+    Fix: sil REBUILD adds it"
+            problems=$(( problems + 1 ))
+        fi
+    done
+
     while IFS= read -r f; do
         rel="${f#"$SIL_LIBRARY"/}"
         name="$(basename -- "$f")"
@@ -87,19 +194,20 @@ function libraryCheck {
         dir="$(dirname -- "$rel")"
         if [[ "$dir" != "$expected" ]]; then
             msgWarn "[!] Stored in the wrong folder: $rel
-    Fix: move it to $expected/"
+    Fix: sil REBUILD moves it to $expected/, keeping its tags"
             problems=$(( problems + 1 ))
         fi
         actual="$(fileHash "$f")"
         if [[ "$actual" != "$hash" ]]; then
             msgWarn "[!] File does not match its name, it may be damaged or edited: $rel
     Its sha1sum is $actual
-    Fix: restore it from a backup, or remove it and add the image again"
+    Fix: if the change was intended, sil REBUILD renames it, keeping its
+    tags; otherwise restore it from a backup"
             problems=$(( problems + 1 ))
         fi
         if [[ -n "${stored[$hash]:-}" ]]; then
             msgWarn "[!] Image stored twice: ${stored[$hash]} and $rel
-    Fix: remove one of them"
+    Fix: sil REBUILD keeps one, moving tags to it"
             problems=$(( problems + 1 ))
         fi
         stored[$hash]="$rel"
