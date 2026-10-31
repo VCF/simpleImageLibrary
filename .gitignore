@@ -1,0 +1,15 @@
+# Emacs temp files
+*~
+*#
+
+# Working folder
+tmp
+
+.Rhistory
+.Rproj.user
+
+# Backup files
+*-BKUP
+
+=======
+.#*

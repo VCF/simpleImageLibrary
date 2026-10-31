@@ -1,0 +1,24 @@
+
+
+
+#### ---- Similarity testing ----
+# Despicable Me 4 pane whiteboard meme
+
+# These images are very similar to each other, to allow exploration of
+# fingerprint thresholding. If all images are desired to be kept, it will be
+# required to pick a `THRESHOLD` parameter that generates distinct fingerprints
+# for each
+
+TAG=Meme
+## Blank template
+https://thegatewayonline.ca/wp-content/uploads/2019/01/template.jpg
+## Songs
+https://i.kym-cdn.com/photos/images/original/002/735/020/5ba.jpeg
+## Royalty
+https://i.kym-cdn.com/photos/images/original/002/296/599/817.png
+## Screen sharing
+https://i.kym-cdn.com/photos/images/original/002/237/354/105
+## Unmuting
+https://i.kym-cdn.com/photos/images/original/002/129/702/307.jpg
+## Recursion
+https://i.kym-cdn.com/photos/images/original/001/857/039/be5.jpg
