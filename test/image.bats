@@ -71,9 +71,19 @@ fakeFingerprint() {
   assert_output ""
 }
 
-@test "fingerprintHash is the SHA1 of the string with no newline" {
-  run fingerprintHash "abc"
+@test "fileHash is the sha1sum of the file" {
+  printf 'abc' > f
+  run fileHash f
   assert_output "a9993e364706816aba3e25717850c26c9cd0d89d"
+  run fileHash missing
+  assert_failure
+}
+
+@test "fingerprintToHex gives 64 hex characters" {
+  run fingerprintToHex "$(fakeFingerprint '\xab' 1)"
+  assert_output "ab$(printf '0%.0s' {1..62})"
+  run fingerprintToHex "short"
+  assert_failure
 }
 
 @test "fingerprintDistance counts differing bits" {

@@ -35,6 +35,11 @@ live in [requirements.md](./requirements.md); parameter specs in
 * `msgError` inside `$(...)` only exits that subshell, not SIL. A function that
   may halt should return its result through a caller-named variable
   (`printf -v "$resultVar"`, see `shrinkImage`) rather than STDOUT
+* A function returning through a caller-named variable must prefix its own
+  locals with `_` (`local _hash`). Otherwise a caller choosing the same name
+  (`storeImage file hash`) gets the function's local set, not its own
+* `BASH_REMATCH` is overwritten by every `=~` match, including inside called
+  functions. Copy captures to a local straight after the match
 * Read files with `while IFS= read -r line || [[ -n "$line" ]]` to keep
   backslashes and the final unterminated line
 

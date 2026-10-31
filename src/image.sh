@@ -87,15 +87,35 @@ function imageFingerprint {
 }
 
 #######################################
-# SHA1 of a fingerprint string (with no trailing newline). Used as the
-# image's stored file name; see REQ-05.
+# An image's hash: the SHA1 of the file, used as its stored name (REQ-05).
+# Arguments:
+#   $1 - File path
+# Outputs:
+#   40 character hex SHA1 to STDOUT
+# Returns:
+#   0 on success, 1 if the file can't be read
+#######################################
+function fileHash {
+    local sum
+    sum="$(sha1sum -- "$1" 2> /dev/null)" || return 1
+    printf '%s\n' "${sum:0:40}"
+}
+
+#######################################
+# Convert a raw fingerprint from base64 to the 64 hexadecimal characters
+# used in the fingerprint index.
 # Arguments:
 #   $1 - Raw fingerprint (base64)
 # Outputs:
-#   40 character hex SHA1 to STDOUT
+#   64 character hex string to STDOUT
+# Returns:
+#   0 on success, 1 if the fingerprint is malformed
 #######################################
-function fingerprintHash {
-    printf '%s' "$1" | sha1sum | cut -c1-40
+function fingerprintToHex {
+    local hex
+    hex="$(printf '%s' "$1" | base64 -d 2> /dev/null | od -An -v -tx1 | tr -d ' \n')"
+    (( ${#hex} == 64 )) || return 1
+    printf '%s\n' "$hex"
 }
 
 #######################################
@@ -109,9 +129,8 @@ function fingerprintHash {
 #######################################
 function fingerprintDistance {
     local ha hb
-    ha="$(printf '%s' "$1" | base64 -d 2> /dev/null | od -An -v -tx1 | tr -d ' \n')"
-    hb="$(printf '%s' "$2" | base64 -d 2> /dev/null | od -An -v -tx1 | tr -d ' \n')"
-    (( ${#ha} == 64 && ${#hb} == 64 )) || return 1
+    ha="$(fingerprintToHex "$1")" || return 1
+    hb="$(fingerprintToHex "$2")" || return 1
 
     ## XOR 32 bits at a time, counting set bits
     local d=0 i x

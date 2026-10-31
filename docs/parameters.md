@@ -198,6 +198,27 @@ Similarity at which two images are considered duplicates (see `REQ-05`)
   Near-identical images such as memes from one template may need a high value
   (eg `98%`) to be kept as distinct images
 
+## CHECK
+
+* Flag parameter; an action, so can't be set in configuration files
+
+Checks the library for problems and reports them, without changing anything
+(see `REQ-09`). `sil` exits with status 1 if any are found
+
+* `sil CHECK` from within a library, or `sil LIBRARY=~/Pictures/sil CHECK`
+
+## REBUILD
+
+* Flag parameter; an action, so can't be set in configuration files
+
+Regenerates the library's fingerprint index (`images/fingerprints.txt`) from the
+stored images (see `REQ-09`)
+
+* Use after `CHECK` reports index problems, or after adding or removing files in
+  `images` by hand
+* Fingerprints every stored image, so takes a while on a large library
+* If combined with `CHECK`, the rebuild runs first
+
 ## TOR
 
 * ALIAS: `USETOR`

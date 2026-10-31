@@ -87,17 +87,17 @@ function encodeShrunk {
 #   0; halts (msgError) if ImageMagick or findimagedupes are missing
 #######################################
 function shrinkImage {
-    local src="$1" resultVar="$2"
-    local target="${SIL_SHRINK:-0}"
-    printf -v "$resultVar" '%s' "$src"
-    (( target > 0 )) || return 0
+    local _src="$1" _resultVar="$2"
+    local _target="${SIL_SHRINK:-0}"
+    printf -v "$_resultVar" '%s' "$_src"
+    (( _target > 0 )) || return 0
 
-    local srcBytes trigger
-    srcBytes="$(stat -c %s -- "$src")"
-    trigger="$(awk -v t="$target" -v f="${SIL_SHRINKTRIGGER:-2}" \
+    local _srcBytes _trigger
+    _srcBytes="$(stat -c %s -- "$_src")"
+    _trigger="$(awk -v t="$_target" -v f="${SIL_SHRINKTRIGGER:-2}" \
         'BEGIN { printf "%d", t * f }')"
-    if (( srcBytes < trigger )); then
-        msgInfo "  Not shrinking: $(humanSize "$srcBytes") is under the trigger of $(humanSize "$trigger")"
+    if (( _srcBytes < _trigger )); then
+        msgInfo "  Not shrinking: $(humanSize "$_srcBytes") is under the trigger of $(humanSize "$_trigger")"
         return 0
     fi
 
@@ -105,27 +105,27 @@ function shrinkImage {
     requireTool findimagedupes findimagedupes \
         "check shrunk images still match their originals"
 
-    if (( $(imageFrames "$src") > 1 )); then
+    if (( $(imageFrames "$_src") > 1 )); then
         msgInfo "  Not shrinking: animated images are left unchanged"
         return 0
     fi
 
-    local ref="$src"
-    if hasTransparency "$src"; then
+    local _ref="$_src"
+    if hasTransparency "$_src"; then
         if ! flagIsSet FLATTEN; then
             msgInfo "  Not shrinking: image has transparency, which JPEG would lose
     Set FLATTEN to shrink it onto a white background instead"
             return 0
         fi
-        ref="${src%.*}.flat.png"
+        _ref="${_src%.*}.flat.png"
     fi
 
-    local out="${src%.*}.shrunk.jpg"
-    if encodeShrunk "$src" "$ref" "$out" "$srcBytes"; then
-        printf -v "$resultVar" '%s' "$out"
+    local _out="${_src%.*}.shrunk.jpg"
+    if encodeShrunk "$_src" "$_ref" "$_out" "$_srcBytes"; then
+        printf -v "$_resultVar" '%s' "$_out"
     else
-        rm -f -- "$out"
+        rm -f -- "$_out"
     fi
-    [[ "$ref" != "$src" ]] && rm -f -- "$ref"
+    [[ "$_ref" != "$_src" ]] && rm -f -- "$_ref"
     return 0
 }

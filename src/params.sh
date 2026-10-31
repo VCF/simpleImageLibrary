@@ -21,6 +21,8 @@ declare -gA _silParamType=(
     [SHRINKMINSAVE]=percent
     [FLATTEN]=flag
     [THRESHOLD]=percent
+    [CHECK]=flag
+    [REBUILD]=flag
     [TOR]=flag
 )
 
@@ -48,6 +50,8 @@ declare -gA _silParamDefault=(
 declare -gA _silParamScope=(
     [TAG]=image
     [LINK]=action
+    [CHECK]=action
+    [REBUILD]=action
     [LIBRARY]=global
 )
 

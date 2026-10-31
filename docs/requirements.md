@@ -81,46 +81,67 @@ SIL will locate images through the following URIs:
   judged by content alone (`REQ-05`)
 * Image hashes simply identify an already-ingested file for further operations
 
-# REQ-05 Image hashing and storage
+# REQ-05 Image hashing, fingerprints and storage
 
-Image hasing is used to deduplicate images in the library
+Each stored image has two identifiers with different jobs:
 
-* Deduplication is performed using `findimagedupes` to generate a fingerprint
-  * The `THRESHOLD` parameter sets the `--threshold` parameter
-  * The goal is similarity, not identity: images that would look the same to a
-    person (eg a meme rescaled or converted to another format) count as the
-    same. Heavily compressed copies may legitimately fail to match
-  * The fingerprint is computed from the first frame of a temporary copy
-    stripped of profiles and metadata (`convert -strip`), as findimagedupes
-    rejects some harmless flaws, eg "iCCP: known incorrect sRGB profile"
-  * An empty or malformed fingerprint means the image could not be read
-    (`BADIMAGE`, `REQ-08`); it must never be hashed
-* Image format is determined from content with ImageMagick
-  (`identify -format %m`), never from the file or URL suffix
-  * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF. SVG is shelved for now
-  * Files are inspected without a suffix, as ImageMagick otherwise takes hints
-    from it (eg attempting to render `.html` files)
-* The fingerprint produced by findimagedupes appears fairly non-random. For this
-  reason, the fingerprint is passed throught `sha1sum` to generate a hash. This
-  hash will represent the basename of the image as stored in the library
-  * The hash is of the 44 character base64 fingerprint string alone, with no
-    trailing newline: `printf '%s' "$fingerprint" | sha1sum`
-  * Each sha1 hash will also have the appropriate file type suffix, eg `.jpg`,
-    added to it
-  * Terminology: the SHA1 hash is an alternate accession for the fingerprint,
-    unique short of astronomically unlikely collisions, and easier on the eye.
-    "Fingerprint" in user-facing text and these docs may refer to either; where
-    the difference matters (similarity comparison needs the raw fingerprint),
-    say "raw fingerprint" or "SHA1 hash"
-* Fingerprints are only calculated after all other image manipulation has occured
-* Images will be stored within an `images` folder at the base level of the library
+* Its **hash** - the SHA1 of the stored file (`sha1sum`). Names the file and
+  identifies the image exactly
+* Its **fingerprint** - from `findimagedupes`. Used only to find similar images
+
+## Hashing and storage
+
+* The hash is computed after all other image manipulation (eg `REQ-07`
+  shrinking), from the file exactly as stored
+* The stored file name is the hash plus a suffix for its format, eg `.jpg`
+* Images are stored within an `images` folder at the base level of the library
 * There will be two additional subdirectory levels in the `images` folder
-  * The first level will be the leftmost first two characters of the sha1 hash
+  * The first level will be the leftmost first two characters of the hash
   * The next sublevel will be the next leftmost two characters
   * So an image `f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg` will be stored at:
     * `images/f1/d2/f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
   * These additional subdirectories are to prevent too many files from being in
     one folder
+* Any stored file can be checked against its name with `sha1sum` (`REQ-09`)
+
+## Format
+
+* Image format is determined from content with ImageMagick
+  (`identify -format %m`), never from the file or URL suffix
+  * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF. SVG is shelved for now
+  * Files are inspected without a suffix, as ImageMagick otherwise takes hints
+    from it (eg attempting to render `.html` files)
+
+## Fingerprints and similarity
+
+* The goal is similarity, not identity: images that would look the same to a
+  person (eg a meme rescaled or converted to another format) count as the
+  same. Heavily compressed copies may legitimately fail to match
+* A fingerprint is 256 bits: a heavily blurred, contrast-stretched 16x16
+  black-and-white thumbnail of the image. Similar images have fingerprints
+  differing in a few bits; their hashes are unrelated
+* Similarity is the share of bits two fingerprints have in common. Following
+  findimagedupes, at a similarity of `T`% at most `int(2.56 x (100 - T))` bits
+  may differ: 90% allows 25 bits, 95% allows 12
+* The fingerprint is computed from the first frame of a temporary copy
+  stripped of profiles and metadata (`convert -strip`), as findimagedupes
+  rejects some harmless flaws, eg "iCCP: known incorrect sRGB profile"
+* An empty or malformed fingerprint means the image could not be read
+  (`BADIMAGE`, `REQ-08`)
+
+## Fingerprint index
+
+* Fingerprints of all stored images are kept in `images/fingerprints.txt`, a
+  plain text file. Lines starting with `#` are comments; every other line is:
+  * `<hash> <fingerprint as 64 hexadecimal characters>`
+* It contains hashes, not paths, so a library can be moved or renamed freely
+* A new image is compared against every fingerprint in the index at the
+  `THRESHOLD` similarity
+  * No match: the image is new, and is stored and added to the index
+  * One or more matches: the image is a `DUPE` (`REQ-08`) of the closest match
+    (fewest differing bits). The existing image is kept, the new one discarded,
+    and remaining operations (eg tagging) apply to the existing image
+* The index can be regenerated from the stored images at any time (`REQ-09`)
 
 # REQ-06 Manifest files
 
@@ -220,17 +241,39 @@ characters.
     * A bulleted list legend for each status that occurs in the run
     * A markdown table with three columns
       * Status - per the outcome table above
-      * Fingerprint - The leftmost 12 characters of the image's SHA1 hash
+      * Hash - The leftmost 12 characters of the stored image's hash (`REQ-05`);
+        for a `DUPE`, the hash of the existing image it matched
       * URI - The URL, path or full hash of the image, as requested by the user
     * If any URIs failed, an h1 header `# Failed image download`, followed by:
       * A bulleted list legend of the reason tags that occur in the run, and
         only those
       * A markdown table with two columns: Reason and URI
 
+# REQ-09 Library maintenance
+
+Tools to check a library's consistency and rebuild what can be derived from the
+stored images. Run as action parameters, eg `sil CHECK` (see
+[parameters.md](./parameters.md)), from within a library or with `LIBRARY`
+
+* `CHECK` reports problems without changing anything, and exits with status 1 if
+  any are found:
+  * A stored file whose `sha1sum` does not match its name (damaged, or edited
+    after storage)
+  * A stored file in the wrong `images/xx/yy/` folder for its name
+  * An unexpected file in `images` (not named `<hash>.<suffix>`)
+  * A stored image missing from the fingerprint index, or an index entry with
+    no stored image
+  * A malformed or repeated index line
+  * A tag symlink whose target no longer exists
+* `REBUILD` regenerates the fingerprint index from the stored images, replacing
+  the existing index only once the new one is complete
+* Each problem found by `CHECK` is reported with the action that would fix it,
+  eg running `REBUILD`
+
 # TAG-01 Tagging
 
 Tags are the core of SIL. Core image storage is not conducive for browsing, as
-images are named after their fingerprint hash and stored in a directory
+images are named after their hash and stored in a directory
 structure meant to manage file system usage but not be friendly to humans.
 
 Tagging requirements are broken out in the `TAG` section of

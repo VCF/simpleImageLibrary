@@ -18,6 +18,7 @@ fi
 srcLib "params"
 srcLib "library"
 srcLib "manifest"
+srcLib "maintain"
 
 ## REQ-02 precedence: defaults < ~/.sil.conf < library sil.conf < command line
 loadParams "$@"
@@ -27,13 +28,24 @@ loadLibraryParams
 msgInfo "Library: $SIL_LIBRARY"
 showParams
 
-if (( ${#_silArgs[@]} == 0 )); then
-    msgInfo "No images or manifests given, nothing more to do"
-    exit 0
+## Exit status is 1 if anything failed, for use in scripts
+status=0
+
+## REQ-09 maintenance actions; rebuild first so a check sees the result
+if flagIsSet REBUILD; then
+    indexRebuild || status=1
+fi
+if flagIsSet CHECK; then
+    libraryCheck || status=1
 fi
 
-## Exit status is 1 if any image or manifest failed, for use in scripts
-status=0
+if (( ${#_silArgs[@]} == 0 )); then
+    if ! flagIsSet REBUILD && ! flagIsSet CHECK; then
+        msgInfo "No images or manifests given, nothing more to do"
+    fi
+    exit "$status"
+fi
+
 for arg in "${_silArgs[@]}"; do
     if [[ -f "$arg" && "${arg,,}" == *.txt ]]; then
         ## REQ-06: manifests are text files with a .txt suffix
