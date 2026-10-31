@@ -1,7 +1,8 @@
 # SIL library: git settings
 # Copied into each new library as .gitattributes - see REQ-10
 
-# Each index line stands alone, so when two people add images, git can keep
-# both sides' lines rather than report a conflict. sil CHECK reports any
-# repeated lines; sil REBUILD fixes them
+# Each line of these files stands alone, so when two people add images, git
+# can keep both sides' lines rather than report a conflict. sil CHECK
+# reports any problems; sil REBUILD fixes them
 images/fingerprints.txt merge=union
+images/sources.txt merge=union

@@ -175,3 +175,72 @@ function storeImage {
     indexAdd "$_hash" "$_fp" || return 1
     printf -v "$_resultVar" '%s' "$_hash"
 }
+
+#######################################
+# Path of the library's sources file (REQ-05).
+# Globals:
+#   SIL_LIBRARY
+# Outputs:
+#   Path to STDOUT
+#######################################
+function sourcesFile {
+    printf '%s\n' "$SIL_LIBRARY/images/sources.txt"
+}
+
+#######################################
+# Write a sources file: its header, then entry lines sorted with
+# repeats removed (C locale, as for the fingerprint index).
+# Arguments:
+#   $1 - Path to write to (overwritten)
+# Inputs:
+#   Entry lines on STDIN; comment lines are dropped
+#######################################
+function sourcesWriteSorted {
+    cat > "$1" << 'EOF'
+# SIL image sources - see REQ-05 in docs/requirements.md
+# Each line: <image hash> <source URI>
+# Only ever added to; one line per distinct source of each image
+EOF
+    grep -v '^#' | LC_ALL=C sort -u >> "$1"
+}
+
+#######################################
+# Record where an image came from, unless already recorded. Local files
+# are recorded as file:<name>, without their folders, as the library
+# may be shared.
+# Arguments:
+#   $1 - Image hash
+#   $2 - Source: a URL, or a local path
+# Returns:
+#   0 on success, 1 if the file can't be written
+#######################################
+function sourceAdd {
+    local file source tmp
+    file="$(sourcesFile)"
+    source="$2"
+    [[ "$source" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] || source="file:$(basename -- "$source")"
+    grep -qxF -- "$1 $source" "$file" 2> /dev/null && return 0
+    tmp="$(silMktemp)" || return 1
+    { [[ -f "$file" ]] && cat -- "$file"; printf '%s %s\n' "$1" "$source"; } \
+        | sourcesWriteSorted "$tmp"
+    mv -- "$tmp" "$file"
+}
+
+#######################################
+# Change image hashes in the sources file, keeping every source.
+# Arguments:
+#   $1 - File of "<old hash> <new hash>" lines
+# Returns:
+#   0 on success, 1 if the file can't be written
+#######################################
+function sourcesRehash {
+    local file tmp
+    file="$(sourcesFile)"
+    [[ -s "$1" && -f "$file" ]] || return 0
+    tmp="$(silMktemp)" || return 1
+    awk 'NR == FNR { map[$1] = $2; next }
+         /^#/ { next }
+         { h = $1; if (h in map) h = map[h]; print h substr($0, length($1) + 1) }' \
+        "$1" "$file" | sourcesWriteSorted "$tmp"
+    mv -- "$tmp" "$file"
+}

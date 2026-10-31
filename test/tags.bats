@@ -78,3 +78,78 @@ lib/tags/Animal/Dog"
   run tagImage 0000000000000000000000000000000000000000 Humor
   assert_failure
 }
+
+# --- date tags (TAG-02) ----------------------------------------------
+
+## Store a fresh image and date-tag it on a given day; sets $hash
+storeOn() {
+  convert -size 60x40 -seed "$2" plasma:fractal "img$2.png"
+  storeImage "img$2.png" hash
+  _silToday="$1" dateTagImage "$hash" 2> /dev/null
+}
+
+@test "dateTagImage links into tags/Date/YYYY/YYYY-MM-DD" {
+  _silToday=2026-10-31 dateTagImage "$hash"
+  assert_link_exists "lib/tags/Date/2026/2026-10-31/$hash.png"
+  assert_file_exists "lib/tags/Date/2026/2026-10-31/$hash.png"
+}
+
+@test "new days link back and forth, across a year boundary" {
+  storeOn 2025-12-30 1
+  storeOn 2026-01-02 2
+  local d=lib/tags/Date
+  run readlink "$d/2026/2026-01-02/previous-2025-12-30"
+  assert_output "../../2025/2025-12-30"
+  run readlink "$d/2025/2025-12-30/next-2026-01-02"
+  assert_output "../../2026/2026-01-02"
+  assert_dir_exists "$d/2025/2025-12-30/next-2026-01-02/"
+  run find "$d/2025/2025-12-30" -name 'previous-*'
+  assert_output ""
+}
+
+@test "a second image on the same day adds no day links" {
+  storeOn 2026-10-30 1
+  storeOn 2026-10-31 2
+  storeOn 2026-10-31 3
+  run find lib/tags/Date -type l -name 'next-*'
+  assert_equal "${#lines[@]}" 1
+  run find lib/tags/Date/2026/2026-10-31 -type l ! -name 'previous-*'
+  assert_equal "${#lines[@]}" 2
+}
+
+@test "a day added out of order is inserted between its neighbours" {
+  storeOn 2026-10-01 1
+  storeOn 2026-10-31 2
+  storeOn 2026-10-15 3
+  local d=lib/tags/Date/2026
+  assert_link_exists "$d/2026-10-01/next-2026-10-15"
+  assert_link_exists "$d/2026-10-15/previous-2026-10-01"
+  assert_link_exists "$d/2026-10-15/next-2026-10-31"
+  assert_link_exists "$d/2026-10-31/previous-2026-10-15"
+  assert_not_exists "$d/2026-10-01/next-2026-10-31"
+  dayLinksCorrect
+}
+
+@test "relinkDays repairs links after a merge of two clones' days" {
+  storeOn 2026-10-30 1
+  storeOn 2026-11-02 2
+  ## The other clone added 11-01 after 10-30; git keeps both next links
+  mkdir -p lib/tags/Date/2026/2026-11-01
+  ln -s ../2026-11-01 lib/tags/Date/2026/2026-10-30/next-2026-11-01
+  ln -s ../2026-10-30 lib/tags/Date/2026/2026-11-01/previous-2026-10-30
+  run dayLinksCorrect
+  assert_failure
+  relinkDays
+  dayLinksCorrect
+  assert_link_exists lib/tags/Date/2026/2026-11-01/next-2026-11-02
+  assert_not_exists lib/tags/Date/2026/2026-10-30/next-2026-11-02
+}
+
+@test "Date is reserved for automatic tags" {
+  SIL_TAG="date/2020, Fine"
+  run applyTags "$hash"
+  assert_failure
+  assert_output --partial "'Date' is reserved"
+  assert_output --partial "Tagged: Fine"
+  assert_not_exists lib/tags/date
+}

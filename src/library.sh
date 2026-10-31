@@ -36,8 +36,9 @@ function findLibrary {
 #######################################
 # Create any of a library's standard folders and files that are missing
 # (REQ-10). Existing files are never changed:
-#   images/, tags/, tags/.gitkeep, images/fingerprints.txt (header only),
-#   sil.conf, .gitignore and .gitattributes (from templates/)
+#   images/, tags/, tags/.gitkeep, images/fingerprints.txt and
+#   images/sources.txt (headers only), sil.conf, .gitignore and
+#   .gitattributes (from templates/)
 # The .gitkeep and index header ensure git keeps both folders, so a
 # fresh clone is still recognized as a library.
 # Globals:
@@ -72,10 +73,14 @@ function libraryEnsureFiles {
         : > "$lib/tags/.gitkeep"
         msgInfo "  Added tags/.gitkeep"
     fi
+    srcLib "index"
     if [[ ! -e "$lib/images/fingerprints.txt" ]]; then
-        srcLib "index"
         indexWriteHeader "$lib/images/fingerprints.txt"
         msgInfo "  Added images/fingerprints.txt"
+    fi
+    if [[ ! -e "$lib/images/sources.txt" ]]; then
+        sourcesWriteSorted "$lib/images/sources.txt" < /dev/null
+        msgInfo "  Added images/sources.txt"
     fi
 }
 

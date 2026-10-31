@@ -102,6 +102,8 @@ The tag parameter defines one or more tags within the library
   the earlier value rather than adding to it
 * Tag levels of `.` or `..` are ignored with a warning, so a tag can never
   reach outside the `tags` folder
+* `Date` is reserved for automatic date tags (`TAG-02`); tags starting with it
+  are ignored with a warning
   * `TAG=Humor,Politics/Humor`
   * Whitespace around a comma is ignored; `TAG=Humor , Politics/Humor` is the
     same as above

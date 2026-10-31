@@ -152,6 +152,23 @@ Each stored image has two identifiers with different jobs:
     and remaining operations (eg tagging) apply to the existing image
 * The index can be regenerated from the stored images at any time (`REQ-09`)
 
+## Sources
+
+* Where each image came from is kept in `images/sources.txt`, a plain text
+  file. Lines starting with `#` are comments; every other line is:
+  * `<hash> <source>`
+* A line is added when an image is stored, and when a `DUPE` arrives from a
+  new source; the `DUPE`'s source is recorded against the existing image
+* The same source for the same image is never recorded twice. The same source
+  for a different image is (eg a URL whose content has changed)
+* URLs are recorded exactly as given. Local files are recorded as
+  `file:<name>`, without their folders, as the library may be shared
+* Hash URIs are not sources, and are not recorded
+* Unlike the fingerprint index, sources can't be regenerated, so the file is
+  only ever added to. `REBUILD` changes hashes in it when it renames an image
+  (`REQ-09`), and never removes a line
+* Lines are kept sorted (C locale) for git (`REQ-10`)
+
 # REQ-06 Manifest files
 
 * Leading and trailing whitespace is ignored on each line of the manifest file
@@ -292,7 +309,10 @@ stored images. Run as action parameters, eg `sil CHECK` (see
   * A stored image missing from the fingerprint index, or an index entry with
     no stored image
   * A malformed or repeated index line
+  * A malformed sources line, or a source for an image that isn't stored
   * A tag symlink whose target no longer exists
+  * Date tag next/previous links that are missing or out of date (`TAG-02`)
+  * A missing standard library file (`REQ-10`)
 * `REBUILD` repairs what can be derived from the stored images, keeping tags
   wherever possible:
   * Adds any missing standard library files (`REQ-10`)
@@ -300,11 +320,12 @@ stored images. Run as action parameters, eg `sil CHECK` (see
     its correct `images/xx/yy/` folder. This covers images edited after
     storage, misplaced files and wrong suffixes
   * Tag links to a renamed image are replaced by links named after, and
-    pointing to, its new file name
+    pointing to, its new file name. Its sources move to its new hash
   * If an image's correct name is already taken by an identical image, the
     extra copy is removed and its tags moved to the remaining one
   * Files not named like stored images, or not readable as images, are left
     alone and reported
+  * Remakes the date tag's next/previous links between days (`TAG-02`)
   * Finally regenerates the fingerprint index, replacing the existing index
     only once the new one is complete
 * Each problem found by `CHECK` is reported with the action that would fix it,
@@ -319,9 +340,9 @@ date with `git pull`, and can add images themselves and `git push`
   older ones) get these files from `templates/`:
   * `.gitignore` - excludes the `.tmp` folder and manifest log files
     (`*.txt.err`, `*.txt.md`, `REQ-08`)
-  * `.gitattributes` - merges `images/fingerprints.txt` with git's built-in
-    `union` driver, so images added by two people are combined rather than
-    reported as a conflict
+  * `.gitattributes` - merges `images/fingerprints.txt` and
+    `images/sources.txt` with git's built-in `union` driver, so images added
+    by two people are combined rather than reported as a conflict
 * Git does not keep empty folders, so `tags/.gitkeep` and the fingerprint
   index header keep `tags` and `images` in a fresh clone, which is then still
   recognized as a library
@@ -343,3 +364,24 @@ structure meant to manage file system usage but not be friendly to humans.
 
 Tagging requirements are broken out in the `TAG` section of
 [parameters.md](parameters.md)
+
+# TAG-02 Date tags
+
+Every image is tagged with the day it was first added to the library, making
+the library browsable by date
+
+* `Date` is a reserved top-level tag, at `tags/Date`. Users can't apply it
+  (`TAG=Date/...` is ignored with a warning, in any case)
+* When an image is first stored (`ADDED` or `SHRINK`, `REQ-08`), it is linked
+  into `tags/Date/YYYY/YYYY-MM-DD/` for the current local date, with folders
+  created as needed. A `DUPE` gets no new date tag
+* Each day folder links to its neighbouring days, for browsing:
+  * `previous-YYYY-MM-DD` - links to the most recent earlier day folder
+  * `next-YYYY-MM-DD` - links to the next later day folder
+  * Neighbours are found across years, eg `2026-01-02` links back to
+    `2025-12-30`
+  * The links are named after their target day, so if two clones of a library
+    each add a day, a git merge keeps both links rather than conflicting.
+    `CHECK` reports the extra link and `REBUILD` remakes the chain
+* A new day is normally the latest, but one earlier than an existing day (eg
+  from a clock change, or a merge) is inserted between its neighbours

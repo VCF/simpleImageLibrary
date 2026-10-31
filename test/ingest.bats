@@ -189,3 +189,43 @@ assert_no_temp_files() {
   assert_output --partial "Done: 1 ADDED, 1 DUPE"
   assert_output --partial "1 failed: 1 NOFILE"
 }
+
+# --- sources and date tags -------------------------------------------
+
+@test "a new image gets today's date tag; a DUPE does not" {
+  _silToday=2026-10-31
+  processURI "$DATA/plasma.png" 2> /dev/null
+  run find lib/tags/Date -type l
+  assert_output --regexp '2026-10-31/[0-9a-f]{40}\.png$'
+  _silToday=2026-11-01
+  processURI "$DATA/plasma.png" 2> /dev/null
+  assert_dir_not_exists lib/tags/Date/2026/2026-11-01
+}
+
+@test "sources: one line per distinct source, local files without folders" {
+  mkdir -p a b
+  cp "$DATA/plasma.png" a/pic.png
+  cp "$DATA/plasma.png" b/pic.png
+  cp "$DATA/plasma.png" other.png
+  processURI a/pic.png 2> /dev/null
+  processURI b/pic.png 2> /dev/null
+  processURI other.png 2> /dev/null
+  local hash
+  hash="$(sha1sum "$DATA/plasma.png" | cut -c1-40)"
+  run grep -v '^#' lib/images/sources.txt
+  assert_output "$hash file:other.png
+$hash file:pic.png"
+}
+
+@test "sources: URLs are recorded as given, a DUPE's too" {
+  startServer
+  cp "$DATA/plasma.png" www/one
+  convert "$DATA/plasma.png" -resize 50% www/two
+  processURI "$URL/one?x=1" 2> /dev/null
+  processURI "$URL/two" 2> /dev/null
+  processURI "$URL/one?x=1" 2> /dev/null
+  run grep -v '^#' lib/images/sources.txt
+  assert_equal "${#lines[@]}" 2
+  assert_line --partial " $URL/one?x=1"
+  assert_line --partial " $URL/two"
+}

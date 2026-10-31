@@ -1,16 +1,19 @@
 ## Library maintenance: CHECK and REBUILD - see REQ-09
 
 srcLib "index"
+srcLib "tags"
 
 #######################################
-# List every file under the library's images folder, except the index.
+# List every file under the library's images folder, except the
+# fingerprint index and sources file.
 # Globals:
 #   SIL_LIBRARY
 # Outputs:
 #   One path per line to STDOUT, sorted
 #######################################
 function listImageFiles {
-    find "$SIL_LIBRARY/images" -type f ! -path "$(indexFile)" | sort
+    find "$SIL_LIBRARY/images" -type f ! -path "$(indexFile)" \
+        ! -path "$(sourcesFile)" | sort
 }
 
 ## Moves made by repairStoredImages: old absolute path -> new absolute
@@ -131,9 +134,30 @@ function indexRebuild {
 }
 
 #######################################
+# Update the sources file for images moved by repairStoredImages, so
+# each keeps its sources under its new hash.
+# Globals:
+#   _silMoved
+# Returns:
+#   0 on success, 1 if the sources file can't be written
+#######################################
+function retargetSources {
+    (( ${#_silMoved[@]} )) || return 0
+    local map old rv=0
+    map="$(silMktemp)" || return 1
+    for old in "${!_silMoved[@]}"; do
+        printf '%s %s\n' "$(basename -- "${old%.*}")" \
+            "$(basename -- "${_silMoved[$old]%.*}")" >> "$map"
+    done
+    sourcesRehash "$map" || rv=1
+    rm -f -- "$map"
+    return "$rv"
+}
+
+#######################################
 # REBUILD (REQ-09): restore missing library files, repair stored image
-# names and places while keeping their tags, then regenerate the
-# fingerprint index.
+# names and places while keeping their tags and sources, relink the
+# date tag's days, then regenerate the fingerprint index.
 # Globals:
 #   SIL_LIBRARY
 # Outputs:
@@ -150,6 +174,8 @@ function libraryRebuild {
     libraryEnsureFiles "$SIL_LIBRARY"
     repairStoredImages || rv=1
     retargetTagLinks
+    retargetSources || rv=1
+    relinkDays
     indexRebuild || rv=1
     return "$rv"
 }
@@ -172,7 +198,8 @@ function libraryCheck {
 
     msgInfo "Checking library: $SIL_LIBRARY"
 
-    for f in sil.conf .gitignore .gitattributes tags/.gitkeep images/fingerprints.txt; do
+    for f in sil.conf .gitignore .gitattributes tags/.gitkeep \
+        images/fingerprints.txt images/sources.txt; do
         if [[ ! -e "$SIL_LIBRARY/$f" ]]; then
             msgWarn "[!] Missing library file: $f
     Fix: sil REBUILD adds it"
@@ -245,11 +272,33 @@ function libraryCheck {
         problems=$(( problems + indexProblems ))
     fi
 
+    lineNum=0
+    if [[ -f "$(sourcesFile)" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            lineNum=$(( lineNum + 1 ))
+            [[ "$line" == \#* ]] && continue
+            if [[ ! "$line" =~ ^([0-9a-f]{40})\ .+$ ]]; then
+                msgWarn "[!] Malformed sources line $lineNum: $line"
+                problems=$(( problems + 1 ))
+            elif [[ -z "${stored[${BASH_REMATCH[1]}]:-}" ]]; then
+                msgWarn "[!] Source recorded for an image that isn't stored: $line
+    Fix: if the image was removed on purpose, remove this line from images/sources.txt"
+                problems=$(( problems + 1 ))
+            fi
+        done < "$(sourcesFile)"
+    fi
+
     while IFS= read -r f; do
         msgWarn "[!] Broken tag link: ${f#"$SIL_LIBRARY"/} -> $(readlink -- "$f")
     Fix: remove the link"
         problems=$(( problems + 1 ))
     done < <(find "$SIL_LIBRARY/tags" -xtype l 2> /dev/null | sort)
+
+    if ! dayLinksCorrect; then
+        msgWarn "[!] Date tag next/previous links are out of date (eg after a git merge)
+    Fix: sil REBUILD"
+        problems=$(( problems + 1 ))
+    fi
 
     if (( problems )); then
         msgWarn "[!] $problems problem(s) found in ${#stored[@]} stored images"

@@ -128,8 +128,10 @@ function ingestFile {
 
 #######################################
 # Process one URI (REQ-03): a hash selects a stored image; a URL or
-# local path is recovered and added. Tags in SIL_TAG are then applied to
-# the resulting image. The outcome is reported and counted.
+# local path is recovered and added. The URI is recorded as a source of
+# the resulting image (REQ-05), a newly stored image gets today's date
+# tag (TAG-02), and tags in SIL_TAG are applied. The outcome is reported
+# and counted.
 # Globals:
 #   SIL_TAG, SIL_THRESHOLD
 # Arguments:
@@ -175,7 +177,15 @@ function processURI {
     rm -f -- "$tmp"
     reportOutcome "$_silOutcome" "$_silOutcomeDetail" "$_silOutcomeHash"
     (( rv == 0 )) || return 1
-    applyTags "$_silOutcomeHash"
+
+    sourceAdd "$_silOutcomeHash" "$uri" \
+        || msgWarn "[!] Could not record the source in $(sourcesFile)"
+    rv=0
+    if [[ "$_silOutcome" != DUPE ]]; then
+        dateTagImage "$_silOutcomeHash" || { msgWarn "[!] Could not apply the date tag"; rv=1; }
+    fi
+    applyTags "$_silOutcomeHash" || rv=1
+    return "$rv"
 }
 
 #######################################

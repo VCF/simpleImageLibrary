@@ -120,15 +120,15 @@ teardown() {
 }
 
 ## Tag an image by hand, as tagging will: tags/<tag>/<file> -> image
-tagImage() {
+tagByHand() {
   local image="$1" tag="$2"
   mkdir -p "lib/tags/$tag"
   ln -s "$(relativePath "lib/tags/$tag" "$image")" "lib/tags/$tag/$(basename "$image")"
 }
 
 @test "REBUILD renames an edited image and keeps its tags" {
-  tagImage "$PLASMA" Animal/Dog
-  tagImage "$PLASMA" Meme
+  tagByHand "$PLASMA" Animal/Dog
+  tagByHand "$PLASMA" Meme
   ## Edit in place: still a PNG, but new content and so a new hash
   convert "$PLASMA" -rotate 180 "$PLASMA"
   local new
@@ -148,7 +148,7 @@ tagImage() {
 @test "REBUILD moves a misplaced image and keeps its tags" {
   mkdir -p lib/images/zz/zz
   mv "$PLASMA" lib/images/zz/zz/
-  tagImage "lib/images/zz/zz/$plasma.png" Bird
+  tagByHand "lib/images/zz/zz/$plasma.png" Bird
   libraryRebuild
   assert_file_exists "$PLASMA"
   assert_dir_not_exists lib/images/zz
@@ -161,7 +161,7 @@ tagImage() {
 @test "REBUILD fixes a wrong suffix and keeps tags" {
   local wrong="${PLASMA%.png}.jpg"
   mv "$PLASMA" "$wrong"
-  tagImage "$wrong" Bird
+  tagByHand "$wrong" Bird
   libraryRebuild
   assert_file_exists "$PLASMA"
   assert_file_exists "lib/tags/Bird/$plasma.png"
@@ -172,8 +172,8 @@ tagImage() {
 @test "REBUILD merges a second copy, keeping both copies' tags" {
   ## A copy edited to match another stored image exactly
   local anim="lib/images/${anim:0:2}/${anim:2:2}/$anim.gif"
-  tagImage "$PLASMA" Original
-  tagImage "$anim" Copy
+  tagByHand "$PLASMA" Original
+  tagByHand "$anim" Copy
   cp "$PLASMA" "$anim"
   libraryRebuild
   assert_file_not_exists "$anim"
@@ -211,4 +211,35 @@ tagImage() {
   touch lib/images/stray.txt
   run "$PROJECT_ROOT/sil" LIBRARY=lib CHECK
   assert_failure 1
+}
+
+@test "REBUILD keeps sources when it renames an image" {
+  sourceAdd "$plasma" https://example.com/p.png
+  sourceAdd "$plasma" https://example.com/p2.png
+  convert "$PLASMA" -rotate 90 "$PLASMA"
+  local new
+  new="$(sha1sum "$PLASMA" | cut -c1-40)"
+  libraryRebuild
+  run grep -v '^#' lib/images/sources.txt
+  assert_output "$new https://example.com/p.png
+$new https://example.com/p2.png"
+  run libraryCheck
+  assert_success
+}
+
+@test "CHECK reports sources for images that aren't stored" {
+  sourceAdd 0123456789abcdef0123456789abcdef01234567 https://example.com/gone.png
+  run libraryCheck
+  assert_failure
+  assert_output --partial "Source recorded for an image that isn't stored"
+}
+
+@test "CHECK reports, and REBUILD fixes, out of date day links" {
+  mkdir -p lib/tags/Date/2026/2026-10-30 lib/tags/Date/2026/2026-10-31
+  run libraryCheck
+  assert_failure
+  assert_output --partial "Date tag next/previous links are out of date"
+  libraryRebuild
+  run libraryCheck
+  assert_success
 }
