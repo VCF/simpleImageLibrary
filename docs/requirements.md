@@ -133,10 +133,45 @@ Optional reduction of image file size, controlled by the `SHRINK`,
 * A kept shrunk image replaces the original for the rest of processing, and its
   stored suffix becomes `.jpg`
 
+# REQ-08 Handling issues and problems during image processing
+
+There are a variety of events or issues that can occur when a request is made
+against an image URI
+
+* Remote resource not available: msgWarn, reporting the URI
+  * Not found: Website available, but URL not returned - msgWarn, reporting the URI
+  * Unexpected result: Website returns result, but it's not an image. For
+    example, an HTML "not allowed" or login page is returned.
+  * In both cases, no further action against the image
+* Image already in library: msgInfo, note that URI is in library, note
+  fingerprint hash. Continue with operations against the image
+
+* For direct command line usage, report to STDOUT
+* For manifest file parsing, add reports to two log files. If the original
+  manifest was `foo.txt`, then:
+  * An error log named `foo.txt.err`
+    * Will itself be a manifest file
+    * Any accumulated parameters will be added to the file, and added again as a
+      parameter changes
+    * Error URIs will be added line by line, with a comment above each concisely
+      (80 char or less) explaining why they failed
+  * An informative log named `foo.txt.md`
+    * A compact markdown file
+    * An h1 header '# Load report for foo.txt'
+    * A bulleted list legend for each status
+      * FETCH - Downloaded succesfully
+      * RESIZE - Downloaded and resized
+      * DUPE - Downloaded and determined to be already in library
+    * A markdown table with three columns
+      * Status - per above
+      * Fingerprint - The leftmost 12 characters of the image fingerprint
+      * URI - The URL, path or full fingerprint of the image, as requested by the user
+
 # TAG-01 Tagging
 
 Tags are the core of SIL. Core image storage is not conducive for browsing, as
 images are named after their fingerprint hash and stored in a directory
 structure meant to manage file system usage but not be friendly to humans.
 
-* At the root level of the library is a folder 
+Tagging requirements are broken out in the `TAG` section of
+[parameters.md](parameters.md)
