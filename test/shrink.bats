@@ -114,7 +114,9 @@ assert_no_temp_files() {
     fi
   }
   run shrinkImage big.png kept
+  assert_failure 2
   assert_output --partial "no longer matches the original at 95%"
   assert_output --partial "of 256 fingerprint bits differ"
+  assert_output --partial "retry with a different SHRINK"
   assert_no_temp_files
 }

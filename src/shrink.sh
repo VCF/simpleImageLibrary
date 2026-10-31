@@ -7,6 +7,9 @@ srcLib "image"
 ## conversions that ImageMagick has visibly damaged
 declare -g _silShrinkVerify=95
 
+## Set when shrinking is rejected (SHRINKFAIL): why, for the outcome
+declare -g _silShrinkFailDetail=""
+
 #######################################
 # Re-encode an image as JPEG of about SIL_SHRINK bytes, then check the
 # result saves enough and still matches. Helper for shrinkImage, which
@@ -23,7 +26,9 @@ declare -g _silShrinkVerify=95
 # Outputs:
 #   Progress messages to STDERR
 # Returns:
-#   0 if the shrunk JPEG should be kept, 1 otherwise
+#   0 if the shrunk JPEG should be kept; 1 to keep the original instead;
+#   2 if the shrunk JPEG failed its check (see _silShrinkFailDetail), so
+#   the image should not be added
 #######################################
 function encodeShrunk {
     local src="$1" ref="$2" out="$3" srcBytes="$4"
@@ -51,16 +56,18 @@ function encodeShrunk {
         msgInfo "  Not shrinking: only saved ${saved}%, SHRINKMINSAVE is ${SIL_SHRINKMINSAVE}%"
         return 1
     fi
-    local fpRef fpOut
+    local fpRef fpOut bits
     if ! fpRef="$(imageFingerprint "$ref")" || ! fpOut="$(imageFingerprint "$out")"; then
-        msgWarn "[!] Could not fingerprint the shrunk image to check it. Keeping original"
-        return 1
+        _silShrinkFailDetail="Shrunk copy could not be fingerprinted to check it"
+        return 2
     fi
     if ! fingerprintsMatch "$fpRef" "$fpOut" "$_silShrinkVerify"; then
+        bits="$(fingerprintDistance "$fpRef" "$fpOut")"
+        _silShrinkFailDetail="Shrunk copy differs from original ($bits bits); try another SHRINK"
         msgWarn "[!] Shrunk image no longer matches the original at ${_silShrinkVerify}% similarity
-    ($(fingerprintDistance "$fpRef" "$fpOut") of 256 fingerprint bits differ)
-    ImageMagick may have damaged it during conversion. Keeping original"
-        return 1
+    ($bits of 256 fingerprint bits differ); ImageMagick may have damaged it.
+    Not added; retry with a different SHRINK, or SHRINK=0"
+        return 2
     fi
 
     msgInfo "  Shrunk $(humanSize "$srcBytes") -> $(humanSize "$outBytes") (saved ${saved}%)"
@@ -84,7 +91,9 @@ function encodeShrunk {
 # Outputs:
 #   Progress messages to STDERR
 # Returns:
-#   0; halts (msgError) if ImageMagick or findimagedupes are missing
+#   0 normally, with the path to keep set; 2 if the shrunk copy failed its
+#   check (see _silShrinkFailDetail), so the image should not be added;
+#   halts (msgError) if ImageMagick or findimagedupes are missing
 #######################################
 function shrinkImage {
     local _src="$1" _resultVar="$2"
@@ -125,11 +134,15 @@ function shrinkImage {
         [[ "$_ref" != "$_src" ]] && rm -f -- "$_ref"
         return 0
     fi
-    if encodeShrunk "$_src" "$_ref" "$_out" "$_srcBytes"; then
+    local _rc=0
+    _silShrinkFailDetail=""
+    encodeShrunk "$_src" "$_ref" "$_out" "$_srcBytes" || _rc=$?
+    if (( _rc == 0 )); then
         printf -v "$_resultVar" '%s' "$_out"
     else
         rm -f -- "$_out"
     fi
     [[ "$_ref" != "$_src" ]] && rm -f -- "$_ref"
+    (( _rc == 2 )) && return 2
     return 0
 }

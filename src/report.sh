@@ -19,6 +19,7 @@ declare -gA _silOutcomeMeaning=(
     [UNREADABLE]="Local file can't be read"
     [NOHASH]="No image with this hash in the library"
     [STOREFAIL]="Could not write to the library"
+    [SHRINKFAIL]="Shrunk copy failed its check; retry with another SHRINK"
 )
 
 ## Separates fields in _silLogRows. Not a tab: read merges consecutive

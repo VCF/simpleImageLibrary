@@ -100,7 +100,10 @@ function ingestFile {
             ;;
     esac
 
-    shrinkImage "$file" kept
+    if ! shrinkImage "$file" kept; then
+        setOutcome SHRINKFAIL "$_silShrinkFailDetail"
+        return
+    fi
     if ! fp="$(imageFingerprint "$kept")"; then
         [[ "$kept" != "$file" ]] && rm -f -- "$kept"
         setOutcome BADIMAGE "Could not be fingerprinted"

@@ -221,10 +221,13 @@ Optional reduction of image file size, controlled by the `SHRINK`,
     set, in which case it is first placed on a white background
   * ImageMagick fails
   * The saving is less than `SHRINKMINSAVE`
-  * The shrunk image no longer matches the original (or, with `FLATTEN`, the
-    flattened image) at a fixed 95% similarity (at most 12 of 256 fingerprint
-    bits differ), regardless of `THRESHOLD`. This catches conversions that
-    ImageMagick has damaged
+* The image is not added at all, failing with `SHRINKFAIL` (`REQ-08`), if the
+  shrunk image no longer matches the original (or, with `FLATTEN`, the
+  flattened image) at a fixed 95% similarity (at most 12 of 256 fingerprint
+  bits differ), regardless of `THRESHOLD`, or can't be fingerprinted to check.
+  This catches conversions that ImageMagick has damaged. In a manifest the
+  image goes to the error log, to retry with a different `SHRINK` (or
+  `SHRINK=0` to store it unshrunk)
 * A kept shrunk image replaces the original for the rest of processing, and its
   stored suffix becomes `.jpg`
 
@@ -264,6 +267,7 @@ characters.
 | UNREADABLE  | Local file exists but cannot be read (permissions)          |
 | NOHASH      | A hash URI (`REQ-03`) does not match any image in the library |
 | STOREFAIL   | The image could not be written into the library (eg disk full) |
+| SHRINKFAIL  | The shrunk copy failed its fingerprint check (`REQ-07`), so the image was not added; retry with a different `SHRINK` |
 
 ## Reporting
 

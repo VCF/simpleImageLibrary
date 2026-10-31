@@ -202,3 +202,25 @@ work/m.txt.md:0"
   parseManifest work/m.txt 2> /dev/null || true
   assert_file_contains work/m.txt.md 'a\\|b.png'
 }
+
+@test "a shrink that fails its check is SHRINKFAIL, logged for retry" {
+  convert -size 320x240 -seed 9 plasma:fractal other.png
+  ## Stand-in convert whose JPEG encoding produces a different picture
+  convert() {
+    if [[ "$*" == *jpeg:extent* ]]; then
+      command convert "$TEST_SANDBOX/other.png" -quality 50 "${@: -1}"
+    else
+      command convert "$@"
+    fi
+  }
+  printf 'SHRINK=50kb\nplasma.png\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_failure
+  assert_output --partial "[SHRINKFAIL]"
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output 0
+  run grep -A1 '^# SHRINKFAIL' work/m.txt.err
+  assert_line --index 1 "plasma.png"
+  assert_file_contains work/m.txt.err '^SHRINK=51200b$'
+  assert_file_contains work/m.txt.md 'SHRINKFAIL'
+}
