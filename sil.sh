@@ -46,6 +46,7 @@ if (( ${#_silArgs[@]} == 0 )); then
     exit "$status"
 fi
 
+## Command line paths are relative to the current folder (REQ-03)
 for arg in "${_silArgs[@]}"; do
     if [[ -f "$arg" && "${arg,,}" == *.txt ]]; then
         ## REQ-06: manifests are text files with a .txt suffix
@@ -54,4 +55,5 @@ for arg in "${_silArgs[@]}"; do
         processURI "$arg" || status=1
     fi
 done
+outcomeSummary
 exit "$status"

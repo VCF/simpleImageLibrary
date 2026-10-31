@@ -15,6 +15,8 @@ setup() {
   srcLib "params"
   srcLib "shrink"
   resetParams
+  ## Temp files then go to $TEST_SANDBOX/.tmp, where tests can see them
+  SIL_LIBRARY="$TEST_SANDBOX"
   SIL_SHRINK=$(( 100 * 1024 ))
   convert -size 600x400 -seed 1 plasma:fractal big.png
 }
@@ -23,26 +25,35 @@ teardown() {
   teardown_sandbox
 }
 
+## Fail if any temporary file was left behind
+assert_no_temp_files() {
+  [[ -d "$TEST_SANDBOX/.tmp" ]] || return 0
+  run find "$TEST_SANDBOX/.tmp" -type f
+  assert_output ""
+}
+
 @test "SHRINK of 0 keeps the original untouched" {
   SIL_SHRINK=0
   shrinkImage big.png kept
   assert_equal "$kept" big.png
-  assert_file_not_exists big.shrunk.jpg
+  assert_no_temp_files
 }
 
 @test "files under SHRINK x SHRINKTRIGGER are not shrunk" {
   SIL_SHRINK=$(( 1024 * 1024 ))
   run shrinkImage big.png kept
   assert_output --partial "under the trigger"
-  assert_file_not_exists big.shrunk.jpg
+  assert_no_temp_files
 }
 
 @test "large image is shrunk to about the target and verified" {
   shrinkImage big.png kept
-  assert_equal "$kept" big.shrunk.jpg
+  assert_not_equal "$kept" big.png
   assert_file_exists big.png
+  run imageFormat "$kept"
+  assert_output JPEG
   local bytes
-  bytes="$(stat -c %s big.shrunk.jpg)"
+  bytes="$(stat -c %s "$kept")"
   (( bytes <= SIL_SHRINK ))
 }
 
@@ -50,24 +61,26 @@ teardown() {
   SIL_SHRINKMINSAVE=100
   run shrinkImage big.png kept
   assert_output --partial "only saved"
-  assert_file_not_exists big.shrunk.jpg
+  assert_no_temp_files
 }
 
 @test "transparent images are not shrunk without FLATTEN" {
   convert big.png -alpha set -channel A -evaluate set 50% +channel alpha.png
   run shrinkImage alpha.png kept
   assert_output --partial "Set FLATTEN"
-  assert_file_not_exists alpha.shrunk.jpg
+  assert_no_temp_files
 }
 
 @test "FLATTEN shrinks transparent images and cleans up" {
   convert big.png -alpha set -channel A -evaluate set 50% +channel alpha.png
   SIL_FLATTEN=1
   shrinkImage alpha.png kept
-  assert_equal "$kept" alpha.shrunk.jpg
-  run hasTransparency alpha.shrunk.jpg
+  assert_not_equal "$kept" alpha.png
+  run hasTransparency "$kept"
   assert_failure
-  assert_file_not_exists alpha.flat.png
+  ## Only the kept JPEG remains; the flattened copy is gone
+  run find "$TEST_SANDBOX/.tmp" -type f
+  assert_output "$kept"
 }
 
 @test "FLATTEN verifies against the flattened image" {
@@ -78,7 +91,7 @@ teardown() {
     -composite disc.png
   SIL_FLATTEN=1
   shrinkImage disc.png kept
-  assert_equal "$kept" disc.shrunk.jpg
+  assert_not_equal "$kept" disc.png
 }
 
 @test "animated images are not shrunk" {
@@ -87,7 +100,7 @@ teardown() {
   SIL_SHRINK=1
   run shrinkImage anim.gif kept
   assert_output --partial "animated"
-  assert_file_not_exists anim.shrunk.jpg
+  assert_no_temp_files
 }
 
 @test "a conversion that damages the image is rejected" {
@@ -103,5 +116,5 @@ teardown() {
   run shrinkImage big.png kept
   assert_output --partial "no longer matches the original at 95%"
   assert_output --partial "of 256 fingerprint bits differ"
-  assert_file_not_exists big.shrunk.jpg
+  assert_no_temp_files
 }

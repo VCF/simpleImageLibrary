@@ -73,6 +73,9 @@ SIL will locate images through the following URIs:
 # REQ-04 Image recovery
 
 * URLs will be recovered via curl
+  * Only `http` and `https` URLs are supported (`UNSUPPORTED` otherwise)
+  * Requests identify SIL with a User-Agent, as eg Wikimedia asks of
+    automated tools, and time out (30 seconds to connect, 5 minutes in all)
   * Images are initially recovered to a temp directory pending later processing
   * Onion URLs are always recovered with torsocks
   * All URLs can optionally be recovered with torsocks if the `TOR` parameter is set
@@ -166,6 +169,13 @@ Each stored image has two identifiers with different jobs:
   such by being text files with a `.txt` suffix.
 * Relative local paths in a manifest are relative to the manifest's own folder,
   not the current folder, so a manifest works wherever SIL is run from
+* Parameter changes last only until the end of the manifest; settings are then
+  restored, so each manifest gives the same result however it is run
+* `LIBRARY`, `CHECK` and `REBUILD` can't be set in a manifest, and are ignored
+  with a warning
+* A line shaped like `NAME=VALUE` with an unrecognized `NAME` is reported and
+  ignored, rather than treated as a file
+* A failed URI is reported and processing continues with the next line
 
 # REQ-07 Image shrinking
 
@@ -204,7 +214,8 @@ Successful outcomes, with their status tag:
 | ------- | ----------------------------------------------------------- |
 | ADDED   | Recovered and added to the library                          |
 | SHRINK  | Recovered, shrunk (`REQ-07`) and added                      |
-| DUPE    | Recovered, but already in the library. Reported with its fingerprint; remaining operations (eg tagging) apply to the existing image |
+| DUPE    | Recovered, but already in the library. Reported with the existing image's hash and how many fingerprint bits differ; remaining operations (eg tagging) apply to the existing image |
+| FOUND   | A hash URI (`REQ-03`) matched a stored image; remaining operations apply to it |
 
 Failures, with their reason tag. No further action is taken on the image. This
 list is expected to grow as new failure modes are found; tags are at most 12

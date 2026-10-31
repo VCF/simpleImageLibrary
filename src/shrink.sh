@@ -72,8 +72,8 @@ function encodeShrunk {
 # not triggered, not possible, saves too little, or changes the image.
 # Transparent images are only shrunk with FLATTEN, which places them on
 # a white background first.
-# A kept shrunk copy is written beside the original as <base>.shrunk.jpg;
-# the original is never modified.
+# A kept shrunk copy is a new temporary file (silMktemp) that the caller
+# removes when done; the original is never modified.
 # Globals:
 #   SIL_SHRINK, SIL_SHRINKTRIGGER, SIL_SHRINKMINSAVE, SIL_FLATTEN
 # Arguments:
@@ -117,10 +117,14 @@ function shrinkImage {
     Set FLATTEN to shrink it onto a white background instead"
             return 0
         fi
-        _ref="${_src%.*}.flat.png"
+        _ref="$(silMktemp .png)" || return 0
     fi
 
-    local _out="${_src%.*}.shrunk.jpg"
+    local _out
+    if ! _out="$(silMktemp .jpg)"; then
+        [[ "$_ref" != "$_src" ]] && rm -f -- "$_ref"
+        return 0
+    fi
     if encodeShrunk "$_src" "$_ref" "$_out" "$_srcBytes"; then
         printf -v "$_resultVar" '%s' "$_out"
     else

@@ -46,11 +46,24 @@ teardown() {
   assert_output --partial "No image library found"
 }
 
-@test "sil passes URIs on inside a library, failing if any fail" {
+@test "sil adds images inside a library, summarizes, and fails if any fail" {
   mkdir -p lib/images lib/tags
   cd lib
-  run "$PROJECT_ROOT/sil" TOR https://example.com/a.jpg
+  run "$PROJECT_ROOT/sil" TAG=Test "$PROJECT_ROOT/test/data/images/plasma.png" missing.jpg
   assert_failure 1
   assert_output --partial "Library: $TEST_SANDBOX/lib"
-  assert_output --partial "not yet implemented, skipping: https://example.com/a.jpg"
+  assert_output --partial "[ADDED]"
+  assert_output --partial "Done: 1 ADDED"
+  assert_output --partial "1 failed: 1 NOFILE"
+}
+
+@test "sil runs a manifest" {
+  mkdir -p lib/images lib/tags
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  printf 'TAG=FromManifest\nplasma.png\n' > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY=lib m.txt
+  assert_success
+  assert_output --partial "Manifest: m.txt"
+  run find lib/tags/FromManifest -type l
+  assert_output --regexp '\.png$'
 }

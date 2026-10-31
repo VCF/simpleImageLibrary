@@ -100,6 +100,8 @@ The tag parameter defines one or more tags within the library
   * `Animal:Mammal:Dog` would then be found in `tags/Animal/Mammal/Dog`
 * Multiple tags can be passed separated by commas. Repeating `TAG=` replaces
   the earlier value rather than adding to it
+* Tag levels of `.` or `..` are ignored with a warning, so a tag can never
+  reach outside the `tags` folder
   * `TAG=Humor,Politics/Humor`
   * Whitespace around a comma is ignored; `TAG=Humor , Politics/Humor` is the
     same as above

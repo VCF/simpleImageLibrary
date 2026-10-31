@@ -446,6 +446,44 @@ function loadLibraryParams {
     SIL_LIBRARY="$lib"
 }
 
+## Saved by saveParams: name -> value, or unset marker
+declare -gA _silSavedParams=()
+
+#######################################
+# Save all current SIL_<NAME> values, eg before a manifest changes them.
+# Globals:
+#   _silParamType, SIL_<NAME>; sets _silSavedParams
+#######################################
+function saveParams {
+    local canon var
+    _silSavedParams=()
+    for canon in "${!_silParamType[@]}"; do
+        var="SIL_$canon"
+        if [[ -n "${!var+x}" ]]; then
+            _silSavedParams[$canon]="=${!var}"
+        else
+            _silSavedParams[$canon]="unset"
+        fi
+    done
+}
+
+#######################################
+# Restore the SIL_<NAME> values saved by saveParams.
+# Globals:
+#   _silSavedParams; sets SIL_<NAME>
+#######################################
+function restoreParams {
+    local canon saved
+    for canon in "${!_silSavedParams[@]}"; do
+        saved="${_silSavedParams[$canon]}"
+        if [[ "$saved" == unset ]]; then
+            unset "SIL_$canon"
+        else
+            printf -v "SIL_$canon" '%s' "${saved#=}"
+        fi
+    done
+}
+
 #######################################
 # Report current parameter values to the user (UI-01).
 # Globals:

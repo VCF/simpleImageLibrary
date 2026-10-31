@@ -157,16 +157,17 @@ function indexMatch {
 # Arguments:
 #   $1 - Image file (already shrunk etc; stored exactly as is)
 #   $2 - Name of the variable to receive the image hash
+#   $3 - Optional raw fingerprint of the file, if already computed
 # Returns:
 #   0 on success; 1 if not a supported, readable image, or it can't be
 #   written to the library
 #######################################
 function storeImage {
-    local _src="$1" _resultVar="$2"
-    local _format _hash _fp _dest
+    local _src="$1" _resultVar="$2" _fp="${3:-}"
+    local _format _hash _dest
     _format="$(imageFormat "$_src")" || return 1
     _hash="$(fileHash "$_src")" || return 1
-    _fp="$(imageFingerprint "$_src")" || return 1
+    [[ -n "$_fp" ]] || _fp="$(imageFingerprint "$_src")" || return 1
     _dest="$(storedImagePath "$_hash" "${_silImageSuffix[$_format]}")"
     if [[ ! -f "$_dest" ]]; then
         mkdir -p -- "$(dirname -- "$_dest")" && cp -- "$_src" "$_dest" || return 1
