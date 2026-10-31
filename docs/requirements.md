@@ -87,6 +87,11 @@ Image hasing is used to deduplicate images in the library
   hash will represent the basename of the image as stored in the library
   * Each sha1 hash will also have the appropriate file type suffix, eg `.jpg`,
     added to it
+  * Terminology: the SHA1 hash is an alternate accession for the fingerprint,
+    unique short of astronomically unlikely collisions, and easier on the eye.
+    "Fingerprint" in user-facing text and these docs may refer to either; where
+    the difference matters (similarity comparison needs the raw fingerprint),
+    say "raw fingerprint" or "SHA1 hash"
 * Fingerprints are only calculated after all other image manipulation has occured
 * Images will be stored within an `images` folder at the base level of the library
 * There will be two additional subdirectory levels in the `images` folder
@@ -112,6 +117,8 @@ Image hasing is used to deduplicate images in the library
     Changes apply to all subsequent URIs, unless changed again
 * Manifest files are provided in the same context as URIs, but are recognized as
   such by being text files with a `.txt` suffix.
+* Relative local paths in a manifest are relative to the manifest's own folder,
+  not the current folder, so a manifest works wherever SIL is run from
 
 # REQ-07 Image shrinking
 
@@ -136,36 +143,64 @@ Optional reduction of image file size, controlled by the `SHRINK`,
 # REQ-08 Handling issues and problems during image processing
 
 There are a variety of events or issues that can occur when a request is made
-against an image URI
+against an image URI. Each is reported to the user (`msgWarn` for failures,
+`msgInfo` otherwise), naming the URI, and processing moves on to the next URI.
 
-* Remote resource not available: msgWarn, reporting the URI
-  * Not found: Website available, but URL not returned - msgWarn, reporting the URI
-  * Unexpected result: Website returns result, but it's not an image. For
-    example, an HTML "not allowed" or login page is returned.
-  * In both cases, no further action against the image
-* Image already in library: msgInfo, note that URI is in library, note
-  fingerprint hash. Continue with operations against the image
+## Outcomes
 
-* For direct command line usage, report to STDOUT
-* For manifest file parsing, add reports to two log files. If the original
-  manifest was `foo.txt`, then:
+Successful outcomes, with their status tag:
+
+| Status  | Meaning                                                     |
+| ------- | ----------------------------------------------------------- |
+| ADDED   | Recovered and added to the library                          |
+| SHRINK  | Recovered, shrunk (`REQ-07`) and added                      |
+| DUPE    | Recovered, but already in the library. Reported with its fingerprint; remaining operations (eg tagging) apply to the existing image |
+
+Failures, with their reason tag. No further action is taken on the image. This
+list is expected to grow as new failure modes are found; tags are at most 12
+characters.
+
+| Reason      | Meaning                                                     |
+| ----------- | ----------------------------------------------------------- |
+| UNREACHABLE | Could not connect to the website (eg DNS failure, refused)  |
+| TIMEOUT     | Website did not respond in time                             |
+| NOTFOUND    | Website available, but the URL was not found (HTTP 404/410) |
+| HTTPERROR   | Any other HTTP error, eg 403 forbidden or 500 server error  |
+| NOTIMAGE    | Something was returned, but not an image, eg an HTML login or "not allowed" page |
+| BADIMAGE    | An image, but the image tools could not read it (corrupt or unsupported) |
+| TORFAIL     | The request failed within Tor (eg Tor service not running)  |
+| NOFILE      | Local file does not exist                                   |
+| UNREADABLE  | Local file exists but cannot be read (permissions)          |
+| NOHASH      | A hash URI (`REQ-03`) does not match any image in the library |
+| STOREFAIL   | The image could not be written into the library (eg disk full) |
+
+## Reporting
+
+* All messages go to STDERR, for both command line and manifest usage
+* `sil` exits with status 1 if any URI or manifest failed, 0 otherwise
+* For manifest file parsing, reports are also written to two log files beside
+  the manifest. If the original manifest was `foo.txt`, then:
+  * Both files are overwritten on each run
   * An error log named `foo.txt.err`
-    * Will itself be a manifest file
-    * Any accumulated parameters will be added to the file, and added again as a
-      parameter changes
-    * Error URIs will be added line by line, with a comment above each concisely
-      (80 char or less) explaining why they failed
+    * Formatted as a manifest, so failures can be reviewed, edited, and re-run
+      by renaming it to a `.txt` file. The `.err` suffix deliberately stops it
+      being used as a manifest by accident
+    * Parameters in effect are written before the first failed URI, and written
+      again whenever a parameter changes before a later failed URI
+    * Failed URIs are written one per line, each preceded by a comment of 80
+      characters or less giving the reason tag and explaining why it failed
   * An informative log named `foo.txt.md`
     * A compact markdown file
-    * An h1 header '# Load report for foo.txt'
-    * A bulleted list legend for each status
-      * FETCH - Downloaded succesfully
-      * RESIZE - Downloaded and resized
-      * DUPE - Downloaded and determined to be already in library
+    * An h1 header `# Load report for foo.txt`
+    * A bulleted list legend for each status that occurs in the run
     * A markdown table with three columns
-      * Status - per above
-      * Fingerprint - The leftmost 12 characters of the image fingerprint
-      * URI - The URL, path or full fingerprint of the image, as requested by the user
+      * Status - per the outcome table above
+      * Fingerprint - The leftmost 12 characters of the image's SHA1 hash
+      * URI - The URL, path or full hash of the image, as requested by the user
+    * If any URIs failed, an h1 header `# Failed image download`, followed by:
+      * A bulleted list legend of the reason tags that occur in the run, and
+        only those
+      * A markdown table with two columns: Reason and URI
 
 # TAG-01 Tagging
 

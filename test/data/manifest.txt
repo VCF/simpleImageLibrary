@@ -1,0 +1,44 @@
+#### SIL test manifest
+# Exercises manifest parsing (REQ-06) and REQ-08 outcomes. Expected outcomes
+# are noted above each URI. Local paths are relative to this file's folder.
+#
+# Run against a throwaway library, eg:
+#   sil LIBRARY=/tmp/sil-test test/data/manifest.txt
+
+#### ---- Settings ----
+# Lower-case name, padded whitespace
+  tag = Test/Manifest
+SHRINK=50kb
+SHRINKTRIGGER=1.5
+
+#### ---- Local files ----
+## SHRINK: opaque PNG of ~400 KB, over the 75 KB trigger
+images/plasma.png
+## ADDED: has transparency, so is not shrunk
+images/transparent.png
+## ADDED: animated, so is not shrunk
+images/animated.gif
+## DUPE: same image as above
+images/plasma.png
+
+#### ---- Parameters changed mid-manifest ----
+# Quoted value with a space; applies to all URIs below
+TAG='Test/Second Tag, Test/Manifest'
+SHRINK=0
+
+#### ---- Failures ----
+## NOTIMAGE: an HTML page saved with an image suffix
+images/not-an-image.jpg
+## NOFILE: does not exist
+images/does-not-exist.jpg
+## UNREACHABLE: the .invalid domain never resolves (RFC 2606)
+https://sil-test.invalid/image.jpg
+## NOTFOUND: HTTP 404
+https://example.com/sil-missing.jpg
+## NOTIMAGE: a web page, not an image
+https://example.com/
+## NOHASH: well-formed, but matches nothing in the library
+0000000000000000000000000000000000000000
+
+#### ---- Remote images ----
+## To be added: Creative Commons image URLs, with expected outcomes

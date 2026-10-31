@@ -5,10 +5,23 @@ folder; tests reference files here explicitly.
 
 ## Folders
 
-| Folder    | In git? | Contents                                              |
-| --------- | ------- | ----------------------------------------------------- |
-| `images/` | Yes     | Images we may redistribute: your own photos, public domain, or openly licensed (eg CC0, CC BY) |
-| `local/`  | No      | Anything else, eg memes or other images from the web  |
+| Path           | In git? | Contents                                         |
+| -------------- | ------- | ------------------------------------------------ |
+| `images/`      | Yes     | Image files we may redistribute (see below)      |
+| `local/`       | No      | Image files we may not redistribute              |
+| `manifest.txt` | Yes     | Test manifest, with the expected outcome of each URI |
+
+The deciding question is whether the file may be published in this repository:
+
+* `images/`: images generated for testing, your own photos, public domain, or
+  openly licensed (eg CC0, CC BY, CC BY-SA). Record the license and any
+  required attribution in the catalog
+* `local/`: anything else - memes, screenshots, copyrighted images. Fine to test
+  with on your own machine, but not to publish
+
+Remote images need no file at all: list their URLs in a manifest. Linking to an
+image is not redistributing it, so remote URLs need not be openly licensed,
+though stable ones (eg Wikimedia Commons) make for reliable tests.
 
 Keep committed images small (ideally under 500 KB) so the repository stays
 light. Tests that need large images can generate them with ImageMagick, as
@@ -51,3 +64,7 @@ anyone re-download them.
 
 | File | Folder | Trait | Source | License |
 | ---- | ------ | ----- | ------ | ------- |
+| `plasma.png` | images | Opaque PNG, 320x240, ~400 KB; shrinkable | Generated: `convert -size 320x240 -seed 11 plasma:fractal` | CC0 |
+| `transparent.png` | images | PNG with 60% alpha | Generated: plasma, seed 12, alpha 60% | CC0 |
+| `animated.gif` | images | 2-frame animated GIF | Generated: plasma, seeds 13 and 14 | CC0 |
+| `not-an-image.jpg` | images | HTML "login required" page with a `.jpg` suffix | Hand written | CC0 |
