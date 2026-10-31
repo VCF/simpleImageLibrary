@@ -20,12 +20,29 @@ srcLib "library"
 srcLib "manifest"
 srcLib "maintain"
 
-## REQ-02 precedence: defaults < ~/.sil.conf < library sil.conf < command line
+## REQ-02 precedence: defaults < ~/.sil.conf < library sil.conf < command
+## line < manifest
 loadParams "$@"
-resolveLibrary
-loadLibraryParams
 
-msgInfo "Library: $SIL_LIBRARY"
+## With no library yet, manifests may name one (REQ-06); anything else
+## needs one now
+needLibrary=0
+if flagIsSet CHECK || flagIsSet REBUILD; then
+    needLibrary=1
+fi
+for arg in "${_silArgs[@]}"; do
+    [[ -f "$arg" && "${arg,,}" == *.txt ]] || needLibrary=1
+done
+if lib="$(chooseLibrary)"; then
+    useLibrary "$lib"
+    loadLibraryParams
+    msgInfo "Library: $SIL_LIBRARY"
+elif (( needLibrary || ${#_silArgs[@]} == 0 )); then
+    noLibraryError
+else
+    unset SIL_LIBRARY
+    msgInfo "Library: to be set by the manifest"
+fi
 showParams
 
 ## Exit status is 1 if anything failed, for use in scripts
@@ -51,6 +68,8 @@ for arg in "${_silArgs[@]}"; do
     if [[ -f "$arg" && "${arg,,}" == *.txt ]]; then
         ## REQ-06: manifests are text files with a .txt suffix
         parseManifest "$arg" || status=1
+    elif [[ -z "${SIL_LIBRARY:-}" ]]; then
+        noLibraryError
     else
         processURI "$arg" || status=1
     fi

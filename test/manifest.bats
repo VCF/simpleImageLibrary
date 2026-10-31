@@ -52,13 +52,59 @@ EOF
   assert_equal "$SIL_THRESHOLD" 90
 }
 
-@test "LIBRARY, CHECK and REBUILD are ignored in a manifest" {
-  printf 'LIBRARY=/elsewhere\nCHECK\nplasma.png\n' > work/m.txt
+@test "CHECK and REBUILD are ignored in a manifest" {
+  printf 'CHECK\nREBUILD\nplasma.png\n' > work/m.txt
   run parseManifest work/m.txt
   assert_success
-  assert_output --partial "LIBRARY can't be set in a manifest"
   assert_output --partial "CHECK can't be set in a manifest"
+  assert_output --partial "REBUILD can't be set in a manifest"
   assert_output --partial "[ADDED]"
+}
+
+@test "LIBRARY in a manifest is used, created if needed, then restored" {
+  printf 'LIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/other" > work/m.txt
+  run parseManifest work/m.txt
+  assert_success
+  assert_output --partial "Library: $TEST_SANDBOX/other (line 1)"
+  run grep -cv '^#' other/images/fingerprints.txt
+  assert_output 1
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output 0
+  parseManifest work/m.txt 2> /dev/null
+  assert_equal "$SIL_LIBRARY" "$TEST_SANDBOX/lib"
+}
+
+@test "a relative LIBRARY is relative to the manifest's folder" {
+  printf 'LIBRARY=../rel\nplasma.png\n' > work/m.txt
+  cd /
+  parseManifest "$TEST_SANDBOX/work/m.txt" 2> /dev/null
+  assert_dir_exists "$TEST_SANDBOX/rel/images"
+}
+
+@test "the manifest's library settings apply, below the manifest's own" {
+  initLibrary "$TEST_SANDBOX/other" 2> /dev/null
+  printf 'THRESHOLD=70\nSHRINKTRIGGER=3\n' > other/sil.conf
+  printf 'SHRINKTRIGGER=4\nLIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/other" > work/m.txt
+  ## Check settings while the manifest runs, from within processURI
+  processURI() { echo "seen $SIL_THRESHOLD $SIL_SHRINKTRIGGER" >&2; }
+  run parseManifest work/m.txt
+  assert_output --partial "seen 70 4"
+}
+
+@test "LIBRARY after the first URI is ignored" {
+  printf 'plasma.png\nLIBRARY=%s\nanimated.gif\n' "$TEST_SANDBOX/other" > work/m.txt
+  run parseManifest work/m.txt
+  assert_failure
+  assert_output --partial "LIBRARY must come before the first URI"
+  assert_dir_not_exists other
+}
+
+@test "a manifest with no library at all is skipped" {
+  unset SIL_LIBRARY
+  printf 'plasma.png\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_failure
+  assert_output --partial "No library for this manifest"
 }
 
 @test "an unknown parameter is reported, not treated as a file" {

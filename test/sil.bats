@@ -67,3 +67,24 @@ teardown() {
   run find lib/tags/FromManifest -type l
   assert_output --regexp '\.png$'
 }
+
+@test "sil takes the library from a manifest when none is given" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  printf 'LIBRARY=%s\nTAG=Fine\nplasma.png\n' "$TEST_SANDBOX/fromManifest" > m.txt
+  run "$PROJECT_ROOT/sil" m.txt
+  assert_success
+  assert_output --partial "Library: to be set by the manifest"
+  assert_output --partial "[ADDED]"
+  assert_dir_exists fromManifest/tags/Fine
+}
+
+@test "sil still needs a library for URIs outside manifests" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  printf 'LIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/fromManifest" > m.txt
+  run "$PROJECT_ROOT/sil" plasma.png
+  assert_failure
+  assert_output --partial "No image library found"
+  run "$PROJECT_ROOT/sil" m.txt plasma.png
+  assert_failure
+  assert_output --partial "No image library found"
+}

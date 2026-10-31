@@ -100,37 +100,60 @@ function initLibrary {
 }
 
 #######################################
-# Decide which library to use, creating it if needed, and set
-# SIL_LIBRARY to its absolute path. In order of preference:
+# The library to use, by preference (no side effects):
 #   1. LIBRARY from the command line
 #   2. The library containing the current folder
 #   3. LIBRARY from ~/.sil.conf
-# A LIBRARY that doesn't exist, or is an empty folder, is created. A
-# leading '~' is expanded, as conf files are not shell-expanded.
+# A manifest may also name one (REQ-06), handled by parseManifest.
 # Globals:
-#   SIL_LIBRARY, PWD, HOME
+#   SIL_LIBRARY, PWD
+# Outputs:
+#   The chosen path, as given, to STDOUT
 # Returns:
-#   0 on success; halts (msgError) if no library can be determined, or
-#   LIBRARY is a non-empty folder that isn't a library
+#   0 if one was found, 1 otherwise
 #######################################
-function resolveLibrary {
-    local lib="${SIL_LIBRARY:-}"
+function chooseLibrary {
     local found
-
     if ! cliHasParam LIBRARY && found="$(findLibrary "$PWD")"; then
-        lib="$found"
+        printf '%s\n' "$found"
+    elif [[ -n "${SIL_LIBRARY:-}" ]]; then
+        printf '%s\n' "$SIL_LIBRARY"
+    else
+        return 1
     fi
-    if [[ -z "$lib" ]]; then
-        msgError "[!] No image library found
+}
+
+#######################################
+# Halt explaining how to name a library.
+# Returns:
+#   Does not return (msgError)
+#######################################
+function noLibraryError {
+    msgError "[!] No image library found
     No LIBRARY was given, and the current folder is not inside a library
     (a folder containing 'images' and 'tags'). Either:
       * Run sil from inside a library folder
       * Give a library on the command line; it is created if needed:
           sil LIBRARY=~/Pictures/sil https://example.com/funny.jpg
+      * Set LIBRARY at the top of a manifest, before any URIs
       * Set a default library in ~/.sil.conf:
           LIBRARY=~/Pictures/sil"
-    fi
+}
 
+#######################################
+# Use a library, creating it if it doesn't exist or is an empty folder,
+# and set SIL_LIBRARY to its absolute path. A leading '~' is expanded,
+# as conf files and manifests are not shell-expanded.
+# Globals:
+#   HOME; sets SIL_LIBRARY
+# Arguments:
+#   $1 - Library path
+# Returns:
+#   0 on success; halts (msgError) if it is a non-empty folder that isn't
+#   a library, or not a folder
+#######################################
+function useLibrary {
+    local lib="$1"
     # shellcheck disable=SC2088  # Matching a literal, unexpanded '~'
     [[ "$lib" == "~" || "$lib" == "~/"* ]] && lib="$HOME${lib:1}"
     lib="$(realpath -m -- "$lib")"
@@ -149,4 +172,19 @@ function resolveLibrary {
         msgError "[!] LIBRARY is not a folder: $lib"
     fi
     printf -v SIL_LIBRARY '%s' "$lib"
+}
+
+#######################################
+# Decide which library to use (see chooseLibrary), creating it if
+# needed, and set SIL_LIBRARY to its absolute path.
+# Globals:
+#   Sets SIL_LIBRARY
+# Returns:
+#   0 on success; halts (msgError) if no library can be determined, or
+#   it can't be used (see useLibrary)
+#######################################
+function resolveLibrary {
+    local lib
+    lib="$(chooseLibrary)" || noLibraryError
+    useLibrary "$lib"
 }

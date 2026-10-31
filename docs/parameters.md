@@ -60,16 +60,19 @@ set in them; SIL warns and ignores those lines:
 
 The library parameter specifies the file path to the image library
 
-* Can be set in `~/.sil.conf` as a default library, but not in a library's own
-  `sil.conf`, which is only read once the library is already known
+* Can be set in `~/.sil.conf` as a default library, or in a manifest, but not
+  in a library's own `sil.conf`, which is only read once the library is
+  already known
 
 * A library is a folder containing `images` and `tags` folders
 * The library is chosen in this order:
-  1. `LIBRARY` given on the command line
-  2. The library containing the current folder. The current folder and each
+  1. `LIBRARY` set at the top of a manifest, for that manifest's URIs (see
+     `REQ-06`)
+  2. `LIBRARY` given on the command line
+  3. The library containing the current folder. The current folder and each
      of its parents are checked, so running SIL from eg `tags/Animal/Dog`
      finds the library
-  3. `LIBRARY` set in `~/.sil.conf`
+  4. `LIBRARY` set in `~/.sil.conf`
 * A leading `~` is expanded to the home folder, including in `~/.sil.conf`
 * If the chosen folder does not exist, or is empty, it is made into a new
   library: `images` and `tags` folders are created, and `sil.conf` is copied

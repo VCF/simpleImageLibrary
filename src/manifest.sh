@@ -3,10 +3,10 @@
 srcLib "params"
 srcLib "ingest"
 srcLib "report"
+srcLib "library"
 
 ## Parameters that can't change within a manifest
 declare -gA _silManifestBlocked=(
-    [LIBRARY]="the library is chosen before the manifest is read"
     [CHECK]="it is an action on the whole library; run sil CHECK"
     [REBUILD]="it is an action on the whole library; run sil REBUILD"
 )
@@ -14,8 +14,10 @@ declare -gA _silManifestBlocked=(
 #######################################
 # Process a manifest (REQ-06). Parameter lines change settings for the
 # URIs after them; every other line is a URI. Relative paths are
-# relative to the manifest's folder. Settings are restored afterwards,
-# so each manifest is self-contained. Outcomes are logged beside the
+# relative to the manifest's folder. LIBRARY may be set before the first
+# URI, and the library's settings are then loaded (REQ-02). Settings,
+# including the library, are restored afterwards, so each manifest is
+# self-contained. Outcomes are logged beside the
 # manifest in <manifest>.err (failures, as a manifest) and <manifest>.md
 # (report), overwriting earlier logs (REQ-08).
 # Globals:
@@ -29,7 +31,8 @@ declare -gA _silManifestBlocked=(
 #######################################
 function parseManifest {
     local path="$1"
-    local base line lineNum=0 canon rv=0
+    local base line lineNum=0 canon lib rv=0 urisSeen=0
+    local -a tokens=()
 
     if [[ ! -f "$path" || ! -r "$path" ]]; then
         msgWarn "[!] Manifest not found or not readable: $path"
@@ -55,13 +58,36 @@ function parseManifest {
     Found in: $path line $lineNum"
                 continue
             fi
+            if [[ "$canon" == LIBRARY ]]; then
+                if (( urisSeen )); then
+                    msgWarn "[!] LIBRARY must come before the first URI - ignored
+    Found in: $path line $lineNum"
+                    rv=1
+                    continue
+                fi
+                setParamToken "$line" "$path line $lineNum"
+                lib="$SIL_LIBRARY"
+                [[ "$lib" == /* || "$lib" == "~"* ]] || lib="$base/$lib"
+                useLibrary "$lib"
+                reloadParamsForLibrary "$SIL_LIBRARY" "${tokens[@]}"
+                msgInfo "  Library: $SIL_LIBRARY (line $lineNum)"
+                continue
+            fi
             setParamToken "$line" "$path line $lineNum"
+            tokens+=("$line")
             msgInfo "  Set $canon (line $lineNum)"
         elif looksLikeParam "$line" && [[ ! -e "$base/$line" ]]; then
             msgWarn "[!] Unrecognized parameter '$(trim "${line%%=*}")' - ignored
     Found in: $path line $lineNum"
             rv=1
         else
+            if (( ! urisSeen )) && [[ -z "${SIL_LIBRARY:-}" ]]; then
+                msgWarn "[!] No library for this manifest - skipped: $path
+    Set LIBRARY at the top of the manifest, or give one on the command line"
+                rv=1
+                break
+            fi
+            urisSeen=1
             processURI "$line" "$base" || rv=1
             logOutcome "$line"
         fi

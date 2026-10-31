@@ -188,8 +188,15 @@ Each stored image has two identifiers with different jobs:
   not the current folder, so a manifest works wherever SIL is run from
 * Parameter changes last only until the end of the manifest; settings are then
   restored, so each manifest gives the same result however it is run
-* `LIBRARY`, `CHECK` and `REBUILD` can't be set in a manifest, and are ignored
-  with a warning
+* `LIBRARY` may be set in a manifest, before its first URI (later, it is
+  ignored with a warning). The library is created if needed, and its
+  `sil.conf` applied below the manifest's own settings (`REQ-02`). A relative
+  path is relative to the manifest's folder
+  * If no library comes from the command line, current folder or
+    `~/.sil.conf`, SIL waits for the manifest to name one. A manifest that
+    names none is skipped with a warning
+* `CHECK` and `REBUILD` can't be set in a manifest, and are ignored with a
+  warning
 * A line shaped like `NAME=VALUE` with an unrecognized `NAME` is reported and
   ignored, rather than treated as a file
 * A failed URI is reported and processing continues with the next line

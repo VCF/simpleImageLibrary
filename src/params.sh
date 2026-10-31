@@ -485,6 +485,30 @@ function restoreParams {
 }
 
 #######################################
+# Reload every parameter for a newly chosen library, in REQ-02 order:
+# defaults < ~/.sil.conf < library sil.conf < command line < the given
+# tokens (eg those a manifest has set so far).
+# Globals:
+#   HOME, _silCliParams; sets SIL_<NAME>
+# Arguments:
+#   $1 - Absolute library path
+#   $@ - Further NAME=VALUE tokens to apply last
+#######################################
+function reloadParamsForLibrary {
+    local lib="$1" token
+    shift
+    resetParams
+    parseParamFile "$HOME/.sil.conf" global || :
+    applyCliParams
+    SIL_LIBRARY="$lib"
+    loadLibraryParams
+    for token in "$@"; do
+        setParamToken "$token"
+    done
+    SIL_LIBRARY="$lib"
+}
+
+#######################################
 # Report current parameter values to the user (UI-01).
 # Globals:
 #   _silParamType, SIL_<NAME>
