@@ -77,6 +77,8 @@ SIL will locate images through the following URIs:
   * Onion URLs are always recovered with torsocks
   * All URLs can optionally be recovered with torsocks if the `TOR` parameter is set
 * Local files (via filepath) are copied to a temp directory pending later processing
+* Files in the temp directory are saved without a suffix, so their format is
+  judged by content alone (`REQ-05`)
 * Image hashes simply identify an already-ingested file for further operations
 
 # REQ-05 Image hashing and storage
@@ -85,9 +87,24 @@ Image hasing is used to deduplicate images in the library
 
 * Deduplication is performed using `findimagedupes` to generate a fingerprint
   * The `THRESHOLD` parameter sets the `--threshold` parameter
+  * The goal is similarity, not identity: images that would look the same to a
+    person (eg a meme rescaled or converted to another format) count as the
+    same. Heavily compressed copies may legitimately fail to match
+  * The fingerprint is computed from the first frame of a temporary copy
+    stripped of profiles and metadata (`convert -strip`), as findimagedupes
+    rejects some harmless flaws, eg "iCCP: known incorrect sRGB profile"
+  * An empty or malformed fingerprint means the image could not be read
+    (`BADIMAGE`, `REQ-08`); it must never be hashed
+* Image format is determined from content with ImageMagick
+  (`identify -format %m`), never from the file or URL suffix
+  * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF. SVG is shelved for now
+  * Files are inspected without a suffix, as ImageMagick otherwise takes hints
+    from it (eg attempting to render `.html` files)
 * The fingerprint produced by findimagedupes appears fairly non-random. For this
   reason, the fingerprint is passed throught `sha1sum` to generate a hash. This
   hash will represent the basename of the image as stored in the library
+  * The hash is of the 44 character base64 fingerprint string alone, with no
+    trailing newline: `printf '%s' "$fingerprint" | sha1sum`
   * Each sha1 hash will also have the appropriate file type suffix, eg `.jpg`,
     added to it
   * Terminology: the SHA1 hash is an alternate accession for the fingerprint,
@@ -140,8 +157,9 @@ Optional reduction of image file size, controlled by the `SHRINK`,
   * ImageMagick fails
   * The saving is less than `SHRINKMINSAVE`
   * The shrunk image no longer matches the original (or, with `FLATTEN`, the
-    flattened image) at a fixed 90% similarity (`findimagedupes`), regardless
-    of `THRESHOLD`. This catches conversions that ImageMagick has damaged
+    flattened image) at a fixed 95% similarity (at most 12 of 256 fingerprint
+    bits differ), regardless of `THRESHOLD`. This catches conversions that
+    ImageMagick has damaged
 * A kept shrunk image replaces the original for the rest of processing, and its
   stored suffix becomes `.jpg`
 
@@ -173,7 +191,8 @@ characters.
 | RATELIMIT   | Website refused because of too many requests (HTTP 429). Common over Tor, where many users share few exit nodes |
 | HTTPERROR   | Any other HTTP error, eg 403 forbidden or 500 server error  |
 | NOTIMAGE    | Something was returned, but not an image, eg an HTML login or "not allowed" page |
-| BADIMAGE    | An image, but the image tools could not read it (corrupt or unsupported) |
+| BADIMAGE    | An image, but damaged (eg truncated) or could not be fingerprinted |
+| UNSUPPORTED | An image, but in an unsupported format (eg SVG)             |
 | TORFAIL     | The request failed within Tor (eg Tor service not running)  |
 | NOFILE      | Local file does not exist                                   |
 | UNREADABLE  | Local file exists but cannot be read (permissions)          |

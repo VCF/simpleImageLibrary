@@ -90,19 +90,18 @@ teardown() {
   assert_file_not_exists anim.shrunk.jpg
 }
 
-@test "imagesMatch distinguishes images" {
-  convert big.png -quality 80 same.jpg
-  convert -size 600x400 -seed 9 plasma:fractal other.png
-  imagesMatch big.png same.jpg
-  run imagesMatch big.png other.png
-  assert_failure
-}
-
 @test "a conversion that damages the image is rejected" {
   convert -size 600x400 -seed 9 plasma:fractal other.png
-  ## Stand-in convert that produces a different picture
-  convert() { command convert other.png -quality 50 "${@: -1}"; }
+  ## Stand-in convert whose JPEG encoding produces a different picture
+  convert() {
+    if [[ "$*" == *jpeg:extent* ]]; then
+      command convert other.png -quality 50 "${@: -1}"
+    else
+      command convert "$@"
+    fi
+  }
   run shrinkImage big.png kept
-  assert_output --partial "no longer matches"
+  assert_output --partial "no longer matches the original at 95%"
+  assert_output --partial "of 256 fingerprint bits differ"
   assert_file_not_exists big.shrunk.jpg
 }

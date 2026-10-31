@@ -1,48 +1,11 @@
 ## Reduce image file size toward a target - see SHRINK in docs/parameters.md
 
+srcLib "image"
+
 ## Similarity required between a shrunk image and its original. Fixed,
 ## independent of THRESHOLD (which governs library duplicates); catches
 ## conversions that ImageMagick has visibly damaged
-declare -g _silShrinkVerify=90
-
-#######################################
-# Count the frames in an image (>1 for animations).
-# Arguments:
-#   $1 - Image path
-# Outputs:
-#   Frame count to STDOUT (empty if unreadable)
-#######################################
-function imageFrames {
-    identify -format '%n\n' "$1" 2> /dev/null | head -n 1
-}
-
-#######################################
-# Test whether an image uses transparency, which JPEG cannot store.
-# Arguments:
-#   $1 - Image path
-# Returns:
-#   0 if any pixel is not fully opaque, 1 otherwise
-#######################################
-function hasTransparency {
-    local opaque
-    opaque="$(identify -format '%[opaque]' "$1[0]" 2> /dev/null)"
-    [[ "${opaque,,}" == false ]]
-}
-
-#######################################
-# Test whether two images have matching fingerprints at the shrink
-# verification threshold.
-# Globals:
-#   _silShrinkVerify
-# Arguments:
-#   $1, $2 - Image paths
-# Returns:
-#   0 if they match, 1 otherwise
-#######################################
-function imagesMatch {
-    [[ -n "$(findimagedupes --threshold="${_silShrinkVerify}%" -- \
-        "$1" "$2" 2> /dev/null)" ]]
-}
+declare -g _silShrinkVerify=95
 
 #######################################
 # Re-encode an image as JPEG of about SIL_SHRINK bytes, then check the
@@ -88,8 +51,14 @@ function encodeShrunk {
         msgInfo "  Not shrinking: only saved ${saved}%, SHRINKMINSAVE is ${SIL_SHRINKMINSAVE}%"
         return 1
     fi
-    if ! imagesMatch "$ref" "$out"; then
+    local fpRef fpOut
+    if ! fpRef="$(imageFingerprint "$ref")" || ! fpOut="$(imageFingerprint "$out")"; then
+        msgWarn "[!] Could not fingerprint the shrunk image to check it. Keeping original"
+        return 1
+    fi
+    if ! fingerprintsMatch "$fpRef" "$fpOut" "$_silShrinkVerify"; then
         msgWarn "[!] Shrunk image no longer matches the original at ${_silShrinkVerify}% similarity
+    ($(fingerprintDistance "$fpRef" "$fpOut") of 256 fingerprint bits differ)
     ImageMagick may have damaged it during conversion. Keeping original"
         return 1
     fi

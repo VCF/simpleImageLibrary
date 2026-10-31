@@ -192,7 +192,7 @@ background before conversion to JPEG
 Similarity at which two images are considered duplicates (see `REQ-05`)
 
 * Value is a percentage, passed to `findimagedupes --threshold`
-* Does not affect the fixed 90% check that a shrunk image still matches its
+* Does not affect the fixed 95% check that a shrunk image still matches its
   original (see `REQ-07`)
 * Higher values require images to be more alike before being called duplicates.
   Near-identical images such as memes from one template may need a high value
