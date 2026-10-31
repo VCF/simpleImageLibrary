@@ -13,6 +13,9 @@ declare -gA _silOutcomes=()
 ## Set by ingestFile: outcome tag, explanation, and image hash
 declare -g _silOutcome="" _silOutcomeDetail="" _silOutcomeHash=""
 
+## Set by reportOutcome: the most recent URI's outcome, for manifest logs
+declare -g _silLastOutcome="" _silLastDetail="" _silLastHash=""
+
 #######################################
 # Test whether an outcome tag is a success.
 # Arguments:
@@ -31,14 +34,18 @@ function isSuccessTag {
 #######################################
 # Count and report the outcome for a URI.
 # Globals:
-#   _silOutcomes
+#   _silOutcomes; sets _silLastOutcome, _silLastDetail, _silLastHash
 # Arguments:
 #   $1 - Outcome tag (REQ-08), eg ADDED or NOTFOUND
 #   $2 - Explanation (optional)
+#   $3 - Hash of the resulting image (optional)
 # Outputs:
 #   One line to STDERR: msgInfo for success, msgWarn for failure
 #######################################
 function reportOutcome {
+    _silLastOutcome="$1"
+    _silLastDetail="${2:-}"
+    _silLastHash="${3:-}"
     _silOutcomes[$1]=$(( ${_silOutcomes[$1]:-0} + 1 ))
     if isSuccessTag "$1"; then
         msgInfo "  [$1]${2:+ $2}"
@@ -149,7 +156,7 @@ function processURI {
             return 1
         fi
         hash="${uri,,}"
-        reportOutcome FOUND "${hash:0:12}"
+        reportOutcome FOUND "${hash:0:12}" "$hash"
         applyTags "$hash"
         return
     fi
@@ -166,7 +173,7 @@ function processURI {
     ingestFile "$tmp"
     rv=$?
     rm -f -- "$tmp"
-    reportOutcome "$_silOutcome" "$_silOutcomeDetail"
+    reportOutcome "$_silOutcome" "$_silOutcomeDetail" "$_silOutcomeHash"
     (( rv == 0 )) || return 1
     applyTags "$_silOutcomeHash"
 }

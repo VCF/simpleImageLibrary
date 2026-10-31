@@ -248,13 +248,22 @@ characters.
     * Formatted as a manifest, so failures can be reviewed, edited, and re-run
       by renaming it to a `.txt` file. The `.err` suffix deliberately stops it
       being used as a manifest by accident
-    * Parameters in effect are written before the first failed URI, and written
-      again whenever a parameter changes before a later failed URI
+    * Written as failures happen, so it is useful even if a run is
+      interrupted. A header explains how to retry
+    * All parameters in effect (except `LIBRARY`, `CHECK` and `REBUILD`) are
+      written before the first failed URI, and each one again whenever it
+      changes before a later failed URI. A retry therefore uses the original
+      settings, whatever the configuration files or command line say then
+    * Values are written so they read back the same, eg sizes in bytes
+      (`SHRINK=512000b`) and percents with `%`
+    * Relative paths are kept as written; they still work for a renamed copy
+      in the same folder
+    * With no failures, it holds only its header and `# No failures`
     * Failed URIs are written one per line, each preceded by a comment of 80
       characters or less giving the reason tag and explaining why it failed
   * An informative log named `foo.txt.md`
     * A compact markdown file
-    * An h1 header `# Load report for foo.txt`
+    * An h1 header `# Load report for foo.txt`, then the run's date and library
     * A bulleted list legend for each status that occurs in the run
     * A markdown table with three columns
       * Status - per the outcome table above
@@ -265,6 +274,8 @@ characters.
       * A bulleted list legend of the reason tags that occur in the run, and
         only those
       * A markdown table with two columns: Reason and URI
+  * `|` in a URI is escaped, so the tables stay intact
+  * If the manifest's folder can't be written, SIL warns and runs without logs
 
 # REQ-09 Library maintenance
 

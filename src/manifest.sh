@@ -2,6 +2,7 @@
 
 srcLib "params"
 srcLib "ingest"
+srcLib "report"
 
 ## Parameters that can't change within a manifest
 declare -gA _silManifestBlocked=(
@@ -14,7 +15,9 @@ declare -gA _silManifestBlocked=(
 # Process a manifest (REQ-06). Parameter lines change settings for the
 # URIs after them; every other line is a URI. Relative paths are
 # relative to the manifest's folder. Settings are restored afterwards,
-# so each manifest is self-contained.
+# so each manifest is self-contained. Outcomes are logged beside the
+# manifest in <manifest>.err (failures, as a manifest) and <manifest>.md
+# (report), overwriting earlier logs (REQ-08).
 # Globals:
 #   SIL_<NAME> (changed, then restored)
 # Arguments:
@@ -35,6 +38,7 @@ function parseManifest {
     base="$(dirname -- "$(realpath -- "$path")")"
     msgInfo "Manifest: $path"
     saveParams
+    logStart "$path" || :
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         lineNum=$(( lineNum + 1 ))
@@ -59,9 +63,11 @@ function parseManifest {
             rv=1
         else
             processURI "$line" "$base" || rv=1
+            logOutcome "$line"
         fi
     done < "$path"
 
+    logFinish
     restoreParams
     return "$rv"
 }
