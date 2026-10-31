@@ -27,13 +27,14 @@ function parseManifest {
 }
 
 #######################################
-# Recover and ingest an image from a URL (REQ-04). Not yet implemented.
+# Recover and ingest an image from a URI: URL, local path or image hash
+# (REQ-03, REQ-04). Not yet implemented.
 # Arguments:
-#   $1 - The URL
+#   $1 - The URI
 # Returns:
 #   1 (not implemented)
 #######################################
-function processURL {
-    msgWarn "[!] processURL not yet implemented, skipping: $1"
+function processURI {
+    msgWarn "[!] Adding images is not yet implemented, skipping: $1"
     return 1
 }

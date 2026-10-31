@@ -379,34 +379,62 @@ function parseParamFile {
 }
 
 #######################################
-# Establish all parameters following REQ-02 precedence:
-#   defaults < ~/.sil.conf < LIBRARY/sil.conf < command line
-# Manifest parameters are applied later, during manifest parsing.
-# Command line parameters are applied before the library conf (so a
-# command line LIBRARY selects which conf is read) and again after it
-# (so they win).
+# Test whether a parameter was given on the command line.
+# Globals:
+#   _silCliParams
+# Arguments:
+#   $1 - Parameter name or alias
+# Returns:
+#   0 if given, 1 otherwise
+#######################################
+function cliHasParam {
+    local want token
+    want="$(paramCanonical "$1")" || return 1
+    for token in "${_silCliParams[@]}"; do
+        [[ "$(paramCanonical "$(trim "${token%%=*}")")" == "$want" ]] && return 0
+    done
+    return 1
+}
+
+#######################################
+# Apply command line parameters, which outrank conf files.
+# Globals:
+#   _silCliParams; sets SIL_<NAME>
+#######################################
+function applyCliParams {
+    local token
+    for token in "${_silCliParams[@]}"; do
+        setParamToken "$token"
+    done
+}
+
+#######################################
+# First stage of REQ-02 precedence: defaults < ~/.sil.conf < command
+# line. The library is not known yet; once it is (resolveLibrary), call
+# loadLibraryParams. Manifest parameters are applied during manifest
+# parsing.
 # Globals:
 #   HOME; sets SIL_<NAME>, _silCliParams, _silArgs
 # Arguments:
 #   $@ - Command line arguments
 #######################################
 function loadParams {
-    local token
     resetParams
     parseCliParams "$@"
     ## Problems in conf files are reported as warnings, not fatal
     parseParamFile "$HOME/.sil.conf" global || :
+    applyCliParams
+}
 
-    for token in "${_silCliParams[@]}"; do
-        setParamToken "$token"
-    done
-    # TODO: detect LIBRARY from the current folder when not set
-    if [[ -n "${SIL_LIBRARY:-}" ]]; then
-        parseParamFile "$SIL_LIBRARY/sil.conf" library || :
-        for token in "${_silCliParams[@]}"; do
-            setParamToken "$token"
-        done
-    fi
+#######################################
+# Second stage of REQ-02 precedence: apply the library's sil.conf, then
+# the command line again so it still wins.
+# Globals:
+#   SIL_LIBRARY; sets SIL_<NAME>
+#######################################
+function loadLibraryParams {
+    parseParamFile "$SIL_LIBRARY/sil.conf" library || :
+    applyCliParams
 }
 
 #######################################
@@ -420,6 +448,11 @@ function showParams {
     local canon var
     for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
         var="SIL_$canon"
-        [[ -n "${!var+x}" ]] && msgInfo "  $canon = ${!var}"
+        [[ -n "${!var+x}" ]] || continue
+        if [[ "${_silParamType[$canon]}" == size && "${!var}" != 0 ]]; then
+            msgInfo "  $canon = ${!var} ($(humanSize "${!var}"))"
+        else
+            msgInfo "  $canon = ${!var}"
+        fi
     done
 }

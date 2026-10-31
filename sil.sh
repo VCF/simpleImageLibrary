@@ -5,18 +5,41 @@
 myDir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 
 ## Load in basic functions
+# shellcheck source=src/utils.sh
 source "$myDir/src/utils.sh"
 
-if [[ -z "$1" ]]; then
+if [[ $# -eq 0 ]]; then
     ## No arguments passed, show help
     srcLib "help"
     showHelp
-elif [[ -f "$1" ]]; then
-    ## The first argument is a file - this will be presumed to be a manifest
-    srcLib "manifest"
-    parseManifest "$1"
-else
-    ## Not really sure what's being asked here. Point user to help
-    msgInfo "[?] Unknown parameter '$1'
-    Run this script with no arguments for full help"
+    exit 0
 fi
+
+srcLib "params"
+srcLib "library"
+srcLib "manifest"
+
+## REQ-02 precedence: defaults < ~/.sil.conf < library sil.conf < command line
+loadParams "$@"
+resolveLibrary
+loadLibraryParams
+
+msgInfo "Library: $SIL_LIBRARY"
+showParams
+
+if (( ${#_silArgs[@]} == 0 )); then
+    msgInfo "No images or manifests given, nothing more to do"
+    exit 0
+fi
+
+## Exit status is 1 if any image or manifest failed, for use in scripts
+status=0
+for arg in "${_silArgs[@]}"; do
+    if [[ -f "$arg" && "${arg,,}" == *.txt ]]; then
+        ## REQ-06: manifests are text files with a .txt suffix
+        parseManifest "$arg" || status=1
+    else
+        processURI "$arg" || status=1
+    fi
+done
+exit "$status"

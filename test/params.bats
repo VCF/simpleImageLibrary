@@ -269,6 +269,7 @@ EOF
     "$TEST_SANDBOX/lib" > "$HOME/.sil.conf"
   printf 'SHRINKMINSAVE=20\nTHRESHOLD=95%%\n' > lib/sil.conf
   loadParams SHRINKMINSAVE=30 a.jpg
+  loadLibraryParams
   assert_equal "$SIL_SHRINKMINSAVE" 30
   assert_equal "$SIL_THRESHOLD" 95
   assert_equal "$SIL_SHRINKTRIGGER" 3
@@ -279,7 +280,16 @@ EOF
   mkdir lib
   printf 'SHRINKMINSAVE=20\n' > lib/sil.conf
   loadParams LIBRARY=lib a.jpg
+  loadLibraryParams
   assert_equal "$SIL_SHRINKMINSAVE" 20
+}
+
+@test "cliHasParam recognizes names and aliases in any case" {
+  parseCliParams usetor library=x a.jpg
+  cliHasParam TOR
+  cliHasParam LIBRARY
+  run cliHasParam TAG
+  assert_failure
 }
 
 # --- template --------------------------------------------------------

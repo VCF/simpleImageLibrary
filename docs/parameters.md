@@ -63,12 +63,22 @@ The library parameter specifies the file path to the image library
 * Can be set in `~/.sil.conf` as a default library, but not in a library's own
   `sil.conf`, which is only read once the library is already known
 
-* If specified but the folder does not exist, the folder will be created and
-  subdirectories `images` and `tags` added to it
-* If not specified, SIL will determine if the current folder is part of a library
-  * Confirmation is based on the presence of `images` and `tags` folder
-* If `LIBRARY` can not be determined, an error will be thrown and instructions
-  for specifying or creating a new library will be reported.
+* A library is a folder containing `images` and `tags` folders
+* The library is chosen in this order:
+  1. `LIBRARY` given on the command line
+  2. The library containing the current folder. The current folder and each
+     of its parents are checked, so running SIL from eg `tags/Animal/Dog`
+     finds the library
+  3. `LIBRARY` set in `~/.sil.conf`
+* A leading `~` is expanded to the home folder, including in `~/.sil.conf`
+* If the chosen folder does not exist, or is empty, it is made into a new
+  library: `images` and `tags` folders are created, and `sil.conf` is copied
+  from `templates/sil.conf`
+  * `sil LIBRARY=~/Pictures/sil` with no images creates a library and stops
+* If the folder exists, is not empty, and is not a library, SIL halts rather
+  than add its folders to it, and explains how to proceed
+* If no library can be determined, SIL halts with instructions for specifying
+  or creating one
 
 ## TAG
 
