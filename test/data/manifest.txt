@@ -42,3 +42,20 @@ https://example.com/
 
 #### ---- Remote images ----
 ## To be added: Creative Commons image URLs, with expected outcomes
+
+SHRINK=50kb
+
+## ADDED: 1.2 Mb PNG - expect to be recoverable and then shrunk
+https://upload.wikimedia.org/wikipedia/commons/4/4d/Picture_Natural_History_-_No_234_-_The_Common_Cuttle-fish.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original
+
+# DUPE: The same image as above, but resized by wikipedia. Should be identified as a dupe
+https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Picture_Natural_History_-_No_234_-_The_Common_Cuttle-fish.png/500px-Picture_Natural_History_-_No_234_-_The_Common_Cuttle-fish.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail
+
+#### ---- Using torsocks ----
+
+TOR=1
+
+# DUPE: Another wikipedia resized image. Should be Tor accessible
+# Wikipedia does sometimes get aggravated with Tor (too many requests)
+
+https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Picture_Natural_History_-_No_234_-_The_Common_Cuttle-fish.png/250px-Picture_Natural_History_-_No_234_-_The_Common_Cuttle-fish.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail
