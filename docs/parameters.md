@@ -191,6 +191,22 @@ background before conversion to JPEG
   the fingerprint (eg a logo on a transparent background)
 * Animated images are never shrunk, with or without `FLATTEN`
 
+## REFETCH
+
+* Default: off
+* Flag parameter
+
+Download URLs again even when they are already recorded as a source
+
+* Off: a URL already in `images/sources.txt` for a stored image is a `DUPE` of
+  that image without being downloaded. Tags are still applied to it. This saves
+  time and bandwidth, and avoids repeat requests that might trigger
+  `RATELIMIT`, eg over Tor
+* On: every URL is downloaded and checked by fingerprint, eg if a site may now
+  serve a different image at the same address
+* Local files are always checked by fingerprint: they are recorded by name
+  only, so two different files with the same name would be confused
+
 ## THRESHOLD
 
 * Default: `90%`

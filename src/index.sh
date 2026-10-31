@@ -227,6 +227,29 @@ function sourceAdd {
 }
 
 #######################################
+# Find a stored image already recorded with a given source.
+# Arguments:
+#   $1 - Source, exactly as recorded (eg a URL)
+# Outputs:
+#   The image hash to STDOUT
+# Returns:
+#   0 if a stored image has this source, 1 otherwise
+#######################################
+function sourceLookup {
+    local file hash
+    file="$(sourcesFile)"
+    [[ -f "$file" ]] || return 1
+    ## ENVIRON, not -v, so backslashes in the source are not interpreted
+    while IFS= read -r hash; do
+        if findStoredImage "$hash" > /dev/null; then
+            printf '%s\n' "$hash"
+            return 0
+        fi
+    done < <(SIL_SOURCE="$1" awk '!/^#/ && substr($0, 42) == ENVIRON["SIL_SOURCE"] { print $1 }' "$file")
+    return 1
+}
+
+#######################################
 # Change image hashes in the sources file, keeping every source.
 # Arguments:
 #   $1 - File of "<old hash> <new hash>" lines

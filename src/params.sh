@@ -20,6 +20,7 @@ declare -gA _silParamType=(
     [SHRINKTRIGGER]=number
     [SHRINKMINSAVE]=percent
     [FLATTEN]=flag
+    [REFETCH]=flag
     [THRESHOLD]=percent
     [CHECK]=flag
     [REBUILD]=flag
@@ -38,6 +39,7 @@ declare -gA _silParamDefault=(
     [SHRINKTRIGGER]=2
     [SHRINKMINSAVE]=25
     [FLATTEN]=0
+    [REFETCH]=0
     [THRESHOLD]=90
     [TOR]=0
 )

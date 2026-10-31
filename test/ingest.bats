@@ -229,3 +229,52 @@ $hash file:pic.png"
   assert_line --partial " $URL/one?x=1"
   assert_line --partial " $URL/two"
 }
+
+# --- known sources (REFETCH) -----------------------------------------
+
+@test "a URL already recorded is a DUPE without downloading" {
+  startServer
+  cp "$DATA/plasma.png" www/pic
+  processURI "$URL/pic" 2> /dev/null
+  ## Gone from the server: a download would now be NOTFOUND
+  rm www/pic
+  SIL_TAG=Again
+  run processURI "$URL/pic"
+  assert_success
+  assert_output --partial "[DUPE]"
+  assert_output --partial "not downloaded"
+  run find lib/tags/Again -type l
+  assert_output --regexp '\.png$'
+  run grep -c "GET /pic" server.log
+  assert_output 1
+}
+
+@test "REFETCH downloads a recorded URL again" {
+  startServer
+  cp "$DATA/plasma.png" www/pic
+  processURI "$URL/pic" 2> /dev/null
+  SIL_REFETCH=1
+  run processURI "$URL/pic"
+  assert_output --partial "[DUPE]"
+  assert_output --partial "0 of 256 bits differ"
+  rm www/pic
+  run processURI "$URL/pic"
+  assert_output --partial "[NOTFOUND]"
+}
+
+@test "a recorded source whose image is gone is downloaded again" {
+  startServer
+  cp "$DATA/plasma.png" www/pic
+  sourceAdd 0123456789abcdef0123456789abcdef01234567 "$URL/pic"
+  run processURI "$URL/pic"
+  assert_output --partial "[ADDED]"
+}
+
+@test "local files are always fingerprinted, even with a recorded name" {
+  mkdir a b
+  cp "$DATA/plasma.png" a/pic.png
+  convert -size 320x240 -seed 99 plasma:fractal b/pic.png
+  processURI a/pic.png 2> /dev/null
+  run processURI b/pic.png
+  assert_output --partial "[ADDED]"
+}

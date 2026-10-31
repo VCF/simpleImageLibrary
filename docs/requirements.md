@@ -164,6 +164,10 @@ Each stored image has two identifiers with different jobs:
 * URLs are recorded exactly as given. Local files are recorded as
   `file:<name>`, without their folders, as the library may be shared
 * Hash URIs are not sources, and are not recorded
+* Sources are the first duplicate check: a URL already recorded for a stored
+  image is a `DUPE` of it without being downloaded, unless `REFETCH` is set.
+  This assumes a URL rarely changes to show a different image. Local files are
+  always fingerprinted, as `file:<name>` doesn't identify a file uniquely
 * Unlike the fingerprint index, sources can't be regenerated, so the file is
   only ever added to. `REBUILD` changes hashes in it when it renames an image
   (`REQ-09`), and never removes a line
@@ -238,7 +242,7 @@ Successful outcomes, with their status tag:
 | ------- | ----------------------------------------------------------- |
 | ADDED   | Recovered and added to the library                          |
 | SHRINK  | Recovered, shrunk (`REQ-07`) and added                      |
-| DUPE    | Recovered, but already in the library. Reported with the existing image's hash and how many fingerprint bits differ; remaining operations (eg tagging) apply to the existing image |
+| DUPE    | Already in the library: recovered and matched by fingerprint (reported with how many bits differ), or a URL already recorded as a source and not downloaded (`REFETCH`). Reported with the existing image's hash; remaining operations (eg tagging) apply to the existing image |
 | FOUND   | A hash URI (`REQ-03`) matched a stored image; remaining operations apply to it |
 
 Failures, with their reason tag. No further action is taken on the image. This

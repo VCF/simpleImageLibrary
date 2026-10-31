@@ -127,13 +127,14 @@ function ingestFile {
 }
 
 #######################################
-# Process one URI (REQ-03): a hash selects a stored image; a URL or
-# local path is recovered and added. The URI is recorded as a source of
+# Process one URI (REQ-03): a hash selects a stored image; a URL already
+# recorded as a source is a DUPE of its image, unless REFETCH; any other
+# URL or local path is recovered and added. The URI is recorded as a source of
 # the resulting image (REQ-05), a newly stored image gets today's date
 # tag (TAG-02), and tags in SIL_TAG are applied. The outcome is reported
 # and counted.
 # Globals:
-#   SIL_TAG, SIL_THRESHOLD
+#   SIL_TAG, SIL_THRESHOLD, SIL_REFETCH
 # Arguments:
 #   $1 - URI
 #   $2 - Folder that relative paths are relative to (default: current
@@ -159,6 +160,14 @@ function processURI {
         fi
         hash="${uri,,}"
         reportOutcome FOUND "${hash:0:12}" "$hash"
+        applyTags "$hash"
+        return
+    fi
+
+    ## A URL already recorded as a source is a DUPE, without downloading,
+    ## unless REFETCH. Not for local files: they are recorded by name only
+    if [[ "$kind" == url ]] && ! flagIsSet REFETCH && hash="$(sourceLookup "$uri")"; then
+        reportOutcome DUPE "${hash:0:12}, a known source, not downloaded (REFETCH to check)" "$hash"
         applyTags "$hash"
         return
     fi
