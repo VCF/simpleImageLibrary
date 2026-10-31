@@ -168,6 +168,22 @@ original is kept
 * An 800 KB original shrunk to 600 KB saved 25%; with `SHRINKMINSAVE=30` the
   original would be kept
 
+### FLATTEN
+
+* Default: off
+* Flag parameter
+
+Allows images with transparency to be shrunk, by placing them on a white
+background before conversion to JPEG
+
+* Only applies when an image is being shrunk (see `SHRINK`). With `SHRINK` off,
+  or an image under the trigger size, `FLATTEN` does nothing
+* Without `FLATTEN`, images with transparency are never shrunk
+* The shrunk image is checked against the flattened image rather than the
+  transparent original, since flattening is an intended change that can alter
+  the fingerprint (eg a logo on a transparent background)
+* Animated images are never shrunk, with or without `FLATTEN`
+
 ## THRESHOLD
 
 * Default: `90%`

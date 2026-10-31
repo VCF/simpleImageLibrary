@@ -45,13 +45,68 @@ function imagesMatch {
 }
 
 #######################################
+# Re-encode an image as JPEG of about SIL_SHRINK bytes, then check the
+# result saves enough and still matches. Helper for shrinkImage, which
+# handles cleanup.
+# Globals:
+#   SIL_SHRINK, SIL_SHRINKMINSAVE, _silShrinkVerify
+# Arguments:
+#   $1 - Original image path
+#   $2 - Reference path: the original, or a path at which to write a
+#        flattened copy (FLATTEN). The result is verified against this,
+#        since flattening is an intended change
+#   $3 - Output path for the shrunk JPEG
+#   $4 - Size of the original, in bytes
+# Outputs:
+#   Progress messages to STDERR
+# Returns:
+#   0 if the shrunk JPEG should be kept, 1 otherwise
+#######################################
+function encodeShrunk {
+    local src="$1" ref="$2" out="$3" srcBytes="$4"
+    local errTxt
+    if [[ "$ref" != "$src" ]]; then
+        if ! errTxt="$(convert "${src}[0]" -background white -flatten "$ref" 2>&1)"; then
+            msgWarn "[!] ImageMagick could not flatten the image, keeping original
+    $errTxt"
+            return 1
+        fi
+        msgInfo "  Flattened transparency onto white (FLATTEN)"
+    fi
+
+    if ! errTxt="$(convert "${ref}[0]" -define "jpeg:extent=$SIL_SHRINK" "$out" 2>&1)" \
+        || [[ ! -s "$out" ]]; then
+        msgWarn "[!] ImageMagick could not shrink the image, keeping original
+    $errTxt"
+        return 1
+    fi
+
+    local outBytes saved
+    outBytes="$(stat -c %s -- "$out")"
+    saved=$(( 100 * (srcBytes - outBytes) / srcBytes ))
+    if (( saved < ${SIL_SHRINKMINSAVE:-25} )); then
+        msgInfo "  Not shrinking: only saved ${saved}%, SHRINKMINSAVE is ${SIL_SHRINKMINSAVE}%"
+        return 1
+    fi
+    if ! imagesMatch "$ref" "$out"; then
+        msgWarn "[!] Shrunk image no longer matches the original at ${_silShrinkVerify}% similarity
+    ImageMagick may have damaged it during conversion. Keeping original"
+        return 1
+    fi
+
+    msgInfo "  Shrunk $(humanSize "$srcBytes") -> $(humanSize "$outBytes") (saved ${saved}%)"
+}
+
+#######################################
 # Shrink an image to about SIL_SHRINK bytes by re-encoding as JPEG
 # (ImageMagick jpeg:extent). The original is kept if shrinking is off,
 # not triggered, not possible, saves too little, or changes the image.
+# Transparent images are only shrunk with FLATTEN, which places them on
+# a white background first.
 # A kept shrunk copy is written beside the original as <base>.shrunk.jpg;
 # the original is never modified.
 # Globals:
-#   SIL_SHRINK, SIL_SHRINKTRIGGER, SIL_SHRINKMINSAVE
+#   SIL_SHRINK, SIL_SHRINKTRIGGER, SIL_SHRINKMINSAVE, SIL_FLATTEN
 # Arguments:
 #   $1 - Image path
 #   $2 - Name of the variable to receive the path to keep (the shrunk
@@ -85,36 +140,23 @@ function shrinkImage {
         msgInfo "  Not shrinking: animated images are left unchanged"
         return 0
     fi
+
+    local ref="$src"
     if hasTransparency "$src"; then
-        msgInfo "  Not shrinking: image has transparency, which JPEG would lose"
-        return 0
+        if ! flagIsSet FLATTEN; then
+            msgInfo "  Not shrinking: image has transparency, which JPEG would lose
+    Set FLATTEN to shrink it onto a white background instead"
+            return 0
+        fi
+        ref="${src%.*}.flat.png"
     fi
 
     local out="${src%.*}.shrunk.jpg"
-    local errTxt
-    if ! errTxt="$(convert "${src}[0]" -define "jpeg:extent=$target" "$out" 2>&1)" \
-        || [[ ! -s "$out" ]]; then
-        msgWarn "[!] ImageMagick could not shrink the image, keeping original
-    $errTxt"
+    if encodeShrunk "$src" "$ref" "$out" "$srcBytes"; then
+        printf -v "$resultVar" '%s' "$out"
+    else
         rm -f -- "$out"
-        return 0
     fi
-
-    local outBytes saved
-    outBytes="$(stat -c %s -- "$out")"
-    saved=$(( 100 * (srcBytes - outBytes) / srcBytes ))
-    if (( saved < ${SIL_SHRINKMINSAVE:-25} )); then
-        msgInfo "  Not shrinking: only saved ${saved}%, SHRINKMINSAVE is ${SIL_SHRINKMINSAVE}%"
-        rm -f -- "$out"
-        return 0
-    fi
-    if ! imagesMatch "$src" "$out"; then
-        msgWarn "[!] Shrunk image no longer matches the original at ${_silShrinkVerify}% similarity
-    ImageMagick may have damaged it during conversion. Keeping original"
-        rm -f -- "$out"
-        return 0
-    fi
-
-    msgInfo "  Shrunk $(humanSize "$srcBytes") -> $(humanSize "$outBytes") (saved ${saved}%)"
-    printf -v "$resultVar" '%s' "$out"
+    [[ "$ref" != "$src" ]] && rm -f -- "$ref"
+    return 0
 }

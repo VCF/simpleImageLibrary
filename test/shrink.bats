@@ -53,11 +53,32 @@ teardown() {
   assert_file_not_exists big.shrunk.jpg
 }
 
-@test "transparent images are not shrunk" {
+@test "transparent images are not shrunk without FLATTEN" {
   convert big.png -alpha set -channel A -evaluate set 50% +channel alpha.png
   run shrinkImage alpha.png kept
-  assert_output --partial "transparency"
+  assert_output --partial "Set FLATTEN"
   assert_file_not_exists alpha.shrunk.jpg
+}
+
+@test "FLATTEN shrinks transparent images and cleans up" {
+  convert big.png -alpha set -channel A -evaluate set 50% +channel alpha.png
+  SIL_FLATTEN=1
+  shrinkImage alpha.png kept
+  assert_equal "$kept" alpha.shrunk.jpg
+  run hasTransparency alpha.shrunk.jpg
+  assert_failure
+  assert_file_not_exists alpha.flat.png
+}
+
+@test "FLATTEN verifies against the flattened image" {
+  ## A disc on a fully transparent background: flattening onto white
+  ## changes the fingerprint, so checking against the original would fail
+  convert big.png \( -size 600x400 xc:black -fill white \
+    -draw 'circle 300,200 300,40' \) -alpha off -compose CopyOpacity \
+    -composite disc.png
+  SIL_FLATTEN=1
+  shrinkImage disc.png kept
+  assert_equal "$kept" disc.shrunk.jpg
 }
 
 @test "animated images are not shrunk" {

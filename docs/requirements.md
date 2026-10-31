@@ -64,6 +64,9 @@ SIL will locate images through the following URIs:
 
 * URLs, either standard web or onion links
 * Local file paths, either relative or absolute
+  * On the command line, relative paths are relative to the current folder
+  * In a manifest, relative paths are relative to the manifest's folder
+    (`REQ-06`)
 * Internal image hash
 * Any mixture of the above, recorded one per line in a manifest file
 
@@ -123,7 +126,7 @@ Image hasing is used to deduplicate images in the library
 # REQ-07 Image shrinking
 
 Optional reduction of image file size, controlled by the `SHRINK`,
-`SHRINKTRIGGER` and `SHRINKMINSAVE` parameters (see
+`SHRINKTRIGGER`, `SHRINKMINSAVE` and `FLATTEN` parameters (see
 [parameters.md](./parameters.md))
 
 * Shrinking happens after recovery and before fingerprinting (`REQ-05`)
@@ -131,12 +134,14 @@ Optional reduction of image file size, controlled by the `SHRINK`,
 * Shrinking re-encodes as JPEG using ImageMagick's `jpeg:extent`, which picks
   the JPEG quality that fits the target size
 * The original is kept, and the user told why, if:
-  * The image is animated, or has transparency (which JPEG cannot store)
+  * The image is animated
+  * The image has transparency (which JPEG cannot store), unless `FLATTEN` is
+    set, in which case it is first placed on a white background
   * ImageMagick fails
   * The saving is less than `SHRINKMINSAVE`
-  * The shrunk image no longer matches the original at a fixed 90% similarity
-    (`findimagedupes`), regardless of `THRESHOLD`. This catches conversions
-    that ImageMagick has damaged
+  * The shrunk image no longer matches the original (or, with `FLATTEN`, the
+    flattened image) at a fixed 90% similarity (`findimagedupes`), regardless
+    of `THRESHOLD`. This catches conversions that ImageMagick has damaged
 * A kept shrunk image replaces the original for the rest of processing, and its
   stored suffix becomes `.jpg`
 
@@ -165,6 +170,7 @@ characters.
 | UNREACHABLE | Could not connect to the website (eg DNS failure, refused)  |
 | TIMEOUT     | Website did not respond in time                             |
 | NOTFOUND    | Website available, but the URL was not found (HTTP 404/410) |
+| RATELIMIT   | Website refused because of too many requests (HTTP 429). Common over Tor, where many users share few exit nodes |
 | HTTPERROR   | Any other HTTP error, eg 403 forbidden or 500 server error  |
 | NOTIMAGE    | Something was returned, but not an image, eg an HTML login or "not allowed" page |
 | BADIMAGE    | An image, but the image tools could not read it (corrupt or unsupported) |
