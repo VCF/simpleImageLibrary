@@ -24,6 +24,8 @@ You are assisting a human programmer with a goal to:
   * For bash, use the Google Shell Style Guide
   * For javascript, use JSDoc
 
+* Follow implementation conventions in `docs/conventions.md`
+
 ## Testing Instruction
 
 * Testing Engine: BATS-core (Vendored locally via git submodules in

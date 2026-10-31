@@ -23,9 +23,12 @@ agent consumption
 
 * Core internal functions will be used to standardize how messaging is presented
 * ANSI color coding will be used to visually highlight different kinds of messages
-* `error` - Red with yellow background. Halts execution
-* `warn` - Red, indicates a problem but exection can continue
-* `info` - Blue, information for user
+* Message functions share the `msg` prefix, avoiding collisions with system
+  commands (eg `/usr/bin/info`) and shell conventions
+* `msgError` - Red with yellow background. Halts execution
+* `msgWarn` - Red, indicates a problem but exection can continue
+* `msgInfo` - Blue, information for user
+* `msgDebug` - Developer debugging output
 
 # UI-03 Parameters and command line usage
 
@@ -47,9 +50,10 @@ See also `UI-03` for more details on parameters
 
 `sil.sh` will consume parameters from four sources:
 
-  1. `~/.sil.conf` - the user's global preference file.
-  2. From `sil.conf` within a specific image library folder. These parameters
-     take precedence over the global preference file for that library.
+  1. `~/.sil.conf` - the user's global preference file. Hidden, in `$HOME`
+  2. From `sil.conf` within a specific image library folder (not hidden). These
+     parameters take precedence over the global preference file for that
+     library. New libraries get a copy of `templates/sil.conf`
   3. From the command line, which takes precedence over the preference files
   4. From parsing a manifest file, which will takes precedence to any other
      parameter sources
@@ -108,6 +112,26 @@ Image hasing is used to deduplicate images in the library
     Changes apply to all subsequent URIs, unless changed again
 * Manifest files are provided in the same context as URIs, but are recognized as
   such by being text files with a `.txt` suffix.
+
+# REQ-07 Image shrinking
+
+Optional reduction of image file size, controlled by the `SHRINK`,
+`SHRINKTRIGGER` and `SHRINKMINSAVE` parameters (see
+[parameters.md](./parameters.md))
+
+* Shrinking happens after recovery and before fingerprinting (`REQ-05`)
+* An image is only shrunk if it is at least `SHRINK` x `SHRINKTRIGGER` bytes
+* Shrinking re-encodes as JPEG using ImageMagick's `jpeg:extent`, which picks
+  the JPEG quality that fits the target size
+* The original is kept, and the user told why, if:
+  * The image is animated, or has transparency (which JPEG cannot store)
+  * ImageMagick fails
+  * The saving is less than `SHRINKMINSAVE`
+  * The shrunk image no longer matches the original at a fixed 90% similarity
+    (`findimagedupes`), regardless of `THRESHOLD`. This catches conversions
+    that ImageMagick has damaged
+* A kept shrunk image replaces the original for the rest of processing, and its
+  stored suffix becomes `.jpg`
 
 # TAG-01 Tagging
 

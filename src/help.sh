@@ -2,7 +2,7 @@
 
 
 function showHelp {
-    info "Simple Image Library - Help & Documenation"
+    msgInfo "Simple Image Library - Help & Documenation"
 
     
 }

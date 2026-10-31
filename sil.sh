@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-## This script's source directory. Will be used to source in other code
-myDir="$(dirname "$0")"
+## This script's real folder, used to source in other code. readlink -f
+## resolves symlinks, so sil can be linked into eg ~/bin or ~/.local/bin
+myDir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 
 ## Load in basic functions
 source "$myDir/src/utils.sh"
@@ -16,13 +17,6 @@ elif [[ -f "$1" ]]; then
     parseManifest "$1"
 else
     ## Not really sure what's being asked here. Point user to help
-    info "[?] Unknown parameter '$1'
+    msgInfo "[?] Unknown parameter '$1'
     Run this script with no arguments for full help"
 fi
-
-
-srcLib "help"
-srcLib "help"
-srcLib "help"
-srcLib "help"
-

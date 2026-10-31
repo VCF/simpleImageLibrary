@@ -1,5 +1,8 @@
 ## Library just to make ANSI color management easier
 
+# These are consumed by other sourced files
+# shellcheck disable=SC2034
+
 ## Seem to be constantly pulling up ANSI color page:
 ##    https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 FgBlack="30"

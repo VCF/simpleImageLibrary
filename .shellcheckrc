@@ -1,0 +1,11 @@
+# shellcheck configuration - used by `make lint`
+
+# src/ files are sourced, not executed, so have no shebang
+shell=bash
+
+# Follow `source` statements to files outside the one being checked
+external-sources=true
+source-path=SCRIPTDIR
+
+# Globals like $FgBlue and $myDir are defined in other sourced files
+disable=SC2154

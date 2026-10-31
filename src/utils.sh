@@ -11,23 +11,6 @@
 ##   This file intially cloned from another of my repos:
 ##     https://github.com/VCF/installers/blob/master/games/launchers/_util_functions.sh
 
-LICENSE_GPL3="
-
-    This program is free software: you can redistribute it and/or
-    modify it under the terms of the GNU General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see http://www.gnu.org/licenses/
-
-"
-
 # Using dirname for calling directory: https://stackoverflow.com/a/192305
 # Sourcing script with '.' :
 #   http://www.unix.com/302168850-post2.html?s=34e24e03a7ea3080fed2982f1a0f038d
@@ -37,7 +20,7 @@ function srcLib {
     ## The function will also track if a library was already loaded.
     libFile="$1"
     if [[ -z "$libFile" ]]; then
-        die "Function libFile needs to be provided with a filename
+        msgError "Function libFile needs to be provided with a filename
 The file is expected to be in src, and should not include '.sh'"
     fi
     libPath="$myDir/src/$1.sh"
@@ -47,14 +30,13 @@ The file is expected to be in src, and should not include '.sh'"
         ##    variable indirection: https://unix.stackexchange.com/a/251896
         chkFlag="sil_loaded_$1"
         if [[ -z "${!chkFlag}" ]]; then
+            # shellcheck source=/dev/null
             source "$libPath"
-            ## Use namerefs to set the flag (Google AI suggestion)
-            declare -n ref="$chkFlag"
-            ref="Loaded"
+            printf -v "$chkFlag" '%s' "Loaded"
         fi
-        # dbg "Loaded $libPath"
+        # msgDebug "Loaded $libPath"
     else
-        die "Could not find library to load: $1
+        msgError "Could not find library to load: $1
   Path: $libPath"
     fi
 }
@@ -72,37 +54,65 @@ function ansiEnd {
     echo -e "\033[0m"
 }
 
+#######################################
+# Print a colorized message to STDERR. Base for the msg* functions.
+# Arguments:
+#   $1 - ANSI color code(s), eg "$FgBlue" or "$BgYellow;$FgRed".
+#        Defaults to green
+#   $2 - The text to print
+# Outputs:
+#   Message to STDERR
+#######################################
 function msg {
-    ## Colorized terminal message.
-    COL=$1 # The ANSI color code(s)
-    MSG=$2 # The text to print
-    [[ -z "$COL" ]] && col="32"
-    >&2 echo -e "$(ansiStart "$COL")${MSG}$(ansiEnd)";
+    local col="${1:-$FgGreen}"
+    >&2 echo -e "$(ansiStart "$col")${2}$(ansiEnd)"
 }
 
-function info {
-    ## Red on yellow, execution continues
-    ##  $1 - The text to print
+#######################################
+# Informational message for the user (UI-02: blue).
+# Arguments:
+#   $1 - The text to print
+# Outputs:
+#   Message to STDERR
+#######################################
+function msgInfo {
     msg "$FgBlue" "$1"
 }
 
-function err {
-    ## Red on yellow, execution continues
-    ##  $1 - The text to print
+#######################################
+# Warning; a problem, but execution continues (UI-02: red).
+# Arguments:
+#   $1 - The text to print
+# Outputs:
+#   Message to STDERR
+#######################################
+function msgWarn {
+    msg "$FgRed" "$1"
+}
+
+#######################################
+# Fatal error; halts execution (UI-02: red on yellow).
+# Arguments:
+#   $1 - The text to print
+# Outputs:
+#   Message to STDERR
+# Returns:
+#   Does not return; exits with status 1
+#######################################
+function msgError {
     msg "$BgYellow;$FgRed" "$1"
+    exit 1
 }
 
-function dbg {
-    ## Debugging message, 
-    ##  $1 - The text to print
+#######################################
+# Developer debugging message.
+# Arguments:
+#   $1 - The text to print
+# Outputs:
+#   Message to STDERR, prefixed with [DEBUG]
+#######################################
+function msgDebug {
     msg "$BgCyan;$FgMagenta" "[DEBUG] $1"
-}
-
-function die {
-    ## Yellow on red, halts
-    ##  $1 - The text to print
-    msg "$BgRed;$FgYellow" "$1"
-    exit
 }
 
 function set_title {
@@ -112,36 +122,66 @@ function set_title {
     echo -ne "\033]0;$1\007";
 }
 
+#######################################
+# Replace a leading path prefix, by default $HOME with '~', for
+# friendlier display.
+# Arguments:
+#   $1 - The text to modify
+#   $2 - Prefix to replace (default: $HOME)
+#   $3 - Replacement (default: ~)
+# Outputs:
+#   Modified text to STDOUT
+#######################################
 function setTilda {
-    ## Just swaps values, by default replaces $HOME with '~'
-    txt=$1         # The text to modify
-    in=${2:-$HOME} # The value to replace
-    out=${3:-'~'}  # What it should be replaced with
-    ## sed with slashes: https://unix.stackexchange.com/a/39802
-    echo "$txt" | sed "s|$in|$out|"
+    local txt="$1"
+    local in="${2:-$HOME}"
+    local out="${3:-~}"
+    ## Quoting $out stops bash 5.2+ treating '&' in it as the match
+    echo "${txt/#"$in"/"$out"}"
 }
 
+#######################################
+# Relative path from one directory to another, eg for symlink targets.
+# Purely lexical: neither path needs to exist and symlinks are not
+# resolved.
+# Arguments:
+#   $1 - Directory to start from
+#   $2 - Path to reach
+# Outputs:
+#   Relative path to STDOUT ('.' if they are the same)
+#######################################
 function relativePath {
-    ## Ok... this works great: https://unix.stackexchange.com/a/233882
-    ## ... but Mint 13 Maya has only realpath version 1.16, which does
-    ## not support the --relative-to parameter. So we're going to do
-    ## this with regular expressions, since I don't need to "back up"
-    ## (That is, one directory is a child of the other)
-    BaseDir=$1 # The 'higher level' directory
-    FullDir=$2 # The deeper directory (child of BaseDir)
-    ## Make sure directories ends with a slash
-    ##   Glob pattern matching: https://stackoverflow.com/a/44688520
-    [[ ! "$BaseDir" == *,/$,* ]] && BaseDir="$BaseDir"/
-    [[ ! "$FullDir" == *,/$,* ]] && FullDir="$FullDir"/
-    ## With realpath: realpath --relative-to="$BaseDir" "$FullDir"
-    rv=`echo "$FullDir" | sed "s|$BaseDir||"`
-    [[ "$rv" == "" ]] && rv='.'
-    echo "$rv"
+    realpath -ms --relative-to="$1" "$2"
 }
 
-function hasParam {
-    ## Uppercasing variables: https://stackoverflow.com/a/19411918
-    PARAM=${1^^} # The parameter settings that were provided
-    VAL=${2^^}   # The value to check against
-    [[ "$PARAM" == *"$VAL"* ]] && echo "$VAL"
+#######################################
+# Halt with install instructions if a command is not available (UI-01).
+# Arguments:
+#   $1 - Command name
+#   $2 - Debian/Ubuntu package that provides it
+#   $3 - What SIL needs it for
+# Returns:
+#   0 if available; otherwise halts (msgError)
+#######################################
+function requireTool {
+    command -v "$1" > /dev/null && return 0
+    msgError "[!] Required tool '$1' is not installed
+    It is needed to: $3
+    Install it with:
+      sudo apt install $2"
+}
+
+#######################################
+# Format a byte count for people, eg 512000 -> '500 KB'.
+# Arguments:
+#   $1 - Byte count
+# Outputs:
+#   Formatted size to STDOUT
+#######################################
+function humanSize {
+    awk -v b="$1" 'BEGIN {
+        split("B KB MB GB", u, " ")
+        for (i = 1; b >= 1024 && i < 4; i++) b /= 1024
+        printf (i == 1 ? "%d %s\n" : "%.1f %s\n"), b, u[i]
+    }'
 }
