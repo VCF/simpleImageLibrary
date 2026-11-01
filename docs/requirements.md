@@ -116,7 +116,10 @@ Each stored image has two identifiers with different jobs:
 
 * Image format is determined from content with ImageMagick
   (`identify -format %m`), never from the file or URL suffix
-  * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF. SVG is shelved for now
+  * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF, AVIF. SVG is shelved for now
+  * ImageMagick sees only the first frame of an animated AVIF, so frames of GIF
+    and AVIF animations are counted and read with ffmpeg; WebP animations with
+    ImageMagick, as ffmpeg can't decode them
   * Files are inspected without a suffix, as ImageMagick otherwise takes hints
     from it (eg attempting to render `.html` files)
 
@@ -131,9 +134,13 @@ Each stored image has two identifiers with different jobs:
 * Similarity is the share of bits two fingerprints have in common. Following
   findimagedupes, at a similarity of `T`% at most `int(2.56 x (100 - T))` bits
   may differ: 90% allows 25 bits, 95% allows 12
-* The fingerprint is computed from the first frame of a temporary copy
-  stripped of profiles and metadata (`convert -strip`), as findimagedupes
-  rejects some harmless flaws, eg "iCCP: known incorrect sRGB profile"
+* The fingerprint is computed from one frame, as a temporary copy stripped of
+  profiles and metadata (`convert -strip`), as findimagedupes rejects some
+  harmless flaws, eg "iCCP: known incorrect sRGB profile"
+  * Still images: the first frame
+  * Animations: the frame on screen halfway through (by frame durations),
+    placed on a white background. Animations often open on a blank or title
+    frame, which would make unrelated animations look alike
 * An empty or malformed fingerprint means the image could not be read
   (`BADIMAGE`, `REQ-08`)
 
@@ -209,15 +216,17 @@ Each stored image has two identifiers with different jobs:
 # REQ-07 Image shrinking
 
 Optional reduction of image file size, controlled by the `SHRINK`,
-`SHRINKTRIGGER`, `SHRINKMINSAVE` and `FLATTEN` parameters (see
+`SHRINKVID`, `SHRINKTRIGGER`, `SHRINKMINSAVE` and `FLATTEN` parameters (see
 [parameters.md](./parameters.md))
 
 * Shrinking happens after recovery and before fingerprinting (`REQ-05`)
+
+## Still images (`SHRINK`)
+
 * An image is only shrunk if it is at least `SHRINK` x `SHRINKTRIGGER` bytes
 * Shrinking re-encodes as JPEG using ImageMagick's `jpeg:extent`, which picks
   the JPEG quality that fits the target size
 * The original is kept, and the user told why, if:
-  * The image is animated
   * The image has transparency (which JPEG cannot store), unless `FLATTEN` is
     set, in which case it is first placed on a white background
   * ImageMagick fails
@@ -231,6 +240,23 @@ Optional reduction of image file size, controlled by the `SHRINK`,
   `SHRINK=0` to store it unshrunk)
 * A kept shrunk image replaces the original for the rest of processing, and its
   stored suffix becomes `.jpg`
+
+## Animations (`SHRINKVID`)
+
+* Animated GIF and WebP images are re-encoded as animated AVIF with ffmpeg
+  (libaom AV1) at the `SHRINKVID` quality level. Other animations are kept
+* Each frame keeps its original duration
+* Frames are placed on a white background, as the AVIF is written without
+  transparency. The user is warned when an animation had transparency
+* `SHRINKTRIGGER` does not apply. The original is kept, and the user told why,
+  if ffmpeg fails or the saving is less than `SHRINKMINSAVE`
+* The same fingerprint check and `SHRINKFAIL` apply as for still images,
+  comparing the middle frames (`REQ-05`) of the original and the AVIF, but at
+  90% similarity (at most 25 bits differ). One frame of a detailed animation
+  varies more under AV1 than a still image does under JPEG: in testing,
+  neighboring frames differed from their originals by 5-15 bits
+* A kept AVIF replaces the original for the rest of processing, and its stored
+  suffix becomes `.avif`
 
 # REQ-08 Handling issues and problems during image processing
 
@@ -268,7 +294,7 @@ characters.
 | UNREADABLE  | Local file exists but cannot be read (permissions)          |
 | NOHASH      | A hash URI (`REQ-03`) does not match any image in the library |
 | STOREFAIL   | The image could not be written into the library (eg disk full) |
-| SHRINKFAIL  | The shrunk copy failed its fingerprint check (`REQ-07`), so the image was not added; retry with a different `SHRINK` |
+| SHRINKFAIL  | The shrunk copy failed its fingerprint check (`REQ-07`), so the image was not added; retry with a different `SHRINK` (or `SHRINKVID`) |
 
 ## Reporting
 

@@ -178,6 +178,31 @@ teardown() {
   done
 }
 
+@test "level parameters accept names and aliases in any case" {
+  local -A cases=(
+    [HIGH]=HIGH [hi]=HIGH [H]=HIGH
+    [Medium]=MEDIUM [med]=MEDIUM [m]=MEDIUM
+    [low]=LOW [Lo]=LOW [l]=LOW
+    [off]=OFF [0]=OFF [No]=OFF [false]=OFF
+  )
+  local k
+  for k in "${!cases[@]}"; do
+    setParamToken "SHRINKVID=$k"
+    assert_equal "$SIL_SHRINKVID" "${cases[$k]}"
+  done
+}
+
+@test "level parameters reject other values, with examples" {
+  run setParamToken "SHRINKVID=best"
+  assert_failure
+  assert_output --partial "Invalid level for SHRINKVID"
+  assert_output --partial "HIGH, MEDIUM, LOW"
+}
+
+@test "SHRINKVID defaults to OFF" {
+  assert_equal "$SIL_SHRINKVID" OFF
+}
+
 @test "invalid size halts with examples and source" {
   run setParamToken "SHRINK=huge" "my.conf line 3"
   assert_failure

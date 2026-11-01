@@ -154,6 +154,7 @@ function processURI {
     msgInfo "$uri"
     requireTool identify imagemagick "inspect images"
     requireTool findimagedupes findimagedupes "fingerprint images"
+    requireTool ffmpeg ffmpeg "fingerprint animations (GIF, AVIF)"
 
     kind="$(uriKind "$uri")"
     if [[ "$kind" == hash ]]; then

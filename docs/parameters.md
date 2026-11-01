@@ -38,6 +38,7 @@ be set in a library's `sil.conf` also has a commented example in
   * Size: a file size such as `500kb` or `2mb` (see `SHRINK`)
   * Percent: a whole number 0-100, with optional `%`, eg `25` or `25%`
   * Number: a positive number, decimals allowed, eg `2` or `1.5`
+  * Level: `HIGH`, `MEDIUM`, `LOW` or `OFF`, any case (see `SHRINKVID`)
 
 ## Configuration files
 
@@ -148,6 +149,7 @@ re-encoded as JPEG to approximately this size (see `REQ-07`)
   * `2mb`, `2M`, `1.5mb`, `1g`, `800b` are also accepted
 * `SHRINK=0` turns shrinking off, eg to override a `SHRINK` set in a
   configuration file
+* Applies to still images only. Animations are shrunk by `SHRINKVID`
 * Requires ImageMagick and findimagedupes. If either is missing, SIL halts with
   the command to install it
 
@@ -174,6 +176,7 @@ original is kept
 
 * An 800 KB original shrunk to 600 KB saved 25%; with `SHRINKMINSAVE=30` the
   original would be kept
+* Applies to both `SHRINK` and `SHRINKVID`
 
 ### FLATTEN
 
@@ -189,7 +192,35 @@ background before conversion to JPEG
 * The shrunk image is checked against the flattened image rather than the
   transparent original, since flattening is an intended change that can alter
   the fingerprint (eg a logo on a transparent background)
-* Animated images are never shrunk, with or without `FLATTEN`
+* Does not apply to animations: `SHRINKVID` always places them on white
+
+### SHRINKVID
+
+* Default: `OFF`
+* Level parameter: `HIGH` (alias `HI`, `H`), `MEDIUM` (`MED`, `M`), `LOW`
+  (`LO`, `L`), or `OFF` (`0`, `NO`, `FALSE`). Any case
+
+Shrinks animated GIF and WebP images by re-encoding them as animated AVIF
+(AV1), an open, royalty-free format (see `REQ-07`)
+
+* The level sets the AV1 quality (ffmpeg libaom `-crf`; lower is better).
+  Measured on seven sample animations from 19 KB to 100 MB, the AVIF was:
+
+  | Level    | crf | Size, as % of the original GIF |
+  | -------- | --- | ------------------------------ |
+  | `HIGH`   | 20  | 4-60%                          |
+  | `MEDIUM` | 30  | 2-45%                          |
+  | `LOW`    | 40  | 1-30%                          |
+
+  Even `LOW` kept very good fidelity to the original
+* Independent of `SHRINK`: either may be set without the other. `SHRINKTRIGGER`
+  does not apply, as there is no target size; `SHRINKMINSAVE` does
+* Transparency is lost: frames are placed on a white background, with a warning
+* Animations already in other formats (eg AVIF) are left unchanged
+* Requires ffmpeg, ImageMagick and findimagedupes. If any is missing, SIL halts
+  with the command to install it
+* Animated AVIF plays in current browsers (Chrome, Edge, Firefox, Safari 16.4+).
+  Some desktop image viewers show only its first frame
 
 ## REFETCH
 

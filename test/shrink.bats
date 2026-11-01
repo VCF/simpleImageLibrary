@@ -25,6 +25,14 @@ teardown() {
   teardown_sandbox
 }
 
+## Write a 4 frame plasma animation, with uneven frame times
+makeAnimation() {
+  convert -delay 10 -size 200x150 -seed 1 plasma:fractal \
+    -delay 20 -size 200x150 -seed 2 plasma:fractal \
+    -delay 30 -size 200x150 -seed 3 plasma:fractal \
+    -delay 40 -size 200x150 -seed 4 plasma:fractal -loop 0 "$1"
+}
+
 ## Fail if any temporary file was left behind
 assert_no_temp_files() {
   [[ -d "$TEST_SANDBOX/.tmp" ]] || return 0
@@ -94,12 +102,11 @@ assert_no_temp_files() {
   assert_not_equal "$kept" disc.png
 }
 
-@test "animated images are not shrunk" {
-  convert -size 400x400 -seed 2 plasma:fractal -size 400x400 -seed 3 \
-    plasma:fractal anim.gif
+@test "animations are not shrunk without SHRINKVID" {
+  makeAnimation anim.gif
   SIL_SHRINK=1
   run shrinkImage anim.gif kept
-  assert_output --partial "animated"
+  assert_output --partial "only shrunk with SHRINKVID"
   assert_no_temp_files
 }
 
@@ -118,5 +125,92 @@ assert_no_temp_files() {
   assert_output --partial "no longer matches the original at 95%"
   assert_output --partial "of 256 fingerprint bits differ"
   assert_output --partial "retry with a different SHRINK"
+  assert_no_temp_files
+}
+
+# --- SHRINKVID ---------------------------------------------------------
+
+@test "SHRINKVID shrinks an animated GIF to AVIF, keeping its timing" {
+  makeAnimation anim.gif
+  SIL_SHRINK=0
+  SIL_SHRINKVID=LOW
+  shrinkImage anim.gif kept
+  assert_not_equal "$kept" anim.gif
+  run imageFormat "$kept"
+  assert_output AVIF
+  assert_equal "$(frameDurations "$kept" AVIF)" "$(frameDurations anim.gif GIF)"
+  (( $(stat -c %s "$kept") < $(stat -c %s anim.gif) ))
+}
+
+@test "SHRINKVID shrinks an animated WebP to AVIF, keeping its timing" {
+  makeAnimation anim.gif
+  convert anim.gif -quality 95 anim.webp
+  SIL_SHRINKVID=MEDIUM
+  shrinkImage anim.webp kept
+  run imageFormat "$kept"
+  assert_output AVIF
+  ## Plus an unseen 0.01 second frame at the end (see encodeAnimation)
+  assert_equal "$(frameDurations "$kept" AVIF | awk '{ printf "%.2f\n", $1 }')" \
+    "$(frameDurations anim.webp WEBP; echo 0.01)"
+  ## Only the kept AVIF remains; the extracted frames are gone
+  run find "$TEST_SANDBOX/.tmp" -mindepth 1
+  assert_output "$kept"
+}
+
+@test "SHRINKVID leaves still images to SHRINK" {
+  SIL_SHRINK=0
+  SIL_SHRINKVID=LOW
+  shrinkImage big.png kept
+  assert_equal "$kept" big.png
+  assert_no_temp_files
+}
+
+@test "SHRINKVID warns about lost transparency, and shrinks onto white" {
+  convert -size 200x150 -seed 1 plasma:fractal -fill none -draw 'color 0,0 reset' \
+    -alpha set -channel A -fx 'i < w/2 ? 0 : 1' +channel -duplicate 3 \
+    -set delay 20 -set dispose background anim.gif
+  SIL_SHRINKVID=LOW
+  run shrinkImage anim.gif kept
+  assert_success
+  assert_output --partial "transparency, which AVIF will lose"
+  assert_output --partial "Shrunk"
+}
+
+@test "SHRINKVID keeps the original when it saves too little" {
+  makeAnimation anim.gif
+  SIL_SHRINKVID=HIGH
+  SIL_SHRINKMINSAVE=100
+  run shrinkImage anim.gif kept
+  assert_output --partial "only saved"
+  assert_no_temp_files
+}
+
+@test "SHRINKVID leaves animations in other formats unchanged" {
+  makeAnimation anim.gif
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
+    -pix_fmt yuv420p anim.avif
+  SIL_SHRINKVID=LOW
+  run shrinkImage anim.avif kept
+  assert_output --partial "animated AVIF images are left unchanged"
+  assert_no_temp_files
+}
+
+@test "an animation conversion that damages the image is rejected" {
+  makeAnimation anim.gif
+  convert -size 200x150 -seed 9 plasma:fractal -duplicate 3 -set delay 25 other.gif
+  ## Stand-in ffmpeg whose AVIF encoding is of a different animation
+  ffmpeg() {
+    if [[ "$*" == *" avif "* ]]; then
+      command ffmpeg -v error -y -i other.gif -c:v libaom-av1 -pix_fmt yuv420p \
+        -f avif "${@: -1}"
+    else
+      command ffmpeg "$@"
+    fi
+  }
+  SIL_SHRINKVID=LOW
+  run shrinkImage anim.gif kept
+  assert_failure 2
+  assert_output --partial "no longer matches the original at 90%"
+  assert_output --partial "retry with a different SHRINKVID, or SHRINKVID=OFF"
   assert_no_temp_files
 }

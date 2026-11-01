@@ -57,6 +57,110 @@ fakeFingerprint() {
   assert_output SVG
 }
 
+@test "imageFormat recognizes AVIF" {
+  ffmpeg -v error -i "$DATA/plasma.png" -c:v libaom-av1 -still-picture 1 \
+    -pix_fmt yuv420p still.avif
+  run imageFormat still.avif
+  assert_success
+  assert_output AVIF
+}
+
+# --- animations ------------------------------------------------------
+
+## Write a 3 frame animated GIF: black, plasma, black (0.2 s each)
+blankOpening() {
+  convert -size 120x80 xc:black \( "$DATA/plasma.png" -resize 120x80! \) \
+    -size 120x80 xc:black -set delay 20 -loop 0 "$1"
+}
+
+@test "frameDurations reads GIF, WebP and AVIF frame times" {
+  blankOpening anim.gif
+  run frameDurations anim.gif GIF
+  assert_output "$(printf '0.200000\n0.200000\n0.200000')"
+  convert anim.gif anim.webp
+  run frameDurations anim.webp WEBP
+  assert_output "$(printf '0.20\n0.20\n0.20')"
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
+    -pix_fmt yuv420p anim.avif
+  run frameDurations anim.avif AVIF
+  assert_output "$(printf '0.200000\n0.200000\n0.200000')"
+}
+
+@test "frameDurations treats a WebP delay of 0 as 0.1 seconds" {
+  convert -size 20x20 xc:red xc:blue -set delay 0 anim.webp
+  run frameDurations anim.webp WEBP
+  assert_output "$(printf '0.10\n0.10')"
+}
+
+@test "frameDurations gives nothing for still formats" {
+  run frameDurations "$DATA/plasma.png" PNG
+  assert_output ""
+}
+
+@test "imageFrames counts animated AVIF frames, which ImageMagick can't" {
+  blankOpening anim.gif
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
+    -pix_fmt yuv420p anim.avif
+  run identify -format '%n' anim.avif
+  assert_output 1
+  run imageFrames anim.avif
+  assert_output 3
+  run imageFrames "$DATA/plasma.png"
+  assert_output 1
+}
+
+@test "middleFrame picks the frame on screen halfway through" {
+  run middleFrame <<< "$(printf '0.1\n0.1\n0.1\n0.1')"
+  assert_output 2
+  ## A long first frame covers the midpoint
+  run middleFrame <<< "$(printf '3\n0.1\n0.1')"
+  assert_output 0
+  run middleFrame <<< "$(printf '0.1\n0.1\n3')"
+  assert_output 2
+  ## No durations: the middle by count
+  run middleFrame <<< "$(printf '0\n0\n0\n0\n0')"
+  assert_output 2
+}
+
+@test "animations are fingerprinted from the middle frame, not the first" {
+  blankOpening anim.gif
+  convert "$DATA/plasma.png" -resize 120x80! middle.png
+  fingerprintsMatch "$(imageFingerprint anim.gif)" \
+    "$(imageFingerprint middle.png)" 95
+}
+
+@test "animation fingerprints agree across GIF, WebP and AVIF" {
+  blankOpening anim.gif
+  convert anim.gif anim.webp
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
+    -pix_fmt yuv420p anim.avif
+  local fp copy
+  fp="$(imageFingerprint anim.gif)"
+  for copy in anim.webp anim.avif; do
+    fingerprintsMatch "$fp" "$(imageFingerprint "$copy")" 95
+  done
+}
+
+@test "animation frames are fingerprinted on white" {
+  ## A black disc on a transparent background, in every frame
+  convert -size 120x80 xc:none -fill black -draw 'circle 60,40 60,10' \
+    -duplicate 2 -set delay 20 -set dispose background disc.gif
+  convert -size 120x80 xc:white -fill black -draw 'circle 60,40 60,10' white.png
+  fingerprintsMatch "$(imageFingerprint disc.gif)" \
+    "$(imageFingerprint white.png)" 95
+}
+
+@test "imageFingerprint keeps STDIN for the caller" {
+  blankOpening anim.gif
+  local line
+  printf 'anim.gif\n/second/line\n' | {
+    read -r line
+    imageFingerprint "$line" > /dev/null
+    read -r line
+    assert_equal "$line" /second/line
+  }
+}
+
 # --- fingerprints ----------------------------------------------------
 
 @test "imageFingerprint gives 44 base64 characters" {

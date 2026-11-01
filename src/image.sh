@@ -9,7 +9,12 @@ declare -gA _silImageSuffix=(
     [WEBP]=webp
     [BMP]=bmp
     [TIFF]=tif
+    [AVIF]=avif
 )
+
+## ffmpeg filter placing frames on a white background, so transparency
+## doesn't depend on whatever color hides beneath it
+declare -g _silFlattenVf="split[a][b];[a]drawbox=t=fill:c=white:replace=1[bg];[bg][b]overlay=format=auto,format=rgb24"
 
 #######################################
 # Determine an image's format from its content, using ImageMagick.
@@ -38,6 +43,35 @@ function imageFormat {
 }
 
 #######################################
+# List the display time of each frame of an animation, for the formats
+# whose animations SIL handles. ffmpeg reads GIF and AVIF (ImageMagick
+# sees only the first frame of an animated AVIF); ImageMagick reads
+# WebP (ffmpeg can't decode animated WebP). A WebP delay of 0 is shown
+# by browsers as 0.1 seconds, as ffmpeg already does for GIF.
+# ffmpeg and ffprobe are kept off STDIN throughout, as they would
+# otherwise consume input meant for the caller (eg a while-read loop).
+# Arguments:
+#   $1 - Image path
+#   $2 - Format, as from imageFormat
+# Outputs:
+#   One duration in seconds per frame to STDOUT; nothing for other
+#   formats or unreadable files
+#######################################
+function frameDurations {
+    case "$2" in
+        GIF|AVIF)
+            ffprobe -v error -select_streams v:0 \
+                -show_entries packet=duration_time -of csv=p=0 "file:$1" \
+                < /dev/null 2> /dev/null
+            ;;
+        WEBP)
+            identify -format '%T\n' "$1" 2> /dev/null \
+                | awk '{ printf "%.2f\n", ($1 > 0 ? $1 : 10) / 100 }'
+            ;;
+    esac
+}
+
+#######################################
 # Count the frames in an image (>1 for animations).
 # Arguments:
 #   $1 - Image path
@@ -45,7 +79,65 @@ function imageFormat {
 #   Frame count to STDOUT (empty if unreadable)
 #######################################
 function imageFrames {
-    identify -format '%n\n' "$1" 2> /dev/null | head -n 1
+    local format n
+    format="$(identify -format '%m' "$1[0]" 2> /dev/null)"
+    n="$(frameDurations "$1" "$format" | wc -l)"
+    if (( n == 0 )); then
+        n="$(identify -format '%n\n' "$1" 2> /dev/null | head -n 1)"
+    fi
+    printf '%s\n' "$n"
+}
+
+#######################################
+# Pick the frame on screen halfway through an animation. Animations
+# often open on a blank or title frame, so this represents them better
+# than the first frame. If no frame has a duration, the middle frame by
+# count is used.
+# Arguments:
+#   STDIN - Frame durations, one per line (see frameDurations)
+# Outputs:
+#   Zero-based frame index to STDOUT
+#######################################
+function middleFrame {
+    awk '{ d[NR - 1] = $1; total += $1 }
+        END {
+            if (total <= 0) { print int(NR / 2); exit }
+            for (i = 0; i < NR; i++) {
+                if (start + d[i] > total / 2) { print i; exit }
+                start += d[i]
+            }
+            print NR - 1
+        }'
+}
+
+#######################################
+# Write the frame of an image that represents it for fingerprinting:
+# for animations, the middle frame (middleFrame) flattened onto white;
+# otherwise the first frame. Profiles and metadata are stripped, as
+# findimagedupes rejects some harmless flaws (eg "iCCP: known incorrect
+# sRGB profile").
+# Arguments:
+#   $1 - Image path
+#   $2 - Output PNG path
+# Returns:
+#   0 on success, 1 if the frame could not be extracted
+#######################################
+function fingerprintFrame {
+    local format durations k
+    format="$(identify -format '%m' "$1[0]" 2> /dev/null)"
+    durations="$(frameDurations "$1" "$format")"
+    if (( $(grep -c . <<< "$durations") <= 1 )); then
+        convert "$1[0]" -strip "$2" 2> /dev/null
+        return
+    fi
+    k="$(middleFrame <<< "$durations")"
+    if [[ "$format" == WEBP ]]; then
+        convert "$1" -coalesce -background white -alpha remove miff:- 2> /dev/null \
+            | convert "miff:-[$k]" -strip "$2" 2> /dev/null
+    else
+        ffmpeg -v error -y -i "file:$1" -vf "$_silFlattenVf,select=eq(n\,$k)" \
+            -fps_mode passthrough -frames:v 1 "file:$2" < /dev/null 2> /dev/null
+    fi
 }
 
 #######################################
@@ -63,9 +155,7 @@ function hasTransparency {
 
 #######################################
 # Compute an image's raw findimagedupes fingerprint: 256 bits, as 44
-# base64 characters. The first frame is fingerprinted from a temporary
-# copy stripped of profiles and metadata, as findimagedupes rejects some
-# harmless flaws (eg "iCCP: known incorrect sRGB profile").
+# base64 characters, from the frame chosen by fingerprintFrame.
 # Arguments:
 #   $1 - Image path
 # Outputs:
@@ -76,7 +166,7 @@ function hasTransparency {
 function imageFingerprint {
     local tmp fp
     tmp="$(silMktemp .png)" || return 1
-    if convert "$1[0]" -strip "$tmp" 2> /dev/null; then
+    if fingerprintFrame "$1" "$tmp"; then
         fp="$(findimagedupes --no-compare --verbosity=fingerprint -- "$tmp" \
             2> /dev/null | cut -d' ' -f1)"
     fi

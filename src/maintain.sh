@@ -169,6 +169,7 @@ function retargetSources {
 function libraryRebuild {
     requireTool convert imagemagick "inspect and fingerprint stored images"
     requireTool findimagedupes findimagedupes "fingerprint stored images"
+    requireTool ffmpeg ffmpeg "fingerprint stored animations (GIF, AVIF)"
     local rv=0
     msgInfo "Rebuilding library: $SIL_LIBRARY"
     libraryEnsureFiles "$SIL_LIBRARY"

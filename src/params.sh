@@ -12,6 +12,7 @@
 ##   size    - bytes, from eg '500kb', '2mb', '1.5m'
 ##   percent - integer 0-100, from eg '25' or '25%'
 ##   number  - positive decimal, eg '2' or '1.5'
+##   level   - HIGH, MEDIUM, LOW or OFF, from eg 'hi', 'm', 'Lo', 'no'
 declare -gA _silParamType=(
     [LIBRARY]=value
     [TAG]=value
@@ -19,6 +20,7 @@ declare -gA _silParamType=(
     [SHRINK]=size
     [SHRINKTRIGGER]=number
     [SHRINKMINSAVE]=percent
+    [SHRINKVID]=level
     [FLATTEN]=flag
     [REFETCH]=flag
     [THRESHOLD]=percent
@@ -38,6 +40,7 @@ declare -gA _silParamDefault=(
     [SHRINK]=0
     [SHRINKTRIGGER]=2
     [SHRINKMINSAVE]=25
+    [SHRINKVID]=OFF
     [FLATTEN]=0
     [REFETCH]=0
     [THRESHOLD]=90
@@ -144,6 +147,15 @@ function normalizeParamValue {
             [[ "$value" =~ ^[0-9]*\.?[0-9]+$ && "$value" =~ [1-9] ]] || return 1
             printf '%s\n' "$value"
             ;;
+        level)
+            case "${value,,}" in
+                high|hi|h)          printf 'HIGH\n' ;;
+                medium|med|m)       printf 'MEDIUM\n' ;;
+                low|lo|l)           printf 'LOW\n' ;;
+                off|0|no|false)     printf 'OFF\n' ;;
+                *)                  return 1 ;;
+            esac
+            ;;
         *)
             printf '%s\n' "$value"
             ;;
@@ -244,6 +256,7 @@ function setParamToken {
             [size]="500kb, 2mb, 1.5m"
             [percent]="25 or 25%"
             [number]="2 or 1.5"
+            [level]="HIGH, MEDIUM, LOW (or H, M, L) or OFF"
         )
         msgError "[!] Invalid $type for $canon: '$value'
     Expected eg: ${example[$type]}
