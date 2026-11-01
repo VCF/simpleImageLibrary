@@ -84,6 +84,7 @@ function fetchURL {
     fi
 
     errTxt="$(silMktemp)" || fetchFailed STOREFAIL "No temp space" || return 1
+    msgStatus "  Downloading from $host${cmd[*]:+ through Tor}"
     code="$("${cmd[@]}" curl --silent --show-error --location \
         --user-agent "$_silUserAgent" --connect-timeout 30 --max-time 300 \
         --output "$dest" --write-out '%{http_code}' -- "$url" 2> "$errTxt")"

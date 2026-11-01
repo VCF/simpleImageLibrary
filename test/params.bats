@@ -344,3 +344,17 @@ EOF
   assert_equal "$SIL_TAG" "cli"
   assert_equal "$SIL_THRESHOLD" 70
 }
+
+@test "showParams aligns on '=' and leaves out LIBRARY" {
+  SIL_LIBRARY=/some/lib
+  SIL_TAG=Humor
+  SIL_SHRINK=1024
+  SIL_THRESHOLD=90
+  run showParams
+  refute_output --partial "LIBRARY"
+  assert_output --partial " TAG = Humor"
+  assert_output --partial " SHRINK = 1024 (1.0 KB)"
+  ## Every '=' is in the same column
+  run awk '{ print index($0, " = ") }' <<< "$output"
+  assert_equal "$(sort -u <<< "$output" | wc -l)" 1
+}

@@ -49,8 +49,9 @@ assert_no_temp_files() {
 
 @test "files under SHRINK x SHRINKTRIGGER are not shrunk" {
   SIL_SHRINK=$(( 1024 * 1024 ))
-  run shrinkImage big.png kept
-  assert_output --partial "under the trigger"
+  shrinkImage big.png kept
+  assert_equal "$kept" big.png
+  [[ "$_silShrinkNote" == "As is ("*" < 2.0 MB)" ]]
   assert_no_temp_files
 }
 
@@ -63,19 +64,22 @@ assert_no_temp_files() {
   local bytes
   bytes="$(stat -c %s "$kept")"
   (( bytes <= SIL_SHRINK ))
+  [[ "$_silShrinkNote" == *" -> "*" KB (saved "*"%)" ]]
 }
 
 @test "too little saving keeps the original" {
   SIL_SHRINKMINSAVE=100
-  run shrinkImage big.png kept
-  assert_output --partial "only saved"
+  shrinkImage big.png kept
+  assert_equal "$kept" big.png
+  [[ "$_silShrinkNote" == "As is (saves only "*"% < SHRINKMINSAVE 100%)" ]]
   assert_no_temp_files
 }
 
 @test "transparent images are not shrunk without FLATTEN" {
   convert big.png -alpha set -channel A -evaluate set 50% +channel alpha.png
-  run shrinkImage alpha.png kept
-  assert_output --partial "Set FLATTEN"
+  shrinkImage alpha.png kept
+  assert_equal "$kept" alpha.png
+  [[ "$_silShrinkNote" == *"set FLATTEN"* ]]
   assert_no_temp_files
 }
 
@@ -84,6 +88,7 @@ assert_no_temp_files() {
   SIL_FLATTEN=1
   shrinkImage alpha.png kept
   assert_not_equal "$kept" alpha.png
+  [[ "$_silShrinkNote" == *", flattened onto white" ]]
   run hasTransparency "$kept"
   assert_failure
   ## Only the kept JPEG remains; the flattened copy is gone
@@ -105,8 +110,9 @@ assert_no_temp_files() {
 @test "animations are not shrunk without SHRINKVID" {
   makeAnimation anim.gif
   SIL_SHRINK=1
-  run shrinkImage anim.gif kept
-  assert_output --partial "only shrunk with SHRINKVID"
+  shrinkImage anim.gif kept
+  assert_equal "$kept" anim.gif
+  assert_equal "$_silShrinkNote" "As is (animated; SHRINKVID is off)"
   assert_no_temp_files
 }
 
@@ -138,6 +144,7 @@ assert_no_temp_files() {
   assert_not_equal "$kept" anim.gif
   run imageFormat "$kept"
   assert_output AVIF
+  [[ "$_silShrinkNote" == *" AVIF (saved "* ]]
   assert_equal "$(frameDurations "$kept" AVIF)" "$(frameDurations anim.gif GIF)"
   (( $(stat -c %s "$kept") < $(stat -c %s anim.gif) ))
 }
@@ -170,18 +177,19 @@ assert_no_temp_files() {
     -alpha set -channel A -fx 'i < w/2 ? 0 : 1' +channel -duplicate 3 \
     -set delay 20 -set dispose background anim.gif
   SIL_SHRINKVID=LOW
-  run shrinkImage anim.gif kept
-  assert_success
+  shrinkImage anim.gif kept 2> err.txt
+  run cat err.txt
   assert_output --partial "transparency, which AVIF will lose"
-  assert_output --partial "Shrunk"
+  [[ "$_silShrinkNote" == *" AVIF (saved "* ]]
 }
 
 @test "SHRINKVID keeps the original when it saves too little" {
   makeAnimation anim.gif
   SIL_SHRINKVID=HIGH
   SIL_SHRINKMINSAVE=100
-  run shrinkImage anim.gif kept
-  assert_output --partial "only saved"
+  shrinkImage anim.gif kept
+  assert_equal "$kept" anim.gif
+  [[ "$_silShrinkNote" == "As is (saves only "* ]]
   assert_no_temp_files
 }
 
@@ -190,8 +198,9 @@ assert_no_temp_files() {
   ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
     -pix_fmt yuv420p anim.avif
   SIL_SHRINKVID=LOW
-  run shrinkImage anim.avif kept
-  assert_output --partial "animated AVIF images are left unchanged"
+  shrinkImage anim.avif kept
+  assert_equal "$kept" anim.avif
+  assert_equal "$_silShrinkNote" "As is (animated AVIF)"
   assert_no_temp_files
 }
 

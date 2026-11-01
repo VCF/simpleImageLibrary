@@ -45,6 +45,12 @@ else
 fi
 showParams
 
+## One date for the whole run, even past midnight (TAG-02)
+_silToday="$(todayDate)"
+if (( ${#_silArgs[@]} )) && ! flagIsSet REMOVE && [[ -z "${SIL_UNTAG:-}" ]]; then
+    msgInfo "New images will be tagged $_silDateTag/${_silToday:0:4}/$_silToday"
+fi
+
 ## Exit status is 1 if anything failed, for use in scripts
 status=0
 

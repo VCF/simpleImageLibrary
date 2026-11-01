@@ -530,21 +530,29 @@ function reloadParamsForLibrary {
 }
 
 #######################################
-# Report current parameter values to the user (UI-01).
+# Report current parameter values to the user (UI-01), aligned on the
+# '=' with names right justified. LIBRARY is left out, as it is
+# reported separately.
 # Globals:
 #   _silParamType, SIL_<NAME>
 # Outputs:
 #   One msgInfo line per set parameter, to STDERR
 #######################################
 function showParams {
-    local canon var
+    local canon var width=0
+    local -a shown=()
     for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
         var="SIL_$canon"
-        [[ -n "${!var+x}" ]] || continue
+        [[ "$canon" != LIBRARY && -n "${!var+x}" ]] || continue
+        shown+=("$canon")
+        (( ${#canon} > width )) && width=${#canon}
+    done
+    for canon in "${shown[@]}"; do
+        var="SIL_$canon"
         if [[ "${_silParamType[$canon]}" == size && "${!var}" != 0 ]]; then
-            msgInfo "  $canon = ${!var} ($(humanSize "${!var}"))"
+            msgInfo "$(printf '  %*s = %s (%s)' "$width" "$canon" "${!var}" "$(humanSize "${!var}")")"
         else
-            msgInfo "  $canon = ${!var}"
+            msgInfo "$(printf '  %*s = %s' "$width" "$canon" "${!var}")"
         fi
     done
 }

@@ -87,6 +87,7 @@ function ingestFile {
     local format rc kept fp match hash mime
     _silOutcomeHash=""
 
+    msgStatus "  Checking image"
     format="$(imageFormat "$file")"
     rc=$?
     case "$rc" in
@@ -104,22 +105,24 @@ function ingestFile {
         setOutcome SHRINKFAIL "$_silShrinkFailDetail"
         return
     fi
+    msgStatus "  Fingerprinting"
     if ! fp="$(imageFingerprint "$kept")"; then
         [[ "$kept" != "$file" ]] && rm -f -- "$kept"
         setOutcome BADIMAGE "Could not be fingerprinted"
         return
     fi
 
+    msgStatus "  Comparing with library"
     match="$(indexMatch "$fp" "$SIL_THRESHOLD" | head -n 1)"
     if [[ -n "$match" ]]; then
         _silOutcomeHash="${match#* }"
-        setOutcome DUPE "${_silOutcomeHash:0:12}, already in library (${match%% *} of 256 bits differ)"
+        setOutcome DUPE "${_silOutcomeHash:0:12} - already in library (${match%% *} of 256 bits differ)"
     elif storeImage "$kept" hash "$fp"; then
         _silOutcomeHash="$hash"
         if [[ "$kept" != "$file" ]]; then
-            setOutcome SHRINK "${hash:0:12}"
+            setOutcome SHRINK "${hash:0:12}${_silShrinkNote:+ - $_silShrinkNote}"
         else
-            setOutcome ADDED "${hash:0:12}"
+            setOutcome ADDED "${hash:0:12}${_silShrinkNote:+ - $_silShrinkNote}"
         fi
     else
         setOutcome STOREFAIL "Could not write to the library"
@@ -149,7 +152,8 @@ function knownImage {
             ;;
         path)
             [[ -f "$2" && -r "$2" ]] || return 1
-            hash="$(fileHash "$2")" && findStoredImage "$hash" > /dev/null || return 1
+            msgStatus "  Looking for the same file in the library"
+        hash="$(fileHash "$2")" && findStoredImage "$hash" > /dev/null || return 1
             printf '%s\n' "$hash"
             ;;
         *)
@@ -181,7 +185,7 @@ function updateStored {
         reportOutcome STOREFAIL "Could not remove ${hash:0:12} from the library" "$hash"
         return 1
     fi
-    reportOutcome FOUND "${hash:0:12}${2:+, $2}" "$hash"
+    reportOutcome FOUND "${hash:0:12}${2:+ - $2}" "$hash"
     applyTags "$hash" || rv=1
     applyUntags "$hash" || rv=1
     return "$rv"
@@ -243,7 +247,7 @@ function processURI {
     ## A URL already recorded as a source is a DUPE, without downloading,
     ## unless REFETCH. Not for local files: they are recorded by name only
     if [[ "$kind" == url ]] && ! flagIsSet REFETCH && hash="$(sourceLookup "$uri")"; then
-        reportOutcome DUPE "${hash:0:12}, a known source, not downloaded (REFETCH to check)" "$hash"
+        reportOutcome DUPE "${hash:0:12} - known source, not downloaded (REFETCH to check)" "$hash"
         applyTags "$hash"
         return
     fi

@@ -88,7 +88,6 @@ function parseManifest {
             fi
             setParamToken "$line" "$path line $lineNum"
             tokens+=("$line")
-            msgInfo "  Set $canon (line $lineNum)"
         elif looksLikeParam "$line" && [[ ! -e "$base/$line" ]]; then
             msgWarn "[!] Unrecognized parameter '$(trim "${line%%=*}")' - ignored
     Found in: $path line $lineNum"

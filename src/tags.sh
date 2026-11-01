@@ -178,8 +178,6 @@ function linkDays {
 #   SIL_LIBRARY, _silDateTag
 # Arguments:
 #   $1 - Image hash
-# Outputs:
-#   The date applied, to STDERR
 # Returns:
 #   0 on success, 1 if the link can't be made
 #######################################
@@ -201,8 +199,7 @@ function dateTagImage {
         [[ -n "$prev" ]] && linkDays "$prev" "$dir"
         [[ -n "$next" ]] && linkDays "$dir" "$next"
     fi
-    linkImageInto "$1" "$(realpath -- "$dir")" || return 1
-    msgInfo "  Dated: $day"
+    linkImageInto "$1" "$(realpath -- "$dir")"
 }
 
 #######################################
@@ -297,18 +294,21 @@ function parseUserTags {
 # Arguments:
 #   $1 - Image hash
 # Outputs:
-#   Applied tags, and problems, to STDERR
+#   Applied tags, marking any the image already had '(existed)', and
+#   problems, to STDERR
 # Returns:
 #   0 on success, 1 if any tag could not be applied
 #######################################
 function applyTags {
-    local tags tag rv=0 applied=""
+    local tags tag link existed rv=0 applied=""
     [[ -n "${SIL_TAG:-}" ]] || return 0
     tags="$(parseUserTags "$SIL_TAG")" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
+        existed=""
+        link="$(tagLinkPath "$1" "$tag")" && [[ -L "$link" ]] && existed=" (existed)"
         if tagImage "$1" "$tag"; then
-            applied="${applied:+$applied, }$tag"
+            applied="${applied:+$applied, }$tag$existed"
         else
             msgWarn "[!] Could not apply tag: $tag"
             rv=1
@@ -366,6 +366,25 @@ function pruneTagFolder {
 }
 
 #######################################
+# Path a stored image's link would have in an existing tag's folder,
+# whether or not the link exists. Nothing is created.
+# Arguments:
+#   $1 - Image hash
+#   $2 - Tag path, eg Animal/Dog
+# Outputs:
+#   The link path to STDOUT
+# Returns:
+#   0 on success, 1 if the tag folder doesn't exist or the image isn't
+#   stored
+#######################################
+function tagLinkPath {
+    local dir image
+    dir="$(tagFolder "$2" find)" || return 1
+    image="$(findStoredImage "$1")" || return 1
+    printf '%s\n' "$dir/$(basename -- "$image")"
+}
+
+#######################################
 # Remove a tag from a stored image: its link in the tag's folder. Tags
 # below it (eg Animal/Dog for Animal) are not affected. A folder left
 # empty is removed (pruneTagFolder).
@@ -376,13 +395,10 @@ function pruneTagFolder {
 #   0 if removed, 1 if the image didn't have the tag
 #######################################
 function untagImage {
-    local dir image link
-    dir="$(tagFolder "$2" find)" || return 1
-    image="$(findStoredImage "$1")" || return 1
-    link="$dir/$(basename -- "$image")"
-    [[ -L "$link" ]] || return 1
+    local link
+    link="$(tagLinkPath "$1" "$2")" && [[ -L "$link" ]] || return 1
     rm -f -- "$link"
-    pruneTagFolder "$dir"
+    pruneTagFolder "$(dirname -- "$link")"
 }
 
 #######################################

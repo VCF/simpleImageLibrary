@@ -15,6 +15,10 @@ declare -g _silShrinkVidVerify=90
 ## Set when shrinking is rejected (SHRINKFAIL): why, for the outcome
 declare -g _silShrinkFailDetail=""
 
+## Set by shrinkImage: what shrinking did, or why it left the image as
+## is, for the outcome line. Empty when shrinking is off
+declare -g _silShrinkNote=""
+
 ## AV1 quality (crf, lower is better) for each SHRINKVID level. Measured
 ## on seven sample animations (19 KB - 100 MB), the AVIF was 4-60% of the
 ## original GIF at HIGH, 2-45% at MEDIUM and 1-30% at LOW. Even LOW kept
@@ -39,7 +43,7 @@ declare -gA _silShrinkVidCrf=(
 #   $3 - Output path for the shrunk JPEG
 #   $4 - Size of the original, in bytes
 # Outputs:
-#   Progress messages to STDERR
+#   Warnings to STDERR
 # Returns:
 #   0 if the shrunk JPEG should be kept; 1 to keep the original instead;
 #   2 if the shrunk JPEG failed its check (see _silShrinkFailDetail), so
@@ -49,14 +53,15 @@ function encodeShrunk {
     local src="$1" ref="$2" out="$3" srcBytes="$4"
     local errTxt
     if [[ "$ref" != "$src" ]]; then
+        msgStatus "  Flattening transparency onto white"
         if ! errTxt="$(convert "${src}[0]" -background white -flatten "$ref" 2>&1)"; then
             msgWarn "[!] ImageMagick could not flatten the image, keeping original
     $errTxt"
             return 1
         fi
-        msgInfo "  Flattened transparency onto white (FLATTEN)"
     fi
 
+    msgStatus "  Shrinking $(humanSize "$srcBytes") to JPEG"
     if ! errTxt="$(convert "${ref}[0]" -define "jpeg:extent=$SIL_SHRINK" "$out" 2>&1)" \
         || [[ ! -s "$out" ]]; then
         msgWarn "[!] ImageMagick could not shrink the image, keeping original
@@ -64,14 +69,17 @@ function encodeShrunk {
         return 1
     fi
 
-    verifyShrunk "$ref" "$out" "$srcBytes" SHRINK "$_silShrinkVerify"
+    verifyShrunk "$ref" "$out" "$srcBytes" SHRINK "$_silShrinkVerify" || return
+    [[ "$ref" != "$src" ]] && _silShrinkNote+=", flattened onto white"
+    return 0
 }
 
 #######################################
 # Check a shrunk copy saves at least SHRINKMINSAVE and still matches its
 # reference.
 # Globals:
-#   SIL_SHRINKMINSAVE, _silParamDefault; sets _silShrinkFailDetail
+#   SIL_SHRINKMINSAVE, _silParamDefault; sets _silShrinkNote,
+#   _silShrinkFailDetail
 # Arguments:
 #   $1 - Reference image the shrunk copy should match
 #   $2 - Shrunk copy
@@ -80,7 +88,7 @@ function encodeShrunk {
 #        advice when the check fails
 #   $5 - Similarity percentage the copy must match at
 # Outputs:
-#   Progress messages to STDERR
+#   A warning to STDERR if the copy fails its check
 # Returns:
 #   0 if the shrunk copy should be kept; 1 to keep the original instead;
 #   2 if the shrunk copy failed its check (see _silShrinkFailDetail)
@@ -91,10 +99,11 @@ function verifyShrunk {
     outBytes="$(stat -c %s -- "$out")"
     saved=$(( 100 * (srcBytes - outBytes) / srcBytes ))
     if (( saved < ${SIL_SHRINKMINSAVE:-25} )); then
-        msgInfo "  Not shrinking: only saved ${saved}%, SHRINKMINSAVE is ${SIL_SHRINKMINSAVE}%"
+        _silShrinkNote="As is (saves only ${saved}% < SHRINKMINSAVE ${SIL_SHRINKMINSAVE:-25}%)"
         return 1
     fi
     local fpRef fpOut bits
+    msgStatus "  Checking the shrunk copy still matches"
     if ! fpRef="$(imageFingerprint "$ref")" || ! fpOut="$(imageFingerprint "$out")"; then
         _silShrinkFailDetail="Shrunk copy could not be fingerprinted to check it"
         return 2
@@ -108,7 +117,9 @@ function verifyShrunk {
         return 2
     fi
 
-    msgInfo "  Shrunk $(humanSize "$srcBytes") -> $(humanSize "$outBytes") (saved ${saved}%)"
+    _silShrinkNote="$(humanSize "$srcBytes") -> $(humanSize "$outBytes")"
+    [[ "$param" == SHRINKVID ]] && _silShrinkNote+=" AVIF"
+    _silShrinkNote+=" (saved ${saved}%)"
 }
 
 #######################################
@@ -124,7 +135,7 @@ function verifyShrunk {
 #   $3 - Output path for the AVIF
 #   $4 - Size of the original, in bytes
 # Outputs:
-#   Progress messages to STDERR
+#   Warnings to STDERR
 # Returns:
 #   As verifyShrunk: 0 keep the AVIF, 1 keep the original, 2 the AVIF
 #   failed its check
@@ -136,6 +147,7 @@ function encodeAnimation {
     durations="$(frameDurations "$src" "$format")"
 
     if [[ "$format" == WEBP ]]; then
+        msgStatus "  Extracting animation frames"
         ## ffmpeg can't decode animated WebP: ImageMagick writes the frames,
         ## and an ffconcat list gives ffmpeg each frame's duration. A frame
         ## rate of 100 keeps WebP's centisecond times exact. ffmpeg gives
@@ -158,6 +170,7 @@ function encodeAnimation {
         input=(-i "file:$src")
     fi
 
+    msgStatus "  Shrinking $(humanSize "$srcBytes") animation to AVIF (SHRINKVID=$SIL_SHRINKVID)"
     errTxt="$(ffmpeg -v error -y "${input[@]}" -fps_mode passthrough \
         -vf "$_silFlattenVf,pad=ceil(iw/2)*2:ceil(ih/2)*2" \
         -c:v libaom-av1 -crf "${_silShrinkVidCrf[$SIL_SHRINKVID]}" -b:v 0 \
@@ -178,26 +191,26 @@ function encodeAnimation {
 # (SHRINKVID). Other animations, eg already AVIF, are left unchanged.
 # Transparency is lost (placed on white), with a warning.
 # Globals:
-#   SIL_SHRINKVID
+#   SIL_SHRINKVID; sets _silShrinkNote
 # Arguments:
 #   $1 - Animation path
 #   $2 - Name of the variable to receive the path to keep, as for
 #        shrinkImage
 # Outputs:
-#   Progress messages to STDERR
+#   Warnings to STDERR
 # Returns:
 #   As shrinkImage; halts (msgError) if ffmpeg is missing
 #######################################
 function shrinkAnimation {
     local _src="$1" _resultVar="$2"
     if [[ "${SIL_SHRINKVID:-OFF}" == OFF ]]; then
-        msgInfo "  Not shrinking: animated images are only shrunk with SHRINKVID"
+        _silShrinkNote="As is (animated; SHRINKVID is off)"
         return 0
     fi
     local _format
     _format="$(imageFormat "$_src")"
     if [[ "$_format" != GIF && "$_format" != WEBP ]]; then
-        msgInfo "  Not shrinking: animated $_format images are left unchanged"
+        _silShrinkNote="As is (animated $_format)"
         return 0
     fi
     requireTool ffmpeg ffmpeg "shrink animations (SHRINKVID parameter)"
@@ -208,7 +221,6 @@ function shrinkAnimation {
     local _out _rc=0
     _out="$(silMktemp .avif)" || return 0
     _silShrinkFailDetail=""
-    msgInfo "  Shrinking animation to AVIF (SHRINKVID=$SIL_SHRINKVID)"
     encodeAnimation "$_src" "$_format" "$_out" "$(stat -c %s -- "$_src")" || _rc=$?
     if (( _rc == 0 )); then
         printf -v "$_resultVar" '%s' "$_out"
@@ -230,14 +242,14 @@ function shrinkAnimation {
 # removes when done; the original is never modified.
 # Globals:
 #   SIL_SHRINK, SIL_SHRINKVID, SIL_SHRINKTRIGGER, SIL_SHRINKMINSAVE,
-#   SIL_FLATTEN
+#   SIL_FLATTEN; sets _silShrinkNote
 # Arguments:
 #   $1 - Image path
 #   $2 - Name of the variable to receive the path to keep (the shrunk
 #        copy or the original). A variable rather than STDOUT so that
 #        missing tools can halt (msgError) instead of dying in a subshell
 # Outputs:
-#   Progress messages to STDERR
+#   Warnings to STDERR
 # Returns:
 #   0 normally, with the path to keep set; 2 if the shrunk copy failed its
 #   check (see _silShrinkFailDetail), so the image should not be added;
@@ -247,6 +259,7 @@ function shrinkAnimation {
 function shrinkImage {
     local _src="$1" _resultVar="$2"
     local _target="${SIL_SHRINK:-0}"
+    _silShrinkNote=""
     printf -v "$_resultVar" '%s' "$_src"
     (( _target > 0 )) || [[ "${SIL_SHRINKVID:-OFF}" != OFF ]] || return 0
 
@@ -265,15 +278,14 @@ function shrinkImage {
     _trigger="$(awk -v t="$_target" -v f="${SIL_SHRINKTRIGGER:-2}" \
         'BEGIN { printf "%d", t * f }')"
     if (( _srcBytes < _trigger )); then
-        msgInfo "  Not shrinking: $(humanSize "$_srcBytes") is under the trigger of $(humanSize "$_trigger")"
+        _silShrinkNote="As is ($(humanSize "$_srcBytes") < $(humanSize "$_trigger"))"
         return 0
     fi
 
     local _ref="$_src"
     if hasTransparency "$_src"; then
         if ! flagIsSet FLATTEN; then
-            msgInfo "  Not shrinking: image has transparency, which JPEG would lose
-    Set FLATTEN to shrink it onto a white background instead"
+            _silShrinkNote="As is (transparent; set FLATTEN to shrink onto white)"
             return 0
         fi
         _ref="$(silMktemp .png)" || return 0

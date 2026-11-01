@@ -43,6 +43,12 @@ The file is expected to be in src, and should not include '.sh'"
 
 srcLib "colors"
 
+## 1 if STDERR is a terminal, where msgStatus can show transient lines
+## and later messages overwrite them; 0 for logs and pipes. Tests may set
+## it
+declare -g _silStatusTty=0
+[[ -t 2 ]] && _silStatusTty=1
+
 function ansiStart {
     ## Starting ANSI codes
     ## $1 - additional codes to add, presumably colors
@@ -65,7 +71,29 @@ function ansiEnd {
 #######################################
 function msg {
     local col="${1:-$FgGreen}"
+    ## Overwrite any status line left by msgStatus
+    (( _silStatusTty )) && >&2 printf '\r\033[K'
     >&2 echo -e "$(ansiStart "$col")${2}$(ansiEnd)"
+}
+
+#######################################
+# Show a transient status line describing current activity: the next
+# message (or status) overwrites it. Cut to the terminal's width, as a
+# wrapped line can't be fully overwritten. Shown only when STDERR is a
+# terminal.
+# Globals:
+#   _silStatusTty
+# Arguments:
+#   $1 - The text to show
+# Outputs:
+#   Status line, without a newline, to STDERR
+#######################################
+function msgStatus {
+    (( _silStatusTty )) || return 0
+    local size cols=80
+    size="$(stty size 0<&2 2> /dev/null)" && cols="${size#* }"
+    >&2 printf '\r\033[K%s%s%s' "$(ansiStart "$FgCyan")" \
+        "${1:0:cols-1}" "$(ansiEnd)"
 }
 
 #######################################

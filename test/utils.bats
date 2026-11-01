@@ -56,3 +56,16 @@ setup() {
   run humanSize 1572864
   assert_output "1.5 MB"
 }
+
+@test "msgStatus shows only on a terminal; the next message overwrites it" {
+  _silStatusTty=0
+  run msgStatus "Working"
+  assert_output ""
+  _silStatusTty=1
+  run msgStatus "Working"
+  assert_output --partial $'\r\033[K'
+  assert_output --partial "Working"
+  refute_output --partial $'\n'
+  run msgInfo "Done"
+  assert_output --regexp $'^\r\033\\[K'
+}

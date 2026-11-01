@@ -30,14 +30,16 @@ declare -gA _silMoved=()
 # Globals:
 #   SIL_LIBRARY, _silStoredNameRe; sets _silMoved
 # Outputs:
-#   One line per change, and problems, to STDERR
+#   Status lines, one line per change, and problems, to STDERR
 # Returns:
 #   0 on success, 1 if any file could not be repaired
 #######################################
 function repairStoredImages {
-    local f name format hash want failed=0
+    local f name format hash want failed=0 n=0
     _silMoved=()
     while IFS= read -r f; do
+        n=$(( n + 1 ))
+        msgStatus "  Checking name $n: ${f#"$SIL_LIBRARY"/}"
         name="$(basename -- "$f")"
         [[ "$name" =~ $_silStoredNameRe ]] || continue
         if ! format="$(imageFormat "$f")"; then
@@ -116,6 +118,7 @@ function indexRebuild {
         ## Unexpected files are reported by CHECK, not indexed
         [[ "$name" =~ $_silStoredNameRe ]] || continue
         hash="${BASH_REMATCH[1]}"
+        msgStatus "  Fingerprinting $(( count + failed + 1 )): ${f#"$SIL_LIBRARY"/}"
         if ! fp="$(imageFingerprint "$f")" || ! hex="$(fingerprintToHex "$fp")"; then
             msgWarn "[!] Could not fingerprint, left out of the index: ${f#"$SIL_LIBRARY"/}"
             failed=$(( failed + 1 ))
@@ -123,7 +126,6 @@ function indexRebuild {
         fi
         printf '%s %s\n' "$hash" "$hex" >> "$entries"
         count=$(( count + 1 ))
-        (( count % 100 == 0 )) && msgInfo "  $count images fingerprinted"
     done < <(listImageFiles)
 
     indexWriteSorted "$new" < "$entries"
@@ -192,7 +194,7 @@ function libraryRebuild {
 #   0 if no problems were found, 1 otherwise
 #######################################
 function libraryCheck {
-    local problems=0 indexProblems=0
+    local problems=0 indexProblems=0 n=0
     local -A stored=() indexed=()
     local f rel name hash dir expected actual
     local index line lineNum=0
@@ -210,6 +212,8 @@ function libraryCheck {
 
     while IFS= read -r f; do
         rel="${f#"$SIL_LIBRARY"/}"
+        n=$(( n + 1 ))
+        msgStatus "  Checking $n: $rel"
         name="$(basename -- "$f")"
         if [[ ! "$name" =~ $_silStoredNameRe ]]; then
             msgWarn "[!] Unexpected file in images: $rel

@@ -69,7 +69,10 @@ lib/tags/Animal/Dog"
   run applyTags "$hash"
   assert_success
   assert_output --partial "Tagged: Humor, Meme/Classic"
-  applyTags "$hash"
+  applyTags "$hash" 2> /dev/null
+  SIL_TAG="Humor, Fresh"
+  run applyTags "$hash"
+  assert_output --partial "Tagged: Humor (existed), Fresh"
   assert_link_exists "lib/tags/Humor/$hash.png"
   assert_link_exists "lib/tags/Meme/Classic/$hash.png"
 }
