@@ -1,7 +1,8 @@
 ## Recovering images from URIs - see REQ-03 and REQ-04
 
-## Identifies SIL to websites, as eg Wikimedia asks of automated tools
-declare -g _silUserAgent="SimpleImageLibrary/0.1 (+https://github.com/VCF/simpleImageLibrary)"
+## Generic UA matching Tor Browser's uniform one, so requests (Tor or not)
+## don't carry a SIL-specific fingerprint. Update with Tor Browser ESR bumps
+declare -g _silUserAgent="Mozilla/5.0 (Windows NT 10.0; rv:140.0) Gecko/20100101 Firefox/140.0"
 
 ## Set by fetchURI on failure: REQ-08 reason tag, and an explanation
 declare -g _silFetchReason="" _silFetchDetail=""

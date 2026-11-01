@@ -74,8 +74,9 @@ SIL will locate images through the following URIs:
 
 * URLs will be recovered via curl
   * Only `http` and `https` URLs are supported (`UNSUPPORTED` otherwise)
-  * Requests identify SIL with a User-Agent, as eg Wikimedia asks of
-    automated tools, and time out (30 seconds to connect, 5 minutes in all)
+  * Requests use a single generic User-Agent (matching Tor Browser's) for
+    both Tor and normal fetches, so SIL requests aren't fingerprinted
+  * Requests time out (30 seconds to connect, 5 minutes in all)
   * Images are initially recovered to a temp directory pending later processing
   * Onion URLs are always recovered with torsocks
   * All URLs can optionally be recovered with torsocks if the `TOR` parameter is set
