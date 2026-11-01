@@ -27,7 +27,7 @@ loadParams "$@"
 ## With no library yet, manifests may name one (REQ-06); anything else
 ## needs one now
 needLibrary=0
-if flagIsSet CHECK || flagIsSet REBUILD; then
+if flagIsSet CHECK || flagIsSet REBUILD || [[ -n "${SIL_LINK:-}" ]]; then
     needLibrary=1
 fi
 for arg in "${_silArgs[@]}"; do
@@ -55,9 +55,13 @@ fi
 if flagIsSet CHECK; then
     libraryCheck || status=1
 fi
+if [[ -n "${SIL_LINK:-}" ]]; then
+    msgInfo "LINK $SIL_LINK"
+    linkTag "$SIL_LINK" || status=1
+fi
 
 if (( ${#_silArgs[@]} == 0 )); then
-    if ! flagIsSet REBUILD && ! flagIsSet CHECK; then
+    if ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}" ]]; then
         msgInfo "No images or manifests given, nothing more to do"
     fi
     exit "$status"

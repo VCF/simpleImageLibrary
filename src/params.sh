@@ -16,6 +16,8 @@
 declare -gA _silParamType=(
     [LIBRARY]=value
     [TAG]=value
+    [UNTAG]=value
+    [REMOVE]=flag
     [LINK]=value
     [SHRINK]=size
     [SHRINKTRIGGER]=number
@@ -32,6 +34,7 @@ declare -gA _silParamType=(
 ## Alias -> canonical name
 declare -gA _silParamAlias=(
     [TAGS]=TAG
+    [UNTAGS]=UNTAG
     [USETOR]=TOR
 )
 
@@ -42,6 +45,7 @@ declare -gA _silParamDefault=(
     [SHRINKMINSAVE]=25
     [SHRINKVID]=OFF
     [FLATTEN]=0
+    [REMOVE]=0
     [REFETCH]=0
     [THRESHOLD]=90
     [TOR]=0
@@ -54,6 +58,8 @@ declare -gA _silParamDefault=(
 ##   global - allowed in ~/.sil.conf, but not a library's own sil.conf
 declare -gA _silParamScope=(
     [TAG]=image
+    [UNTAG]=image
+    [REMOVE]=image
     [LINK]=action
     [CHECK]=action
     [REBUILD]=action

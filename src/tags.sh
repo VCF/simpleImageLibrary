@@ -1,4 +1,4 @@
-## Tagging - see TAG in docs/parameters.md
+## Tagging - see TAG, UNTAG and LINK in docs/parameters.md
 
 srcLib "index"
 
@@ -40,6 +40,30 @@ function parseTags {
 }
 
 #######################################
+# Find the entry in a folder whose name matches a tag level
+# case-insensitively: a tag folder, or a link to one (LINK).
+# Arguments:
+#   $1 - Folder to look in
+#   $2 - Tag level, eg Dog
+# Outputs:
+#   The entry's path (not resolved) to STDOUT
+# Returns:
+#   0 if found, 1 otherwise
+#######################################
+function tagEntry {
+    local entry name
+    for entry in "$1"/*/; do
+        entry="${entry%/}"
+        name="${entry##*/}"
+        if [[ "${name,,}" == "${2,,}" && -d "$entry" ]]; then
+            printf '%s\n' "$entry"
+            return 0
+        fi
+    done
+    return 1
+}
+
+#######################################
 # Find or create the folder for a tag path. Each level reuses an existing
 # folder whose name matches case-insensitively, keeping its original
 # case; otherwise a folder is created with the case given.
@@ -47,27 +71,22 @@ function parseTags {
 #   SIL_LIBRARY
 # Arguments:
 #   $1 - Tag path, eg Animal/Dog
+#   $2 - 'find' to only find an existing folder, creating nothing
 # Outputs:
 #   The folder's physical path (symlinks resolved) to STDOUT
 # Returns:
-#   0 on success, 1 if a folder can't be created
+#   0 on success; 1 if a folder can't be created, or with 'find', doesn't
+#   exist
 #######################################
 function tagFolder {
-    local dir="$SIL_LIBRARY/tags" level entry name found
+    local dir="$SIL_LIBRARY/tags" level found
     local -a levels
     IFS='/' read -r -a levels <<< "$1"
     for level in "${levels[@]}"; do
-        found=""
-        for entry in "$dir"/*/; do
-            entry="${entry%/}"
-            name="${entry##*/}"
-            if [[ "${name,,}" == "${level,,}" ]]; then
-                found="$entry"
-                break
-            fi
-        done
-        if [[ -n "$found" && -d "$found" ]]; then
+        if found="$(tagEntry "$dir" "$level")"; then
             dir="$found"
+        elif [[ "${2:-}" == find ]]; then
+            return 1
         else
             dir="$dir/$level"
             mkdir -p -- "$dir" || return 1
@@ -240,6 +259,38 @@ function relinkDays {
 }
 
 #######################################
+# Split a TAG or UNTAG value into tag paths (parseTags), leaving out
+# any the user may not use: '.' and '..' levels, and the reserved date
+# tag (TAG-02).
+# Globals:
+#   _silDateTag
+# Arguments:
+#   $1 - TAG or UNTAG value
+# Outputs:
+#   One tag path per line to STDOUT; warnings for any left out to STDERR
+# Returns:
+#   0 if every tag was usable, 1 if any was left out
+#######################################
+function parseUserTags {
+    local tags tag top rv=0
+    if ! tags="$(parseTags "$1")"; then
+        msgWarn "[!] Ignored tag levels '.' and '..' in: $1"
+        rv=1
+    fi
+    while IFS= read -r tag; do
+        [[ -n "$tag" ]] || continue
+        top="${tag%%/*}"
+        if [[ "${top,,}" == "${_silDateTag,,}" ]]; then
+            msgWarn "[!] '$_silDateTag' is reserved for automatic date tags - ignored: $tag"
+            rv=1
+            continue
+        fi
+        printf '%s\n' "$tag"
+    done <<< "$tags"
+    return "$rv"
+}
+
+#######################################
 # Apply every tag in SIL_TAG to a stored image.
 # Globals:
 #   SIL_TAG
@@ -251,20 +302,11 @@ function relinkDays {
 #   0 on success, 1 if any tag could not be applied
 #######################################
 function applyTags {
-    local tags tag top rv=0 applied=""
+    local tags tag rv=0 applied=""
     [[ -n "${SIL_TAG:-}" ]] || return 0
-    if ! tags="$(parseTags "$SIL_TAG")"; then
-        msgWarn "[!] Ignored tag levels '.' and '..' in: $SIL_TAG"
-        rv=1
-    fi
+    tags="$(parseUserTags "$SIL_TAG")" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
-        top="${tag%%/*}"
-        if [[ "${top,,}" == "${_silDateTag,,}" ]]; then
-            msgWarn "[!] '$_silDateTag' is reserved for automatic date tags - ignored: $tag"
-            rv=1
-            continue
-        fi
         if tagImage "$1" "$tag"; then
             applied="${applied:+$applied, }$tag"
         else
@@ -274,4 +316,276 @@ function applyTags {
     done <<< "$tags"
     [[ -n "$applied" ]] && msgInfo "  Tagged: $applied"
     return "$rv"
+}
+
+#######################################
+# Test whether a folder is a day folder of the date tag (TAG-02).
+# Globals:
+#   SIL_LIBRARY, _silDateTag
+# Arguments:
+#   $1 - Folder (physical path)
+# Returns:
+#   0 if a day folder, 1 otherwise
+#######################################
+function isDayFolder {
+    local root
+    root="$(realpath -- "$SIL_LIBRARY/tags/$_silDateTag" 2> /dev/null)" || return 1
+    [[ "$1" =~ ^"$root"/[0-9]{4}/[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+}
+
+#######################################
+# Remove a tag folder left empty (eg by UNTAG or REMOVE), then any
+# parents left empty, up to the tags folder. A folder that a LINK points
+# to is kept, so the link isn't broken. A day folder of the date tag
+# counts as empty when only its next/previous links remain; the chain
+# of days is then relinked around it.
+# Globals:
+#   SIL_LIBRARY, _silDateTag
+# Arguments:
+#   $1 - Tag folder (physical path)
+#######################################
+function pruneTagFolder {
+    local dir="$1" root targets relink=0
+    root="$(realpath -- "$SIL_LIBRARY/tags")"
+    ## Links between days (TAG-02) don't count: only LINK aliases
+    targets="$(find "$root" -type l -xtype d ! -path "$root/$_silDateTag/*" \
+        -exec realpath -- {} + 2> /dev/null)"
+    while [[ "$dir" == "$root"/* && -d "$dir" ]]; do
+        grep -qxF -- "$dir" <<< "$targets" && break
+        if isDayFolder "$dir"; then
+            [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 \
+                ! -name 'next-*' ! -name 'previous-*')" ]] || break
+            find "$dir" -mindepth 1 -maxdepth 1 -type l -delete
+            relink=1
+        fi
+        rmdir -- "$dir" 2> /dev/null || break
+        dir="$(dirname -- "$dir")"
+    done
+    (( relink )) && relinkDays
+    return 0
+}
+
+#######################################
+# Remove a tag from a stored image: its link in the tag's folder. Tags
+# below it (eg Animal/Dog for Animal) are not affected. A folder left
+# empty is removed (pruneTagFolder).
+# Arguments:
+#   $1 - Image hash
+#   $2 - Tag path, eg Animal/Dog
+# Returns:
+#   0 if removed, 1 if the image didn't have the tag
+#######################################
+function untagImage {
+    local dir image link
+    dir="$(tagFolder "$2" find)" || return 1
+    image="$(findStoredImage "$1")" || return 1
+    link="$dir/$(basename -- "$image")"
+    [[ -L "$link" ]] || return 1
+    rm -f -- "$link"
+    pruneTagFolder "$dir"
+}
+
+#######################################
+# Remove every tag in SIL_UNTAG from a stored image.
+# Globals:
+#   SIL_UNTAG
+# Arguments:
+#   $1 - Image hash
+# Outputs:
+#   Removed tags, tags the image didn't have, and problems, to STDERR
+# Returns:
+#   0 on success, 1 if any tag could not be used
+#######################################
+function applyUntags {
+    local tags tag rv=0 removed="" absent=""
+    [[ -n "${SIL_UNTAG:-}" ]] || return 0
+    tags="$(parseUserTags "$SIL_UNTAG")" || rv=1
+    while IFS= read -r tag; do
+        [[ -n "$tag" ]] || continue
+        if untagImage "$1" "$tag"; then
+            removed="${removed:+$removed, }$tag"
+        else
+            absent="${absent:+$absent, }$tag"
+        fi
+    done <<< "$tags"
+    [[ -n "$removed" ]] && msgInfo "  Untagged: $removed"
+    [[ -n "$absent" ]] && msgInfo "  Did not have tag: $absent"
+    return "$rv"
+}
+
+#######################################
+# Ask the person running SIL a yes/no question, waiting for an answer.
+# The question is asked at the terminal, not on STDIN, which may be a
+# manifest being read.
+# Arguments:
+#   $1 - Question
+# Returns:
+#   0 for yes, 1 for no; halts (msgError) if there is no terminal to ask
+#######################################
+function askYesNo {
+    local answer
+    if ! { : < /dev/tty; } 2> /dev/null; then
+        msgError "[!] SIL needs an answer, but has no terminal to ask at:
+    $1
+    Run sil from a terminal"
+    fi
+    while true; do
+        read -r -p "$1 [Y/N] " answer < /dev/tty 2> /dev/tty || answer=""
+        case "${answer,,}" in
+            y|yes) return 0 ;;
+            n|no) return 1 ;;
+        esac
+    done
+}
+
+#######################################
+# Move the contents of a tag folder into another, keeping subfolders
+# (matched case-insensitively, as tags are). Links to images are made
+# again, to point correctly from their new place; other files are moved.
+# Arguments:
+#   $1 - Folder to empty (physical path)
+#   $2 - Tag path to move into, eg Meme/Politics
+# Returns:
+#   0 on success, 1 if anything could not be moved
+#######################################
+function moveTagContents {
+    local from="$1" to="$2" item rel dest image rv=0
+    local -a items
+    mapfile -t items < <(find "$from" -mindepth 1 ! -type d | sort)
+    for item in "${items[@]}"; do
+        rel="${item#"$from"/}"
+        if [[ "$rel" == */* ]]; then
+            dest="$(tagFolder "$to/${rel%/*}")" || { rv=1; continue; }
+        else
+            dest="$(tagFolder "$to")" || { rv=1; continue; }
+        fi
+        if [[ -L "$item" ]] && image="$(realpath -e -- "$item" 2> /dev/null)" \
+            && [[ -f "$image" ]]; then
+            [[ -L "$dest/${item##*/}" ]] \
+                || ln -s -- "$(relativePath "$dest" "$image")" "$dest/${item##*/}" \
+                || { rv=1; continue; }
+            rm -f -- "$item"
+        else
+            mv -n -- "$item" "$dest/" && [[ ! -e "$item" && ! -L "$item" ]] || rv=1
+        fi
+    done
+    find "$from" -mindepth 1 -depth -type d -empty -delete
+    return "$rv"
+}
+
+#######################################
+# Make one tag an alias of another (LINK): replace the source tag with a
+# link to the target tag's folder. The target is created if needed. A
+# source holding images is merged into the target, only if the user
+# agrees (askYesNo); a source that is already a link is pointed at the
+# new target.
+# Globals:
+#   SIL_LIBRARY, _silDateTag
+# Arguments:
+#   $1 - LINK value: 'SOURCE -> TARGET', eg 'Politics -> Meme/Politics'
+# Outputs:
+#   What was done, and problems, to STDERR
+# Returns:
+#   0 on success, 1 if the value is invalid or the link can't be made;
+#   halts (msgError) if the user declines the merge
+#######################################
+function linkTag {
+    local value="$1" src target top parent name entry entryDir targetDir parentDir
+    local count was
+    if [[ "$value" != *"->"* ]]; then
+        msgWarn "[!] LINK needs a source and target, eg: LINK='Politics -> Meme/Politics'
+    Got: $value"
+        return 1
+    fi
+    src="$(parseTags "${value%%->*}")"
+    target="$(parseTags "${value#*->}")"
+    if [[ -z "$src" || -z "$target" || "$src" == *$'\n'* || "$target" == *$'\n'* ]]; then
+        msgWarn "[!] LINK needs exactly one source and one target tag: $value"
+        return 1
+    fi
+    top="${src%%/*}"
+    if [[ "${top,,}" == "${_silDateTag,,}" ]]; then
+        msgWarn "[!] '$_silDateTag' is reserved for automatic date tags; it can't be a LINK source: $src"
+        return 1
+    fi
+
+    name="${src##*/}"
+    parent=""
+    [[ "$src" == */* ]] && parent="${src%/*}"
+    targetDir="$(tagFolder "$target")" || return 1
+    if [[ -n "$parent" ]]; then
+        parentDir="$(tagFolder "$parent")" || return 1
+    else
+        parentDir="$(realpath -- "$SIL_LIBRARY/tags")"
+    fi
+    if [[ "$parentDir" == "$targetDir" || "$parentDir" == "$targetDir"/* ]]; then
+        msgWarn "[!] LINK source can't be inside its target, it would loop: $value"
+        pruneTagFolder "$targetDir"
+        return 1
+    fi
+
+    if entry="$(tagEntry "$parentDir" "$name")"; then
+        name="${entry##*/}"
+        if [[ -L "$entry" ]]; then
+            was="$(realpath -- "$entry")"
+            if [[ "$was" == "$targetDir" ]]; then
+                msgInfo "  Already linked: $src -> $target"
+                return 0
+            fi
+            rm -f -- "$entry"
+            msgInfo "  Unlinked $src from ${was#"$(realpath -- "$SIL_LIBRARY")"/}"
+        elif entryDir="$(realpath -- "$entry")" \
+            && [[ "$targetDir" == "$entryDir" || "$targetDir" == "$entryDir"/* ]]; then
+            msgWarn "[!] LINK target can't be inside its source, it would loop: $value"
+            pruneTagFolder "$targetDir"
+            return 1
+        else
+            count="$(find "$entry" -mindepth 1 ! -type d | wc -l)"
+            if (( count )); then
+                if ! askYesNo "Source tag '$src' has $count images present - move images to '$target' and replace with symlink?"; then
+                    msgError "[!] No changes made: LINK $value"
+                fi
+                if ! moveTagContents "$entryDir" "$target"; then
+                    msgWarn "[!] Some of $src could not be moved to $target; left in place, not linked"
+                    return 1
+                fi
+                msgInfo "  Moved $count images from $src to $target"
+            fi
+            find "$entry" -depth -type d -empty -delete
+            if [[ -e "$entry" ]]; then
+                msgWarn "[!] Could not remove the $src folder, not linked"
+                return 1
+            fi
+        fi
+    fi
+
+    ln -s -- "$(relativePath "$parentDir" "$targetDir")" "$parentDir/$name" || return 1
+    msgInfo "  Linked: ${parent:+$parent/}$name -> $target"
+}
+
+#######################################
+# Remove a stored image from the library (REMOVE): every tag link to it
+# (including its date tag), the image file, and its lines in the
+# fingerprint index and sources file. Folders left empty are removed.
+# Globals:
+#   SIL_LIBRARY
+# Arguments:
+#   $1 - Image hash
+# Returns:
+#   0 on success, 1 if the image isn't stored or can't be removed
+#######################################
+function removeImage {
+    local hash="$1" image link
+    local -a links
+    image="$(findStoredImage "$hash")" || return 1
+    image="$(realpath -- "$image")"
+    mapfile -t links < <(find "$SIL_LIBRARY/tags" -type l -name "${image##*/}")
+    for link in "${links[@]}"; do
+        [[ "$(realpath -m -- "$link")" == "$image" ]] || continue
+        rm -f -- "$link"
+        pruneTagFolder "$(realpath -- "$(dirname -- "$link")")"
+    done
+    rm -f -- "$image" || return 1
+    find "$SIL_LIBRARY/images" -mindepth 1 -type d -empty -delete
+    indexRemove "$hash" && sourcesRemove "$hash"
 }

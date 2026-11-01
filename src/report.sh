@@ -5,7 +5,8 @@ declare -gA _silOutcomeMeaning=(
     [ADDED]="Recovered and added to the library"
     [SHRINK]="Recovered, shrunk and added"
     [DUPE]="Already in the library; the hash is of the existing image"
-    [FOUND]="Hash matched a stored image"
+    [FOUND]="Hash or known source matched a stored image"
+    [REMOVED]="Removed from the library (REMOVE)"
     [UNREACHABLE]="Could not connect to the website"
     [TIMEOUT]="Website did not respond in time"
     [NOTFOUND]="Website available, but the URL was not found"
@@ -18,6 +19,7 @@ declare -gA _silOutcomeMeaning=(
     [NOFILE]="Local file does not exist"
     [UNREADABLE]="Local file can't be read"
     [NOHASH]="No image with this hash in the library"
+    [NOTSTORED]="Not a stored image; REMOVE and UNTAG never download"
     [STOREFAIL]="Could not write to the library"
     [SHRINKFAIL]="Shrunk copy failed its check; retry with another SHRINK"
 )
@@ -89,7 +91,7 @@ EOF
 # last failure written.
 # Globals:
 #   _silLastOutcome, _silLastDetail, _silLastHash, _silParamType,
-#   _silManifestBlocked; updates _silErrWritten, _silLogRows
+#   _silParamScope; updates _silErrWritten, _silLogRows
 # Arguments:
 #   $1 - The URI, as written in the manifest
 #######################################
@@ -101,7 +103,8 @@ function logOutcome {
 
     {
         for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
-            [[ -n "${_silManifestBlocked[$canon]:-}" ]] && continue
+            ## One-time actions (eg LINK) are not settings to retry with
+            [[ "${_silParamScope[$canon]:-}" == action ]] && continue
             value="$(paramFileValue "$canon")"
             [[ -n "$value" && "${_silErrWritten[$canon]:-}" != "$value" ]] || continue
             printf '%s=%s\n' "$canon" "$value"

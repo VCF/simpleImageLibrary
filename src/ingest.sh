@@ -5,7 +5,7 @@ srcLib "shrink"
 srcLib "tags"
 
 ## Successful outcome tags, in reporting order; anything else is a failure
-declare -ga _silSuccessTags=(ADDED SHRINK DUPE FOUND)
+declare -ga _silSuccessTags=(ADDED SHRINK DUPE FOUND REMOVED)
 
 ## Outcome tag -> count, for the run summary
 declare -gA _silOutcomes=()
@@ -130,14 +130,74 @@ function ingestFile {
 }
 
 #######################################
+# Find the stored image a URI already identifies, without downloading:
+# a URL recorded as a source, or a local file identical to a stored
+# image (same hash; a shrunk image differs from its original).
+# Arguments:
+#   $1 - URI kind, from uriKind: url or path
+#   $2 - The URL, or the local path (resolved against any base folder)
+# Outputs:
+#   The image hash to STDOUT
+# Returns:
+#   0 if found, 1 otherwise
+#######################################
+function knownImage {
+    local hash
+    case "$1" in
+        url)
+            sourceLookup "$2"
+            ;;
+        path)
+            [[ -f "$2" && -r "$2" ]] || return 1
+            hash="$(fileHash "$2")" && findStoredImage "$hash" > /dev/null || return 1
+            printf '%s\n' "$hash"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+#######################################
+# Act on a stored image that a URI identified: remove it (REMOVE), or
+# report it FOUND and apply SIL_TAG and SIL_UNTAG.
+# Globals:
+#   SIL_REMOVE, SIL_TAG, SIL_UNTAG
+# Arguments:
+#   $1 - Image hash
+#   $2 - How it was identified, for the FOUND report (optional)
+# Outputs:
+#   The outcome and changes to STDERR
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+function updateStored {
+    local hash="$1" rv=0
+    if flagIsSet REMOVE; then
+        if removeImage "$hash"; then
+            reportOutcome REMOVED "${hash:0:12}" "$hash"
+            return 0
+        fi
+        reportOutcome STOREFAIL "Could not remove ${hash:0:12} from the library" "$hash"
+        return 1
+    fi
+    reportOutcome FOUND "${hash:0:12}${2:+, $2}" "$hash"
+    applyTags "$hash" || rv=1
+    applyUntags "$hash" || rv=1
+    return "$rv"
+}
+
+#######################################
 # Process one URI (REQ-03): a hash selects a stored image; a URL already
 # recorded as a source is a DUPE of its image, unless REFETCH; any other
 # URL or local path is recovered and added. The URI is recorded as a source of
 # the resulting image (REQ-05), a newly stored image gets today's date
 # tag (TAG-02), and tags in SIL_TAG are applied. The outcome is reported
 # and counted.
+# With REMOVE or UNTAG, the URI must identify an image already stored
+# (knownImage), which is then removed or untagged; nothing is downloaded.
 # Globals:
-#   SIL_TAG, SIL_THRESHOLD, SIL_REFETCH
+#   SIL_TAG, SIL_UNTAG, SIL_REMOVE, SIL_THRESHOLD, SIL_REFETCH
 # Arguments:
 #   $1 - URI
 #   $2 - Folder that relative paths are relative to (default: current
@@ -157,14 +217,26 @@ function processURI {
     requireTool ffmpeg ffmpeg "fingerprint animations (GIF, AVIF)"
 
     kind="$(uriKind "$uri")"
+    path="$uri"
+    if [[ "$kind" == path && -n "$base" && "$path" != /* ]]; then
+        path="$base/$path"
+    fi
+
     if [[ "$kind" == hash ]]; then
         if ! findStoredImage "$uri" > /dev/null; then
             reportOutcome NOHASH "No image with this hash in the library"
             return 1
         fi
-        hash="${uri,,}"
-        reportOutcome FOUND "${hash:0:12}" "$hash"
-        applyTags "$hash"
+        updateStored "${uri,,}"
+        return
+    fi
+
+    if flagIsSet REMOVE || [[ -n "${SIL_UNTAG:-}" ]]; then
+        if ! hash="$(knownImage "$kind" "$path")"; then
+            reportOutcome NOTSTORED "Not a known source or stored file; REMOVE and UNTAG never download"
+            return 1
+        fi
+        updateStored "$hash" "$([[ "$kind" == url ]] && echo "a known source" || echo "same file")"
         return
     fi
 
@@ -176,10 +248,6 @@ function processURI {
         return
     fi
 
-    path="$uri"
-    if [[ "$kind" == path && -n "$base" && "$path" != /* ]]; then
-        path="$base/$path"
-    fi
     if ! fetchURI "$path" tmp; then
         reportOutcome "$_silFetchReason" "$_silFetchDetail"
         return 1

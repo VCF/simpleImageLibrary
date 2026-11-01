@@ -224,3 +224,22 @@ work/m.txt.md:0"
   assert_file_contains work/m.txt.err '^SHRINK=51200b$'
   assert_file_contains work/m.txt.md 'SHRINKFAIL'
 }
+
+@test "LINK runs at its line in a manifest, and isn't logged for retry" {
+  cat > work/m.txt <<'EOF2'
+LINK=Politics -> Meme/Politics
+TAG=Politics
+plasma.png
+REMOVE
+missing.png
+EOF2
+  run parseManifest work/m.txt
+  assert_failure
+  assert_link_exists lib/tags/Politics
+  run find lib/tags/Meme/Politics -type l
+  assert_output --regexp '\.png$'
+  run cat work/m.txt.err
+  refute_output --partial "LINK"
+  assert_output --partial "REMOVE=on"
+  assert_output --partial "# NOTSTORED"
+}

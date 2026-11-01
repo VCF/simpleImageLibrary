@@ -176,9 +176,9 @@ Each stored image has two identifiers with different jobs:
   image is a `DUPE` of it without being downloaded, unless `REFETCH` is set.
   This assumes a URL rarely changes to show a different image. Local files are
   always fingerprinted, as `file:<name>` doesn't identify a file uniquely
-* Unlike the fingerprint index, sources can't be regenerated, so the file is
-  only ever added to. `REBUILD` changes hashes in it when it renames an image
-  (`REQ-09`), and never removes a line
+* Unlike the fingerprint index, sources can't be regenerated, so lines are
+  only removed with their image (`REMOVE`, `REQ-11`). `REBUILD` changes hashes
+  in it when it renames an image (`REQ-09`), and never removes a line
 * Lines are kept sorted (C locale) for git (`REQ-10`)
 
 # REQ-06 Manifest files
@@ -209,6 +209,9 @@ Each stored image has two identifiers with different jobs:
     names none is skipped with a warning
 * `CHECK` and `REBUILD` can't be set in a manifest, and are ignored with a
   warning
+* `LINK` is carried out at its line, once, rather than applying to later URIs.
+  If it must ask the user (`REQ-11`), processing waits for the answer. It is
+  not written to the error log, so a retry doesn't repeat it
 * A line shaped like `NAME=VALUE` with an unrecognized `NAME` is reported and
   ignored, rather than treated as a file
 * A failed URI is reported and processing continues with the next line
@@ -273,7 +276,8 @@ Successful outcomes, with their status tag:
 | ADDED   | Recovered and added to the library                          |
 | SHRINK  | Recovered, shrunk (`REQ-07`) and added                      |
 | DUPE    | Already in the library: recovered and matched by fingerprint (reported with how many bits differ), or a URL already recorded as a source and not downloaded (`REFETCH`). Reported with the existing image's hash; remaining operations (eg tagging) apply to the existing image |
-| FOUND   | A hash URI (`REQ-03`) matched a stored image; remaining operations apply to it |
+| FOUND   | A hash URI (`REQ-03`) matched a stored image, or with `UNTAG` a known source or identical file did (`REQ-11`); remaining operations apply to it |
+| REMOVED | The image was removed from the library (`REMOVE`, `REQ-11`) |
 
 Failures, with their reason tag. No further action is taken on the image. This
 list is expected to grow as new failure modes are found; tags are at most 12
@@ -293,6 +297,7 @@ characters.
 | NOFILE      | Local file does not exist                                   |
 | UNREADABLE  | Local file exists but cannot be read (permissions)          |
 | NOHASH      | A hash URI (`REQ-03`) does not match any image in the library |
+| NOTSTORED   | With `REMOVE` or `UNTAG`, the URI is not a known source or a stored file (`REQ-11`); nothing is downloaded |
 | STOREFAIL   | The image could not be written into the library (eg disk full) |
 | SHRINKFAIL  | The shrunk copy failed its fingerprint check (`REQ-07`), so the image was not added; retry with a different `SHRINK` (or `SHRINKVID`) |
 
@@ -397,6 +402,30 @@ date with `git pull`, and can add images themselves and `git push`
   * Tag links are symlinks, which git on Windows does not create by default
   * Git keeps every version of every image, so a repository only grows; images
     removed later still take space in its history
+
+# REQ-11 Changing and removing images
+
+Tags can be removed from images (`UNTAG`), images removed from the library
+(`REMOVE`), and one tag made an alias of another (`LINK`). See
+[parameters.md](./parameters.md) for each
+
+* `REMOVE` and `UNTAG` act only on images already in the library. The URI
+  must identify a stored image without downloading anything:
+  * A hash URI
+  * A URL recorded as a source (`REQ-05`)
+  * A local file identical to a stored image (the same hash). A shrunk image
+    differs from its original, so the original file doesn't identify it
+  * Anything else is `NOTSTORED` (`REQ-08`). Images are never matched by
+    fingerprint here, which could act on a similar but different image
+* Removing an image removes, in one step: every tag link to it, including its
+  date tag (`TAG-02`); the stored file; its fingerprint index line; and its
+  source lines. Adding one of its sources later adds it again as new
+* A tag folder left empty by `UNTAG` or `REMOVE` is removed, as are parents
+  left empty, except a folder that a `LINK` points to. A date tag's day left
+  empty is removed and the chain of days relinked around it
+* `LINK` asks before moving images out of a source tag. The question is asked
+  at the terminal, even within a manifest, and SIL waits for the answer. With
+  no terminal at all, SIL halts without changing anything
 
 # TAG-01 Tagging
 

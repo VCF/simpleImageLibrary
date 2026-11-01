@@ -113,6 +113,23 @@ function indexAdd {
 }
 
 #######################################
+# Remove an image from the fingerprint index.
+# Arguments:
+#   $1 - Image hash
+# Returns:
+#   0 on success (including when it wasn't listed), 1 if the index
+#   can't be written
+#######################################
+function indexRemove {
+    local index tmp
+    index="$(indexFile)"
+    indexHas "$1" || return 0
+    tmp="$(silMktemp)" || return 1
+    grep -v "^$1 " -- "$index" | indexWriteSorted "$tmp"
+    mv -- "$tmp" "$index"
+}
+
+#######################################
 # Find indexed images similar to a fingerprint (see REQ-05 for the rule).
 # Arguments:
 #   $1 - Raw fingerprint (base64)
@@ -199,7 +216,7 @@ function sourcesWriteSorted {
     cat > "$1" << 'EOF'
 # SIL image sources - see REQ-05 in docs/requirements.md
 # Each line: <image hash> <source URI>
-# Only ever added to; one line per distinct source of each image
+# One line per distinct source of each image; removed with the image
 EOF
     grep -v '^#' | LC_ALL=C sort -u >> "$1"
 }
@@ -247,6 +264,22 @@ function sourceLookup {
         fi
     done < <(SIL_SOURCE="$1" awk '!/^#/ && substr($0, 42) == ENVIRON["SIL_SOURCE"] { print $1 }' "$file")
     return 1
+}
+
+#######################################
+# Forget every source of an image (REMOVE).
+# Arguments:
+#   $1 - Image hash
+# Returns:
+#   0 on success, 1 if the file can't be written
+#######################################
+function sourcesRemove {
+    local file tmp
+    file="$(sourcesFile)"
+    grep -q "^$1 " -- "$file" 2> /dev/null || return 0
+    tmp="$(silMktemp)" || return 1
+    grep -v "^$1 " -- "$file" | sourcesWriteSorted "$tmp"
+    mv -- "$tmp" "$file"
 }
 
 #######################################

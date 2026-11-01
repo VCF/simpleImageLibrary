@@ -278,3 +278,73 @@ $hash file:pic.png"
   run processURI b/pic.png
   assert_output --partial "[ADDED]"
 }
+
+# --- REMOVE and UNTAG --------------------------------------------------
+
+
+@test "REMOVE by hash removes the image: REMOVED" {
+  processURI "$DATA/plasma.png" 2> /dev/null
+  local hash="$_silLastHash"
+  SIL_REMOVE=1
+  run processURI "$hash"
+  assert_success
+  assert_output --partial "[REMOVED] ${hash:0:12}"
+  run findStoredImage "$hash"
+  assert_failure
+  run processURI "$hash"
+  assert_failure
+  assert_output --partial "[NOHASH]"
+}
+
+@test "REMOVE by known URL never downloads; the URL can then be added again" {
+  startServer
+  cp "$DATA/plasma.png" www/pic
+  processURI "$URL/pic" 2> /dev/null
+  SIL_REMOVE=1
+  run processURI "$URL/pic"
+  assert_output --partial "[REMOVED]"
+  run grep -c "GET /pic" server.log
+  assert_output 1
+  run processURI "$URL/pic"
+  assert_failure
+  assert_output --partial "[NOTSTORED]"
+  SIL_REMOVE=0
+  run processURI "$URL/pic"
+  assert_output --partial "[ADDED]"
+}
+
+@test "REMOVE by local file needs the identical stored file" {
+  processURI "$DATA/plasma.png" 2> /dev/null
+  convert "$DATA/plasma.png" -resize 50% half.png
+  SIL_REMOVE=1
+  run processURI half.png
+  assert_failure
+  assert_output --partial "[NOTSTORED]"
+  run processURI "$DATA/plasma.png"
+  assert_success
+  assert_output --partial "[REMOVED]"
+}
+
+@test "UNTAG removes tags from a known image, alongside TAG" {
+  processURI "$DATA/plasma.png" 2> /dev/null
+  SIL_TAG=Old
+  processURI "$DATA/plasma.png" 2> /dev/null
+  SIL_TAG=New
+  SIL_UNTAG=Old
+  run processURI "$DATA/plasma.png"
+  assert_success
+  assert_output --partial "[FOUND]"
+  assert_output --partial "Tagged: New"
+  assert_output --partial "Untagged: Old"
+  assert_not_exists lib/tags/Old
+  assert_dir_exists lib/tags/New
+}
+
+@test "UNTAG never adds an unknown image" {
+  SIL_UNTAG=Any
+  run processURI "$DATA/plasma.png"
+  assert_failure
+  assert_output --partial "[NOTSTORED]"
+  run find lib/images -name '*.png'
+  assert_output ""
+}

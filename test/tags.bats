@@ -153,3 +153,170 @@ storeOn() {
   assert_output --partial "Tagged: Fine"
   assert_not_exists lib/tags/date
 }
+
+# --- UNTAG -----------------------------------------------------------
+
+@test "untagImage removes the link and prunes emptied folders" {
+  tagImage "$hash" Animal/Dog
+  tagImage "$hash" Animal/Cat
+  untagImage "$hash" animal/dog
+  assert_not_exists lib/tags/Animal/Dog
+  assert_link_exists "lib/tags/Animal/Cat/$hash.png"
+  untagImage "$hash" Animal/Cat
+  assert_not_exists lib/tags/Animal
+  assert_file_exists lib/tags/.gitkeep
+}
+
+@test "untagImage leaves tags below the one removed" {
+  tagImage "$hash" Animal
+  tagImage "$hash" Animal/Dog
+  untagImage "$hash" Animal
+  assert_not_exists "lib/tags/Animal/$hash.png"
+  assert_link_exists "lib/tags/Animal/Dog/$hash.png"
+}
+
+@test "untagImage fails, creating nothing, for a tag the image lacks" {
+  run untagImage "$hash" No/Such
+  assert_failure
+  assert_not_exists lib/tags/No
+}
+
+@test "applyUntags reports removed and absent tags; Date is reserved" {
+  tagImage "$hash" Fine
+  dateTagImage "$hash" 2> /dev/null
+  SIL_UNTAG="Fine, Missing, Date"
+  run applyUntags "$hash"
+  assert_failure
+  assert_output --partial "Untagged: Fine"
+  assert_output --partial "Did not have tag: Missing"
+  assert_output --partial "'Date' is reserved"
+  run find lib/tags/Date -type l -name "$hash.png"
+  assert_output --partial "$hash.png"
+}
+
+@test "pruneTagFolder keeps a folder that a LINK points to" {
+  mkdir -p lib/tags/Meme/Politics
+  ln -s Meme/Politics lib/tags/Politics
+  pruneTagFolder "$(realpath lib/tags/Meme/Politics)"
+  assert_dir_exists lib/tags/Meme/Politics
+}
+
+@test "pruneTagFolder removes an emptied day and relinks its neighbours" {
+  local day
+  for day in 2026-01-01 2026-01-02 2026-01-03; do
+    _silToday="$day"
+    dateTagImage "$hash" 2> /dev/null
+  done
+  rm "lib/tags/Date/2026/2026-01-02/$hash.png"
+  pruneTagFolder "$(realpath lib/tags/Date/2026/2026-01-02)"
+  assert_not_exists lib/tags/Date/2026/2026-01-02
+  assert_link_exists lib/tags/Date/2026/2026-01-01/next-2026-01-03
+  dayLinksCorrect
+}
+
+# --- LINK ------------------------------------------------------------
+
+@test "LINK makes a new source tag a link to the target" {
+  linkTag "Politics -> Meme/Politics"
+  assert_link_exists lib/tags/Politics
+  run readlink lib/tags/Politics
+  assert_output Meme/Politics
+  tagImage "$hash" politics
+  assert_link_exists "lib/tags/Meme/Politics/$hash.png"
+}
+
+@test "LINK works for nested sources and is repeatable" {
+  linkTag "Fun:Politics -> Meme/Politics"
+  run readlink lib/tags/Fun/Politics
+  assert_output ../Meme/Politics
+  run linkTag "fun/politics -> meme/politics"
+  assert_success
+  assert_output --partial "Already linked"
+}
+
+@test "LINK replaces an empty source folder" {
+  mkdir -p lib/tags/Politics/Empty
+  linkTag "Politics -> Meme/Politics"
+  assert_link_exists lib/tags/Politics
+}
+
+@test "LINK moves a source's images to the target when the user agrees" {
+  tagImage "$hash" Politics
+  tagImage "$hash" Politics/Local
+  # shellcheck disable=SC2317 # stand-in answer, called by linkTag
+  askYesNo() { return 0; }
+  linkTag "Politics -> Meme/Politics"
+  assert_link_exists lib/tags/Politics
+  assert_file_exists "lib/tags/Meme/Politics/$hash.png"
+  assert_file_exists "lib/tags/Meme/Politics/Local/$hash.png"
+  assert_file_exists "lib/tags/Politics/Local/$hash.png"
+}
+
+@test "LINK changes nothing when the user declines" {
+  tagImage "$hash" Politics
+  # shellcheck disable=SC2317 # stand-in answer, called by linkTag
+  askYesNo() { return 1; }
+  run linkTag "Politics -> Meme/Politics"
+  assert_failure
+  assert_output --partial "No changes made"
+  assert_file_exists "lib/tags/Politics/$hash.png"
+  [[ ! -L lib/tags/Politics ]]
+}
+
+@test "LINK repoints a source that is already a link" {
+  linkTag "Politics -> Meme/Politics"
+  run linkTag "Politics -> News/Politics"
+  assert_success
+  assert_output --partial "Unlinked Politics"
+  run readlink lib/tags/Politics
+  assert_output News/Politics
+}
+
+@test "LINK refuses bad values, loops and the Date tag" {
+  local bad
+  for bad in "Politics" "A,B -> C" "-> C" "A -> Date/2020" "Date -> A" \
+    "Meme/Politics -> Meme" "Meme -> Meme/Politics"; do
+    run linkTag "$bad"
+    [[ "$bad" == "A -> Date/2020" ]] && continue
+    assert_failure
+  done
+  [[ ! -L lib/tags/Date && ! -L lib/tags/Meme ]]
+}
+
+@test "askYesNo halts when there is no terminal to ask at" {
+  run setsid -w bash -c "myDir='$PROJECT_ROOT'; source '$PROJECT_ROOT/src/utils.sh'
+    srcLib tags; askYesNo 'Go on?'" < /dev/null
+  assert_failure
+  assert_output --partial "no terminal to ask at"
+}
+
+# --- REMOVE ----------------------------------------------------------
+
+@test "removeImage removes the file, its tags, index and sources lines" {
+  tagImage "$hash" Animal/Dog
+  dateTagImage "$hash" 2> /dev/null
+  sourceAdd "$hash" https://example.com/a.png
+  storeImage "$PROJECT_ROOT/test/data/images/animated.gif" other
+  sourceAdd "$other" https://example.com/b.gif
+  removeImage "$hash"
+  run findStoredImage "$hash"
+  assert_failure
+  run find lib/tags -name "$hash.*"
+  assert_output ""
+  assert_not_exists lib/tags/Animal
+  assert_not_exists lib/tags/Date
+  run grep -c "$hash" lib/images/fingerprints.txt lib/images/sources.txt
+  assert_output --partial "fingerprints.txt:0"
+  assert_output --partial "sources.txt:0"
+  grep -q "$other" lib/images/fingerprints.txt
+  grep -q "$other" lib/images/sources.txt
+  assert_not_exists "lib/images/${hash:0:2}/${hash:2:2}"
+}
+
+@test "removeImage keeps other images in shared tag folders" {
+  storeImage "$PROJECT_ROOT/test/data/images/animated.gif" other
+  tagImage "$hash" Shared
+  tagImage "$other" Shared
+  removeImage "$hash"
+  assert_link_exists "lib/tags/Shared/$other.gif"
+}

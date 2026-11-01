@@ -48,8 +48,8 @@ precedence). Blank lines and lines starting with `#` are ignored.
 Configuration files hold settings that apply broadly. Some parameters can't be
 set in them; SIL warns and ignores those lines:
 
-* `TAG` and `LINK` - in neither file. They apply to individual images or are
-  one-time actions; use the command line or a manifest
+* `TAG`, `UNTAG`, `REMOVE` and `LINK` - in neither file. They apply to
+  individual images or are one-time actions; use the command line or a manifest
 * `LIBRARY` - in `~/.sil.conf` only, as a default library
 
 | File                  | Hidden | Scope                                     |
@@ -117,6 +117,43 @@ The tag parameter defines one or more tags within the library
   * Linked at: `tags/Animal/Dog/f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
   * Symlink target: `../../../images/f1/d2/f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
  
+### UNTAG
+
+* ALIAS: `UNTAGS`
+
+Removes tags from images already in the library. Values are written as for
+`TAG`
+
+* Can't be set in configuration files, as for `TAG`
+* The URI must identify a stored image without downloading: a hash, a URL
+  recorded as a source, or a local file identical to a stored image (see
+  `REQ-11`). Anything else is `NOTSTORED`, and nothing is added
+  * `sil UNTAG=Humor https://example.com/funny.jpg`
+* Only the named tag is removed; tags below it are kept. `UNTAG=Animal` leaves
+  `Animal/Dog`
+* A tag the image doesn't have is reported, and isn't a failure
+* `Date` tags can't be removed (`TAG-02`); they are ignored with a warning
+* `TAG` may be given too, to retag in one step: `sil TAG=New UNTAG=Old <uri>`
+* Tag folders left empty are removed
+
+### REMOVE
+
+* Default: off
+* Flag parameter
+
+Removes images from the library. The URI must identify a stored image, as for
+`UNTAG`; anything else is `NOTSTORED`
+
+* `sil REMOVE <hash>` (the full 40 character hash), or
+  `sil REMOVE https://example.com/funny.jpg`
+* Removes the stored file, every tag link to it (including its date tag), and
+  its lines in the fingerprint index and sources file. Reported as `REMOVED`
+* Its sources are forgotten: adding the same URL later adds the image again
+* Can't be set in configuration files. In a manifest it applies, like any
+  parameter, to every URI after it until set off with `REMOVE=off`
+* `TAG` and `UNTAG` are not applied to removed images
+* A library under git keeps the removed image in its history (`REQ-10`)
+
 ### LINK
 
 The LINK parameter will set a symlink in the tag structure. This is designed to
@@ -124,17 +161,28 @@ effectively allow "alias tags" that will share a common folder of image symlinks
 
 * Can't be set in configuration files: it is a one-time action on the tag
   folders rather than a setting
-
-* The format of the value is `SOURCE -> TARGET`
+* Carried out once: on the command line, before any URIs; in a manifest, at its
+  line (`REQ-06`). Only one `LINK` can be given on a command line; a manifest
+  may have several
+* The format of the value is `SOURCE -> TARGET`, one tag each, written as for
+  `TAG` (case-insensitive, `/` or `:` between levels)
   * `LINK=Politics -> Meme/Politics` will create symlink at `tags/Politics` that
     points to `tags/Meme/Politics`
+  * The target is created if needed
 * If a folder already exists at SOURCE:
   * If no files are in the folder, the folder is removed and the symlink is created
   * If files exist, the user is warned "Source tag '$SOURCE' has images present
     - move images to '$TARGET' and replace with symlink? [Y/N]"
+    * The question is asked at the terminal, and SIL waits for an answer, even
+      within a manifest. With no terminal, SIL halts and nothing is changed
     * If `N`, halt and inform user that no operation occurred
-    * If `Y`, relocate symlinks in SOURCE to TARGET, remove now-empty source
+    * If `Y`, relocate symlinks in SOURCE to TARGET, keeping subfolders (eg
+      `Politics/Local` to `Meme/Politics/Local`), remove now-empty source
       folder, and create new symlink from SOURCE to TARGET
+* If SOURCE is already a link, it is pointed at the new TARGET; if it already
+  points there, nothing changes
+* Refused, with a warning: a SOURCE inside its TARGET or the reverse (the link
+  would loop), and a SOURCE in the reserved `Date` tag
 
 ## SHRINK
 

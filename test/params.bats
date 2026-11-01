@@ -254,19 +254,22 @@ EOF
   assert_equal "$SIL_TOR" 1
 }
 
-@test "TAG and LINK are ignored with a warning in any conf file" {
-  printf 'tags=Bird\nLINK=a -> b\nTHRESHOLD=95\n' > conf
-  local kind
+@test "TAG, UNTAG, REMOVE and LINK are ignored with a warning in any conf file" {
+  printf 'tags=Bird\nLINK=a -> b\nUNTAG=Fish\nREMOVE\nTHRESHOLD=95\n' > conf
+  local kind name
   for kind in global library; do
     run parseParamFile conf "$kind"
     assert_failure
-    assert_output --partial "TAG can't be set in a configuration file"
-    assert_output --partial "LINK can't be set in a configuration file"
+    for name in TAG LINK UNTAG REMOVE; do
+      assert_output --partial "$name can't be set in a configuration file"
+    done
     assert_output --partial "conf line 1"
   done
   parseParamFile conf global || true
   assert_equal "${SIL_TAG+set}" ""
   assert_equal "${SIL_LINK+set}" ""
+  assert_equal "${SIL_UNTAG+set}" ""
+  assert_equal "$SIL_REMOVE" 0
   assert_equal "$SIL_THRESHOLD" 95
 }
 

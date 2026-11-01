@@ -88,3 +88,24 @@ teardown() {
   assert_failure
   assert_output --partial "No image library found"
 }
+
+@test "sil LINK makes a tag alias without any URIs" {
+  run "$PROJECT_ROOT/sil" LIBRARY=lib 'LINK=Politics -> Meme/Politics'
+  assert_success
+  assert_output --partial "Linked: Politics -> Meme/Politics"
+  refute_output --partial "nothing more to do"
+  assert_link_exists lib/tags/Politics
+}
+
+@test "sil REMOVE and UNTAG act on stored images" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  "$PROJECT_ROOT/sil" LIBRARY=lib TAG=A,B plasma.png 2> /dev/null
+  run "$PROJECT_ROOT/sil" LIBRARY=lib UNTAG=a plasma.png
+  assert_success
+  assert_output --partial "Untagged: a"
+  assert_not_exists lib/tags/A
+  run "$PROJECT_ROOT/sil" LIBRARY=lib REMOVE plasma.png
+  assert_success
+  assert_output --partial "Done: 1 REMOVED"
+  assert_not_exists lib/tags/B
+}
