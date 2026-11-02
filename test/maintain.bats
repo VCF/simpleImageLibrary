@@ -18,6 +18,8 @@ setup() {
   DATA="$PROJECT_ROOT/test/data/images"
   storeImage "$DATA/plasma.png" plasma
   storeImage "$DATA/animated.gif" anim
+  markUntagged "$plasma"
+  markUntagged "$anim"
   PLASMA="lib/images/${plasma:0:2}/${plasma:2:2}/$plasma.png"
 }
 
@@ -240,6 +242,23 @@ $new https://example.com/p2.png"
   assert_failure
   assert_output --partial "Date tag next/previous links are out of date"
   libraryRebuild
+  run libraryCheck
+  assert_success
+}
+
+@test "CHECK reports, and REBUILD fixes, wrong Untagged tags" {
+  ## anim: no tags at all (eg stored before TAG-03); plasma: Untagged and Meme
+  rm "lib/tags/Untagged/$anim.gif"
+  tagByHand "$PLASMA" Meme
+  run libraryCheck
+  assert_failure
+  assert_output --partial "1 images have no tags, but aren't tagged Untagged"
+  assert_output --partial "1 images are tagged Untagged, but have other tags too"
+  run libraryRebuild
+  assert_output --partial "Tagged Untagged: 1 images with no tags"
+  assert_output --partial "Removed Untagged from 1 images with other tags"
+  assert_link_exists "lib/tags/Untagged/$anim.gif"
+  assert_not_exists "lib/tags/Untagged/$plasma.png"
   run libraryCheck
   assert_success
 }

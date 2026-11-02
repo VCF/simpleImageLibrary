@@ -340,6 +340,43 @@ $hash file:pic.png"
   assert_dir_exists lib/tags/New
 }
 
+@test "a new image without tags is Untagged; tagging it later removes that" {
+  processURI "$DATA/plasma.png" 2> /dev/null
+  local hash="$_silLastHash"
+  assert_link_exists "lib/tags/Untagged/$hash.png"
+  SIL_TAG=Dog
+  run processURI "$DATA/plasma.png"
+  assert_output --partial "[DUPE]"
+  assert_not_exists lib/tags/Untagged
+  assert_link_exists "lib/tags/Dog/$hash.png"
+  ## TAG= keeps earlier tags, and doesn't make the image Untagged
+  SIL_TAG=
+  processURI "$DATA/plasma.png" 2> /dev/null
+  assert_not_exists lib/tags/Untagged
+  assert_link_exists "lib/tags/Dog/$hash.png"
+}
+
+@test "a new image with tags is not Untagged" {
+  SIL_TAG=Dog
+  processURI "$DATA/plasma.png" 2> /dev/null
+  assert_link_exists "lib/tags/Dog/$_silLastHash.png"
+  assert_not_exists lib/tags/Untagged
+}
+
+@test "TAG=New UNTAG=* replaces every tag" {
+  SIL_TAG="Old, Older"
+  processURI "$DATA/plasma.png" 2> /dev/null
+  SIL_TAG=New
+  SIL_UNTAG='*'
+  run processURI "$DATA/plasma.png"
+  assert_success
+  assert_output --partial "Untagged: Old, Older"
+  assert_output --partial "Tagged: New"
+  assert_not_exists lib/tags/Old
+  assert_not_exists lib/tags/Untagged
+  assert_link_exists "lib/tags/New/$_silLastHash.png"
+}
+
 @test "UNTAG never adds an unknown image" {
   SIL_UNTAG=Any
   run processURI "$DATA/plasma.png"

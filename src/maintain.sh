@@ -94,6 +94,66 @@ function retargetTagLinks {
 }
 
 #######################################
+# Find stored images whose Untagged tag (TAG-03) is wrong: those with no
+# user tags and no Untagged tag (eg stored before TAG-03), and those
+# with both. One pass over the tags folder, for large libraries.
+# Globals:
+#   SIL_LIBRARY, _silDateTag, _silUntaggedTag, _silStoredNameRe
+# Outputs:
+#   One "add <hash>" or "drop <hash>" line per image to STDOUT
+#######################################
+function untaggedMismatches {
+    local root name f
+    local -A user=() untagged=()
+    root="$(realpath -- "$SIL_LIBRARY/tags")"
+    while IFS= read -r name; do
+        user[$name]=1
+    done < <(find "$root" \( -path "$root/$_silDateTag" -o -path "$root/$_silUntaggedTag" \) \
+        -prune -o -type l -printf '%f\n')
+    if [[ -d "$root/$_silUntaggedTag" ]]; then
+        while IFS= read -r name; do
+            untagged[$name]=1
+        done < <(find "$root/$_silUntaggedTag" -mindepth 1 -maxdepth 1 -type l -printf '%f\n')
+    fi
+    while IFS= read -r f; do
+        name="$(basename -- "$f")"
+        [[ "$name" =~ $_silStoredNameRe ]] || continue
+        if [[ -n "${user[$name]:-}" && -n "${untagged[$name]:-}" ]]; then
+            printf 'drop %s\n' "${BASH_REMATCH[1]}"
+        elif [[ -z "${user[$name]:-}" && -z "${untagged[$name]:-}" ]]; then
+            printf 'add %s\n' "${BASH_REMATCH[1]}"
+        fi
+    done < <(listImageFiles)
+}
+
+#######################################
+# Correct every stored image's Untagged tag (untaggedMismatches).
+# Outputs:
+#   How many images were changed, and problems, to STDERR
+# Returns:
+#   0 on success, 1 if any image could not be tagged
+#######################################
+function repairUntagged {
+    local action hash added=0 dropped=0 rv=0
+    while read -r action hash; do
+        if [[ "$action" == add ]]; then
+            if markUntagged "$hash"; then
+                added=$(( added + 1 ))
+            else
+                rv=1
+            fi
+        else
+            dropUntagged "$hash"
+            dropped=$(( dropped + 1 ))
+        fi
+    done < <(untaggedMismatches)
+    (( added )) && msgInfo "  Tagged $_silUntaggedTag: $added images with no tags"
+    (( dropped )) && msgInfo "  Removed $_silUntaggedTag from $dropped images with other tags"
+    (( rv )) && msgWarn "[!] Some images could not be tagged $_silUntaggedTag"
+    return "$rv"
+}
+
+#######################################
 # Regenerate the fingerprint index from the stored images. The new index
 # is built in the library's temp folder and replaces the old one only
 # once complete.
@@ -158,8 +218,9 @@ function retargetSources {
 
 #######################################
 # REBUILD (REQ-09): restore missing library files, repair stored image
-# names and places while keeping their tags and sources, relink the
-# date tag's days, then regenerate the fingerprint index.
+# names and places while keeping their tags and sources, correct the
+# Untagged tag (TAG-03), relink the date tag's days, then regenerate the
+# fingerprint index.
 # Globals:
 #   SIL_LIBRARY
 # Outputs:
@@ -178,6 +239,7 @@ function libraryRebuild {
     repairStoredImages || rv=1
     retargetTagLinks
     retargetSources || rv=1
+    repairUntagged || rv=1
     relinkDays
     indexRebuild || rv=1
     return "$rv"
@@ -197,7 +259,7 @@ function libraryCheck {
     local problems=0 indexProblems=0 n=0
     local -A stored=() indexed=()
     local f rel name hash dir expected actual
-    local index line lineNum=0
+    local index line lineNum=0 action added=0 dropped=0
 
     msgInfo "Checking library: $SIL_LIBRARY"
 
@@ -298,6 +360,24 @@ function libraryCheck {
     Fix: remove the link"
         problems=$(( problems + 1 ))
     done < <(find "$SIL_LIBRARY/tags" -xtype l 2> /dev/null | sort)
+
+    while read -r action hash; do
+        if [[ "$action" == add ]]; then
+            added=$(( added + 1 ))
+        else
+            dropped=$(( dropped + 1 ))
+        fi
+    done < <(untaggedMismatches)
+    if (( added )); then
+        msgWarn "[!] $added images have no tags, but aren't tagged $_silUntaggedTag
+    Fix: sil REBUILD"
+        problems=$(( problems + 1 ))
+    fi
+    if (( dropped )); then
+        msgWarn "[!] $dropped images are tagged $_silUntaggedTag, but have other tags too
+    Fix: sil REBUILD"
+        problems=$(( problems + 1 ))
+    fi
 
     if ! dayLinksCorrect; then
         msgWarn "[!] Date tag next/previous links are out of date (eg after a git merge)

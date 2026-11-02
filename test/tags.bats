@@ -34,7 +34,33 @@ Meme"
 @test "parseTags refuses . and .. levels" {
   run parseTags "ok,../../etc,a/./b"
   assert_failure
-  assert_output "ok"
+  assert_line --index 0 "ok"
+  assert_output --partial "Tag '../../etc' ignored: '..' has no characters allowed"
+  assert_output --partial "Tag 'a/./b' ignored"
+}
+
+@test "parseTags keeps letters, digits, space, _ and -, renaming others" {
+  run parseTags "Fun!, Café Crème/Ñandú, snake_case-x, v1.5 , Ā漢x"
+  assert_success
+  assert_line "Fun"
+  assert_line "Café Crème/Ñandú"
+  assert_line "snake_case-x"
+  assert_line "v15"
+  assert_line "x"
+  assert_output --partial "[!] Tag 'Fun!' renamed to 'Fun'"
+  assert_output --partial "[!] Tag 'v1.5' renamed to 'v15'"
+  refute_output --partial "renamed to 'Café"
+  refute_output --partial "renamed to 'snake"
+}
+
+@test "accented tags match whatever their case, in any locale" {
+  export LC_ALL=C
+  tagImage "$hash" "Café"
+  tagImage "$hash" "CAFÉ/Crème"
+  assert_link_exists "lib/tags/Café/$hash.png"
+  assert_link_exists "lib/tags/Café/Crème/$hash.png"
+  run find lib/tags -mindepth 1 -maxdepth 1 -type d
+  assert_output "lib/tags/Café"
 }
 
 @test "tagImage links by relative path, named after the image" {
@@ -157,6 +183,77 @@ storeOn() {
   assert_not_exists lib/tags/date
 }
 
+# --- Untagged (TAG-03) -----------------------------------------------
+
+@test "Untagged is reserved: TAG=Untagged is ignored with a hint" {
+  SIL_TAG="Dog, untagged/Sub"
+  run applyTags "$hash"
+  assert_failure
+  assert_output --partial "Tagged: Dog"
+  assert_output --partial "'Untagged' is a reserved tag - if you wish to remove all tags from an image, use 'UNTAG=*'"
+  assert_not_exists lib/tags/untagged
+}
+
+@test "a tag removes Untagged; a tag that existed does too" {
+  markUntagged "$hash"
+  assert_link_exists "lib/tags/Untagged/$hash.png"
+  SIL_TAG=Dog
+  applyTags "$hash" 2> /dev/null
+  assert_not_exists lib/tags/Untagged
+  assert_link_exists "lib/tags/Dog/$hash.png"
+  markUntagged "$hash"
+  applyTags "$hash" 2> /dev/null
+  assert_not_exists lib/tags/Untagged
+}
+
+@test "ignored tags leave Untagged in place" {
+  markUntagged "$hash"
+  SIL_TAG="Untagged, Date/2020, !!"
+  run applyTags "$hash"
+  assert_failure
+  refute_output --partial "Tagged:"
+  assert_link_exists "lib/tags/Untagged/$hash.png"
+}
+
+@test "UNTAG of the last tag gives Untagged; UNTAG=Untagged is ignored" {
+  tagImage "$hash" Animal/Dog
+  tagImage "$hash" Cat
+  SIL_UNTAG=Cat
+  applyUntags "$hash" 2> /dev/null
+  assert_not_exists lib/tags/Untagged
+  SIL_UNTAG="animal/dog, Untagged"
+  run applyUntags "$hash"
+  assert_failure
+  assert_output --partial "Untagged: animal/dog"
+  assert_output --partial "'Untagged' is added and removed automatically - ignored"
+  assert_link_exists "lib/tags/Untagged/$hash.png"
+  assert_not_exists lib/tags/Animal
+}
+
+@test "UNTAG=* removes every tag but the date tag, giving Untagged" {
+  dateTagImage "$hash" 2> /dev/null
+  tagImage "$hash" Animal/Dog
+  tagImage "$hash" Animal
+  tagImage "$hash" Meme
+  mkdir -p lib/tags/Keep
+  ln -s Keep lib/tags/Alias
+  tagImage "$hash" Alias
+  SIL_UNTAG=" * "
+  run applyUntags "$hash"
+  assert_success
+  assert_output --partial "Untagged: Animal, Animal/Dog, Keep, Meme"
+  assert_not_exists lib/tags/Animal
+  assert_not_exists lib/tags/Meme
+  assert_not_exists "lib/tags/Keep/$hash.png"
+  assert_link_exists lib/tags/Alias
+  assert_link_exists "lib/tags/Untagged/$hash.png"
+  run find lib/tags/Date -type l -name "$hash.png"
+  assert_output --partial "$hash.png"
+  run applyUntags "$hash"
+  assert_output --partial "Had no tags to remove"
+  assert_link_exists "lib/tags/Untagged/$hash.png"
+}
+
 # --- UNTAG -----------------------------------------------------------
 
 @test "untagImage removes the link and prunes emptied folders" {
@@ -275,15 +372,14 @@ storeOn() {
   assert_output News/Politics
 }
 
-@test "LINK refuses bad values, loops and the Date tag" {
+@test "LINK refuses bad values, loops and reserved tags" {
   local bad
   for bad in "Politics" "A,B -> C" "-> C" "A -> Date/2020" "Date -> A" \
-    "Meme/Politics -> Meme" "Meme -> Meme/Politics"; do
+    "untagged -> A" "A -> Untagged" "Meme/Politics -> Meme" "Meme -> Meme/Politics"; do
     run linkTag "$bad"
-    [[ "$bad" == "A -> Date/2020" ]] && continue
     assert_failure
   done
-  [[ ! -L lib/tags/Date && ! -L lib/tags/Meme ]]
+  [[ ! -L lib/tags/Date && ! -L lib/tags/Meme && ! -e lib/tags/A ]]
 }
 
 @test "askYesNo halts when there is no terminal to ask at" {

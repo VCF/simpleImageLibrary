@@ -5,35 +5,59 @@ srcLib "index"
 ## Reserved top-level tag for date tags (TAG-02); users can't apply it
 declare -g _silDateTag="Date"
 
+## Reserved top-level tag for images with no other tags (TAG-03); kept
+## up to date automatically, users can't apply or remove it
+declare -g _silUntaggedTag="Untagged"
+
+## Letters allowed in tags beyond ASCII (TAG-03): the accented letters of
+## Latin-1. Matched under a UTF-8 locale, as single characters
+declare -g _silTagLatin1='ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ'
+
+## Set by applyTags: how many tags the image got or already had
+declare -g _silTagsApplied=0
+
 #######################################
 # Split a TAG value into tag paths. Tags are separated by commas; levels
 # within a tag by '/' or ':'. Whitespace around each tag and level is
-# removed, as are empty levels.
+# removed, as are empty levels. Levels keep only the characters allowed
+# in tags (TAG-03): letters (ASCII and Latin-1 accented), digits, space,
+# '_' and '-'; a tag changed by this is warned about. A tag with a level
+# left empty (eg '.', '..' or '!!') is left out, so a tag can never
+# reach outside the tags folder.
 #   'Humor , Animal:Mammal/ Dog' -> 'Humor' and 'Animal/Mammal/Dog'
+#   'Fun!' -> 'Fun', with a warning
+# Globals:
+#   _silTagLatin1
 # Arguments:
 #   $1 - TAG value
 # Outputs:
-#   One tag path per line to STDOUT, levels joined with '/'
+#   One tag path per line to STDOUT, levels joined with '/'; warnings
+#   to STDERR
 # Returns:
-#   0 on success; 1 if any level is '.' or '..', which could reach
-#   outside the tags folder
+#   0 on success; 1 if any tag was left out
 #######################################
 function parseTags {
-    local tag level path rv=0
+    local LC_ALL=C.UTF-8
+    local tag level clean path given rv=0
     local -a tags levels
     IFS=',' read -r -a tags <<< "$1"
     for tag in "${tags[@]}"; do
         IFS='/:' read -r -a levels <<< "$tag"
         path=""
+        given=""
         for level in "${levels[@]}"; do
             level="$(trim "$level")"
             [[ -z "$level" ]] && continue
-            if [[ "$level" == . || "$level" == .. ]]; then
+            given="${given:+$given/}$level"
+            clean="$(trim "${level//[^a-zA-Z0-9 _${_silTagLatin1}-]/}")"
+            if [[ -z "$clean" ]]; then
+                msgWarn "[!] Tag '$(trim "$tag")' ignored: '$level' has no characters allowed in tags (letters, digits, space, _ and -)"
                 rv=1
                 continue 2
             fi
-            path="${path:+$path/}$level"
+            path="${path:+$path/}$clean"
         done
+        [[ "$path" != "$given" ]] && msgWarn "[!] Tag '$given' renamed to '$path'"
         [[ -n "$path" ]] && printf '%s\n' "$path"
     done
     return "$rv"
@@ -51,6 +75,8 @@ function parseTags {
 #   0 if found, 1 otherwise
 #######################################
 function tagEntry {
+    ## Case-insensitive for accented letters too
+    local LC_ALL=C.UTF-8
     local entry name
     for entry in "$1"/*/; do
         entry="${entry%/}"
@@ -256,29 +282,55 @@ function relinkDays {
 }
 
 #######################################
+# The reserved tag a tag path falls under, if any: the date tag (TAG-02)
+# or the Untagged tag (TAG-03), matched case-insensitively.
+# Globals:
+#   _silDateTag, _silUntaggedTag
+# Arguments:
+#   $1 - Tag path, eg Date/2026
+# Outputs:
+#   The reserved tag's name to STDOUT
+# Returns:
+#   0 if reserved, 1 otherwise
+#######################################
+function reservedTag {
+    local top="${1%%/*}" reserved
+    for reserved in "$_silDateTag" "$_silUntaggedTag"; do
+        if [[ "${top,,}" == "${reserved,,}" ]]; then
+            printf '%s\n' "$reserved"
+            return 0
+        fi
+    done
+    return 1
+}
+
+#######################################
 # Split a TAG or UNTAG value into tag paths (parseTags), leaving out
-# any the user may not use: '.' and '..' levels, and the reserved date
-# tag (TAG-02).
+# any the user may not use: the reserved date and Untagged tags
+# (reservedTag), and tags parseTags leaves out.
 # Globals:
 #   _silDateTag
 # Arguments:
 #   $1 - TAG or UNTAG value
+#   $2 - 'TAG' (default) or 'UNTAG', for the warnings given
 # Outputs:
 #   One tag path per line to STDOUT; warnings for any left out to STDERR
 # Returns:
 #   0 if every tag was usable, 1 if any was left out
 #######################################
 function parseUserTags {
-    local tags tag top rv=0
-    if ! tags="$(parseTags "$1")"; then
-        msgWarn "[!] Ignored tag levels '.' and '..' in: $1"
-        rv=1
-    fi
+    local tags tag reserved rv=0
+    tags="$(parseTags "$1")" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
-        top="${tag%%/*}"
-        if [[ "${top,,}" == "${_silDateTag,,}" ]]; then
-            msgWarn "[!] '$_silDateTag' is reserved for automatic date tags - ignored: $tag"
+        if reserved="$(reservedTag "$tag")"; then
+            if [[ "$reserved" == "$_silDateTag" ]]; then
+                msgWarn "[!] '$_silDateTag' is reserved for automatic date tags - ignored: $tag"
+            elif [[ "${2:-TAG}" == UNTAG ]]; then
+                msgWarn "[!] '$reserved' is added and removed automatically - ignored. To remove all tags from an image, use 'UNTAG=*'"
+            else
+                msgWarn "[!] '$reserved' is a reserved tag - if you wish to remove all tags from an image, use 'UNTAG=*'"
+            fi
             rv=1
             continue
         fi
@@ -288,9 +340,10 @@ function parseUserTags {
 }
 
 #######################################
-# Apply every tag in SIL_TAG to a stored image.
+# Apply every tag in SIL_TAG to a stored image. An image given any tag
+# loses its Untagged tag (TAG-03).
 # Globals:
-#   SIL_TAG
+#   SIL_TAG; sets _silTagsApplied
 # Arguments:
 #   $1 - Image hash
 # Outputs:
@@ -301,21 +354,90 @@ function parseUserTags {
 #######################################
 function applyTags {
     local tags tag link existed rv=0 applied=""
+    _silTagsApplied=0
     [[ -n "${SIL_TAG:-}" ]] || return 0
-    tags="$(parseUserTags "$SIL_TAG")" || rv=1
+    tags="$(parseUserTags "$SIL_TAG" TAG)" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
         existed=""
         link="$(tagLinkPath "$1" "$tag")" && [[ -L "$link" ]] && existed=" (existed)"
         if tagImage "$1" "$tag"; then
             applied="${applied:+$applied, }$tag$existed"
+            _silTagsApplied=$(( _silTagsApplied + 1 ))
         else
             msgWarn "[!] Could not apply tag: $tag"
             rv=1
         fi
     done <<< "$tags"
     [[ -n "$applied" ]] && msgInfo "  Tagged: $applied"
+    (( _silTagsApplied )) && dropUntagged "$1"
     return "$rv"
+}
+
+#######################################
+# Give a stored image the Untagged tag (TAG-03).
+# Globals:
+#   SIL_LIBRARY, _silUntaggedTag
+# Arguments:
+#   $1 - Image hash
+# Returns:
+#   0 on success, 1 if the image isn't stored or the link can't be made
+#######################################
+function markUntagged {
+    local dir="$SIL_LIBRARY/tags/$_silUntaggedTag"
+    mkdir -p -- "$dir" || return 1
+    linkImageInto "$1" "$(realpath -- "$dir")"
+}
+
+#######################################
+# Remove the Untagged tag (TAG-03) from a stored image, if it has it. The
+# folder is removed if left empty; it can't be a LINK target, so the
+# fuller checks of pruneTagFolder aren't needed.
+# Globals:
+#   _silUntaggedTag
+# Arguments:
+#   $1 - Image hash
+#######################################
+function dropUntagged {
+    local link
+    link="$(tagLinkPath "$1" "$_silUntaggedTag")" && [[ -L "$link" ]] || return 0
+    rm -f -- "$link"
+    rmdir -- "$(dirname -- "$link")" 2> /dev/null || true
+}
+
+#######################################
+# Find a stored image's links in user tags: every tag except the date
+# and Untagged tags. Links through a LINK alias aren't followed, so each
+# tag is found once, at its real folder.
+# Globals:
+#   SIL_LIBRARY, _silDateTag, _silUntaggedTag
+# Arguments:
+#   $1 - Image hash
+#   $2 - 'first' to stop at the first link found
+# Outputs:
+#   One link path (physical) per line to STDOUT
+# Returns:
+#   0 on success, 1 if the image isn't stored
+#######################################
+function userTagLinks {
+    local image root
+    local -a quit=()
+    image="$(findStoredImage "$1")" || return 1
+    root="$(realpath -- "$SIL_LIBRARY/tags")"
+    [[ "${2:-}" == first ]] && quit=(-quit)
+    find "$root" \( -path "$root/$_silDateTag" -o -path "$root/$_silUntaggedTag" \) -prune \
+        -o -type l -name "${image##*/}" -print "${quit[@]}"
+}
+
+#######################################
+# Test whether a stored image has any user tag (userTagLinks).
+# Arguments:
+#   $1 - Image hash
+# Returns:
+#   0 if it has, 1 otherwise
+#######################################
+function hasUserTags {
+    [[ -n "$(userTagLinks "$1" first)" ]]
 }
 
 #######################################
@@ -402,9 +524,11 @@ function untagImage {
 }
 
 #######################################
-# Remove every tag in SIL_UNTAG from a stored image.
+# Remove every tag in SIL_UNTAG from a stored image. '*' removes all of
+# its tags, except its date tag. An image left with no tags is given the
+# Untagged tag (TAG-03).
 # Globals:
-#   SIL_UNTAG
+#   SIL_UNTAG, SIL_LIBRARY
 # Arguments:
 #   $1 - Image hash
 # Outputs:
@@ -413,9 +537,27 @@ function untagImage {
 #   0 on success, 1 if any tag could not be used
 #######################################
 function applyUntags {
-    local tags tag rv=0 removed="" absent=""
+    local tags tag link root rv=0 removed="" absent=""
     [[ -n "${SIL_UNTAG:-}" ]] || return 0
-    tags="$(parseUserTags "$SIL_UNTAG")" || rv=1
+    if [[ ",$SIL_UNTAG," =~ ,[[:space:]]*\*[[:space:]]*, ]]; then
+        root="$(realpath -- "$SIL_LIBRARY/tags")"
+        while IFS= read -r link; do
+            [[ -n "$link" ]] || continue
+            rm -f -- "$link"
+            tag="$(dirname -- "$link")"
+            removed="${removed:+$removed, }${tag#"$root"/}"
+            pruneTagFolder "$tag"
+        done <<< "$(userTagLinks "$1" | LC_ALL=C sort)"
+        if [[ -n "$removed" ]]; then
+            msgInfo "  Untagged: $removed"
+        else
+            msgInfo "  Had no tags to remove"
+        fi
+        markUntagged "$1" || rv=1
+        return "$rv"
+    fi
+
+    tags="$(parseUserTags "$SIL_UNTAG" UNTAG)" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
         if untagImage "$1" "$tag"; then
@@ -426,6 +568,9 @@ function applyUntags {
     done <<< "$tags"
     [[ -n "$removed" ]] && msgInfo "  Untagged: $removed"
     [[ -n "$absent" ]] && msgInfo "  Did not have tag: $absent"
+    if [[ -n "$removed" ]] && ! hasUserTags "$1"; then
+        markUntagged "$1" || rv=1
+    fi
     return "$rv"
 }
 
@@ -494,9 +639,9 @@ function moveTagContents {
 # link to the target tag's folder. The target is created if needed. A
 # source holding images is merged into the target, only if the user
 # agrees (askYesNo); a source that is already a link is pointed at the
-# new target.
+# new target. Reserved tags (reservedTag) can't be used on either side.
 # Globals:
-#   SIL_LIBRARY, _silDateTag
+#   SIL_LIBRARY
 # Arguments:
 #   $1 - LINK value: 'SOURCE -> TARGET', eg 'Politics -> Meme/Politics'
 # Outputs:
@@ -506,8 +651,8 @@ function moveTagContents {
 #   halts (msgError) if the user declines the merge
 #######################################
 function linkTag {
-    local value="$1" src target top parent name entry entryDir targetDir parentDir
-    local count was
+    local value="$1" src target parent name entry entryDir targetDir parentDir
+    local count was reserved
     if [[ "$value" != *"->"* ]]; then
         msgWarn "[!] LINK needs a source and target, eg: LINK='Politics -> Meme/Politics'
     Got: $value"
@@ -519,9 +664,8 @@ function linkTag {
         msgWarn "[!] LINK needs exactly one source and one target tag: $value"
         return 1
     fi
-    top="${src%%/*}"
-    if [[ "${top,,}" == "${_silDateTag,,}" ]]; then
-        msgWarn "[!] '$_silDateTag' is reserved for automatic date tags; it can't be a LINK source: $src"
+    if reserved="$(reservedTag "$src")" || reserved="$(reservedTag "$target")"; then
+        msgWarn "[!] '$reserved' is a reserved tag; it can't be used in a LINK: $value"
         return 1
     fi
 

@@ -164,7 +164,8 @@ function knownImage {
 
 #######################################
 # Act on a stored image that a URI identified: remove it (REMOVE), or
-# report it FOUND and apply SIL_TAG and SIL_UNTAG.
+# report it FOUND and apply SIL_UNTAG then SIL_TAG, so that
+# 'TAG=New UNTAG=*' replaces every tag with New.
 # Globals:
 #   SIL_REMOVE, SIL_TAG, SIL_UNTAG
 # Arguments:
@@ -186,8 +187,8 @@ function updateStored {
         return 1
     fi
     reportOutcome FOUND "${hash:0:12}${2:+ - $2}" "$hash"
-    applyTags "$hash" || rv=1
     applyUntags "$hash" || rv=1
+    applyTags "$hash" || rv=1
     return "$rv"
 }
 
@@ -196,8 +197,9 @@ function updateStored {
 # recorded as a source is a DUPE of its image, unless REFETCH; any other
 # URL or local path is recovered and added. The URI is recorded as a source of
 # the resulting image (REQ-05), a newly stored image gets today's date
-# tag (TAG-02), and tags in SIL_TAG are applied. The outcome is reported
-# and counted.
+# tag (TAG-02), and tags in SIL_TAG are applied; a newly stored image
+# given none is tagged Untagged (TAG-03). The outcome is reported and
+# counted.
 # With REMOVE or UNTAG, the URI must identify an image already stored
 # (knownImage), which is then removed or untagged; nothing is downloaded.
 # Globals:
@@ -270,6 +272,9 @@ function processURI {
         dateTagImage "$_silOutcomeHash" || { msgWarn "[!] Could not apply the date tag"; rv=1; }
     fi
     applyTags "$_silOutcomeHash" || rv=1
+    if [[ "$_silOutcome" != DUPE ]] && (( _silTagsApplied == 0 )); then
+        markUntagged "$_silOutcomeHash" || { msgWarn "[!] Could not apply the $_silUntaggedTag tag"; rv=1; }
+    fi
     return "$rv"
 }
 

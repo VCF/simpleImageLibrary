@@ -456,3 +456,25 @@ the library browsable by date
     `CHECK` reports the extra link and `REBUILD` remakes the chain
 * A new day is normally the latest, but one earlier than an existing day (eg
   from a clock change, or a merge) is inserted between its neighbours
+
+# TAG-03 Untagged images and tag names
+
+Every image can be found through `tags`, even one never given a tag
+
+* `Untagged` is a reserved top-level tag, at `tags/Untagged`. An image is
+  linked there exactly when it has no tags other than its date tag (`TAG-02`)
+  * A new image (`ADDED` or `SHRINK`) given no tags is tagged `Untagged`. A
+    `DUPE` is left as it is
+  * Giving an image any tag removes its `Untagged` tag
+  * `UNTAG` removing an image's last tag, or `UNTAG=*` removing them all, tags
+    it `Untagged`
+  * Users can't apply or remove `Untagged` (`TAG=Untagged`, `UNTAG=Untagged`),
+    or use it in a `LINK`; it is ignored with a warning, and processing
+    continues
+  * `CHECK` reports images with no tags that aren't `Untagged` (eg added before
+    `TAG-03`), and images that are `Untagged` with other tags too. `REBUILD`
+    fixes both
+* Tag names may contain only letters, digits, space, `_` and `-`. Letters are
+  ASCII plus the accented letters of Latin-1; other Unicode is not supported
+  for now. Other characters are removed with a warning. See `TAG` in
+  [parameters.md](parameters.md)

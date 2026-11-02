@@ -104,13 +104,26 @@ The tag parameter defines one or more tags within the library
   * `Animal:Mammal:Dog` would then be found in `tags/Animal/Mammal/Dog`
 * Multiple tags can be passed separated by commas. Repeating `TAG=` replaces
   the earlier value rather than adding to it
-* Tag levels of `.` or `..` are ignored with a warning, so a tag can never
-  reach outside the `tags` folder
-* `Date` is reserved for automatic date tags (`TAG-02`); tags starting with it
-  are ignored with a warning
   * `TAG=Humor,Politics/Humor`
   * Whitespace around a comma is ignored; `TAG=Humor , Politics/Humor` is the
     same as above
+* Tags may only contain letters, digits, space, `_` and `-` (`TAG-03`)
+  * Letters are ASCII, plus the accented letters of Latin-1 (`é`, `Ñ`, `ü`
+    etc). Other Unicode is not supported
+  * Whitespace around each level is quietly removed
+  * Other characters are removed, with a warning: `Tag 'Fun!' renamed to 'Fun'`
+  * A tag with a level left empty (eg `.`, `..` or `!!`) is ignored with a
+    warning, so a tag can never reach outside the `tags` folder
+* Reserved tags, ignored with a warning (in any case, and with anything below
+  them):
+  * `Date`, for automatic date tags (`TAG-02`)
+  * `Untagged`, for images with no other tags (`TAG-03`). `TAG=Untagged` warns
+    that to remove all tags from an image, use `UNTAG=*`. Other tags in the same
+    value are still applied
+* A new image given no tags is tagged `Untagged`; giving an image any tag
+  removes its `Untagged` tag (`TAG-03`)
+* `TAG=` (empty) applies no tags: earlier tags are kept, and only a new image
+  becomes `Untagged`
 * Tagging an image results in a symlink being placed in the relevant tag folder,
   pointing by relative path to the image in `images`
   * Given `TAG=Animal/Dog` to image `f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
@@ -131,9 +144,15 @@ Removes tags from images already in the library. Values are written as for
   * `sil UNTAG=Humor https://example.com/funny.jpg`
 * Only the named tag is removed; tags below it are kept. `UNTAG=Animal` leaves
   `Animal/Dog`
+* `UNTAG=*` removes all of the image's tags, except its date tag. Quote it on
+  the command line: `sil UNTAG='*' <uri>`
 * A tag the image doesn't have is reported, and isn't a failure
-* `Date` tags can't be removed (`TAG-02`); they are ignored with a warning
-* `TAG` may be given too, to retag in one step: `sil TAG=New UNTAG=Old <uri>`
+* An image left with no tags is quietly tagged `Untagged` (`TAG-03`)
+* `Date` and `Untagged` tags can't be removed (`TAG-02`, `TAG-03`); they are
+  ignored with a warning
+* `TAG` may be given too, to retag in one step: `sil TAG=New UNTAG=Old <uri>`.
+  `UNTAG` is applied first, so `sil TAG=New UNTAG='*' <uri>` replaces every tag
+  with `New`
 * Tag folders left empty are removed
 
 ### REMOVE
@@ -182,7 +201,8 @@ effectively allow "alias tags" that will share a common folder of image symlinks
 * If SOURCE is already a link, it is pointed at the new TARGET; if it already
   points there, nothing changes
 * Refused, with a warning: a SOURCE inside its TARGET or the reverse (the link
-  would loop), and a SOURCE in the reserved `Date` tag
+  would loop), and a SOURCE or TARGET in the reserved `Date` or `Untagged`
+  tags
 
 ## SHRINK
 
