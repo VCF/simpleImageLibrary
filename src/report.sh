@@ -33,6 +33,11 @@ declare -g _silErrLog="" _silMdLog="" _silLogName=""
 declare -gA _silErrWritten=()
 declare -ga _silLogRows=()
 
+## Failures, for regrouping the error log by reason in logFinish: one
+## "<tag><sep><uri>" row per failure, with the settings in effect for it
+## (CANON=value lines, as from logSettings) at the same index
+declare -ga _silErrRows=() _silErrSettings=()
+
 #######################################
 # A parameter's current value, written so it reads back the same from a
 # manifest (eg sizes in bytes as '512000b', percents as '25%').
@@ -53,11 +58,30 @@ function paramFileValue {
 }
 
 #######################################
+# Write the error log's header.
+# Globals:
+#   _silLogName
+# Outputs:
+#   Header comment lines to STDOUT
+#######################################
+function logErrHeader {
+    cat << EOF
+# Failed URIs from $_silLogName, written by sil on $(date '+%Y-%m-%d %H:%M')
+# Failures are grouped under a comment giving their reason. Settings in
+# effect are written before the failures they applied to. To retry,
+# review and edit, then rename to a .txt file in this folder and run it:
+#   mv '$_silLogName.err' retry.txt && sil retry.txt
+
+EOF
+}
+
+#######################################
 # Start the logs for a manifest, overwriting any from an earlier run.
 # The error log is written as failures happen, so it survives an
-# interrupted run.
+# interrupted run; logFinish then rewrites it grouped by reason.
 # Globals:
-#   Sets _silErrLog, _silMdLog, _silLogName, _silErrWritten, _silLogRows
+#   Sets _silErrLog, _silMdLog, _silLogName, _silErrWritten, _silLogRows,
+#   _silErrRows, _silErrSettings
 # Arguments:
 #   $1 - Manifest path
 # Returns:
@@ -69,15 +93,9 @@ function logStart {
     _silMdLog="$1.md"
     _silErrWritten=()
     _silLogRows=()
-    if ! cat > "$_silErrLog" 2> /dev/null << EOF
-# Failed URIs from $_silLogName, written by sil on $(date '+%Y-%m-%d %H:%M')
-# Each failure has a comment giving its reason. Settings in effect are
-# written before the failures they applied to. To retry, review and edit,
-# then rename to a .txt file in this folder and run it, eg:
-#   mv '$_silLogName.err' retry.txt && sil retry.txt
-
-EOF
-    then
+    _silErrRows=()
+    _silErrSettings=()
+    if ! logErrHeader > "$_silErrLog" 2> /dev/null; then
         msgWarn "[!] Can't write logs beside the manifest: $_silErrLog"
         _silErrLog=""
         _silMdLog=""
@@ -86,33 +104,144 @@ EOF
 }
 
 #######################################
-# Record one URI's outcome in the logs. Failures are written to the
-# error log at once, preceded by any settings that changed since the
-# last failure written.
+# The settings in effect that a retry needs: every set parameter except
+# one-time actions (eg LINK). LIBRARY comes first, as a manifest needs it
+# before any other setting or URI; it is already an absolute path, so a
+# moved retry file still finds the library.
 # Globals:
-#   _silLastOutcome, _silLastDetail, _silLastHash, _silParamType,
-#   _silParamScope; updates _silErrWritten, _silLogRows
+#   _silParamType, _silParamScope, SIL_<NAME>
+# Outputs:
+#   CANON=value lines to STDOUT, LIBRARY then the rest sorted by name
+#######################################
+function logSettings {
+    local canon value
+    [[ -n "${SIL_LIBRARY:-}" ]] && printf 'LIBRARY=%s\n' "$SIL_LIBRARY"
+    for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
+        [[ "${_silParamScope[$canon]:-}" == action || "$canon" == LIBRARY ]] && continue
+        value="$(paramFileValue "$canon")"
+        [[ -n "$value" ]] && printf '%s=%s\n' "$canon" "$value"
+    done
+    return 0
+}
+
+#######################################
+# Record one URI's outcome in the logs. Failures are appended to the
+# error log at once, preceded by any settings that changed since the
+# last failure written, and kept for logFinish to regroup.
+# Globals:
+#   _silLastOutcome, _silLastDetail, _silLastHash; updates
+#   _silErrWritten, _silLogRows, _silErrRows, _silErrSettings
 # Arguments:
 #   $1 - The URI, as written in the manifest
 #######################################
 function logOutcome {
     [[ -n "$_silErrLog" ]] || return 0
-    local uri="$1" canon value comment
+    local uri="$1" settings comment
     _silLogRows+=("$_silLastOutcome$_silSep${_silLastHash:0:12}$_silSep$uri")
     isSuccessTag "$_silLastOutcome" && return 0
 
+    settings="$(logSettings)"
+    _silErrRows+=("$_silLastOutcome$_silSep$uri")
+    _silErrSettings+=("$settings")
     {
-        for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
-            ## One-time actions (eg LINK) are not settings to retry with
-            [[ "${_silParamScope[$canon]:-}" == action ]] && continue
-            value="$(paramFileValue "$canon")"
-            [[ -n "$value" && "${_silErrWritten[$canon]:-}" != "$value" ]] || continue
-            printf '%s=%s\n' "$canon" "$value"
-            _silErrWritten[$canon]="$value"
-        done
+        logSettingsChanged "$settings"
         comment="# $_silLastOutcome: ${_silLastDetail//$'\n'/ }"
         printf '%s\n%s\n\n' "${comment:0:80}" "$uri"
     } >> "$_silErrLog"
+}
+
+#######################################
+# Write the settings of a failure that differ from those already written
+# to the error log, and note them as written.
+# Globals:
+#   Updates _silErrWritten
+# Arguments:
+#   $1 - Settings, as from logSettings
+# Outputs:
+#   CANON=value lines to STDOUT
+#######################################
+function logSettingsChanged {
+    local line
+    while IFS= read -r line; do
+        [[ -n "$line" && "${_silErrWritten[${line%%=*}]:-}" != "${line#*=}" ]] || continue
+        printf '%s\n' "$line"
+        _silErrWritten[${line%%=*}]="${line#*=}"
+    done <<< "$1"
+}
+
+#######################################
+# Rewrite the error log with failures grouped under one comment per
+# reason. Settings of the first failure come first, with TAG and the
+# other image settings in a block of their own; after that, settings are
+# written only where they change before a URI.
+# TAG and UNTAG can't be cleared in a manifest, so a failure from before
+# one was first set can't follow a failure that had it. Failures are
+# therefore grouped in runs, starting a new run wherever a setting is
+# first set; reasons can appear once in each run.
+# Globals:
+#   _silErrLog, _silErrRows, _silErrSettings, _silParamScope,
+#   _silOutcomeMeaning; resets _silErrWritten
+# Outputs:
+#   The error log file
+#######################################
+function logErrGrouped {
+    local i j start end tag uri line comment
+    local -a image=() other=() tags=()
+    local -A seen=()
+    _silErrWritten=()
+
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        if [[ "${_silParamScope[${line%%=*}]:-}" != image ]]; then
+            other+=("$line")
+        elif [[ "$line" == TAG=* ]]; then
+            image=("$line" "${image[@]}")
+        else
+            image+=("$line")
+        fi
+    done <<< "${_silErrSettings[0]}"
+
+    {
+        logErrHeader
+        for line in "${other[@]}" "" "${image[@]}"; do
+            [[ -n "$line" ]] && _silErrWritten[${line%%=*}]="${line#*=}"
+            printf '%s\n' "$line"
+        done
+        (( ${#image[@]} )) && printf '\n'
+
+        start=0
+        while (( start < ${#_silErrRows[@]} )); do
+            ## End the run where a failure has a setting the one before lacked
+            end=$(( start + 1 ))
+            while (( end < ${#_silErrRows[@]} )); do
+                while IFS= read -r line; do
+                    [[ -n "$line" ]] || continue
+                    grep -q "^${line%%=*}=" <<< "${_silErrSettings[end - 1]}" || break 2
+                done <<< "${_silErrSettings[end]}"
+                end=$(( end + 1 ))
+            done
+
+            tags=()
+            seen=()
+            for (( i = start; i < end; i++ )); do
+                tag="${_silErrRows[i]%%"$_silSep"*}"
+                [[ -n "${seen[$tag]:-}" ]] || tags+=("$tag")
+                seen[$tag]=1
+            done
+            for tag in "${tags[@]}"; do
+                comment="# $tag: ${_silOutcomeMeaning[$tag]:-}"
+                printf '%s\n' "${comment:0:80}"
+                for (( j = start; j < end; j++ )); do
+                    [[ "${_silErrRows[j]%%"$_silSep"*}" == "$tag" ]] || continue
+                    uri="${_silErrRows[j]#*"$_silSep"}"
+                    logSettingsChanged "${_silErrSettings[j]}"
+                    printf '%s\n' "$uri"
+                done
+                printf '\n'
+            done
+            start=$end
+        done
+    } > "$_silErrLog"
 }
 
 #######################################
@@ -154,7 +283,8 @@ function logLegend {
 }
 
 #######################################
-# Finish the logs: write the markdown report, and report both paths.
+# Finish the logs: write the markdown report, regroup the error log by
+# reason, and report both paths.
 # Globals:
 #   _silMdLog, _silErrLog, _silLogName, _silLogRows
 # Outputs:
@@ -196,6 +326,7 @@ function logFinish {
 
     msgInfo "Report: $_silMdLog"
     if (( nFailed )); then
+        logErrGrouped
         msgInfo "Failures, ready to retry: $_silErrLog"
     else
         printf '# No failures\n' >> "$_silErrLog"

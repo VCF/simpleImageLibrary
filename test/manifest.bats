@@ -129,7 +129,8 @@ EOF
   printf 'TAG=Before\nmissing-a.png\nplasma.png\nTAG=After\nmissing-b.png\n' > work/m.txt
   parseManifest work/m.txt 2> /dev/null || true
   run grep -v '^#' work/m.txt.err
-  assert_line --index 0 "FLATTEN=off"
+  assert_line --index 0 "LIBRARY=$(realpath lib)"
+  assert_line --index 1 "FLATTEN=off"
   assert_line "TAG=Before"
   assert_line "TAG=After"
   assert_line "missing-a.png"
@@ -138,7 +139,72 @@ EOF
   run grep -c '^THRESHOLD=' work/m.txt.err
   assert_output 1
   run grep -B1 '^missing-a.png$' work/m.txt.err
-  assert_line --index 0 "# NOFILE: File not found"
+  assert_line --index 0 "# NOFILE: Local file does not exist"
+}
+
+@test "the error log groups failures by reason, with the first TAG on its own" {
+  printf 'TAG=First\nmissing-a.png\nbad|.invalid\nmissing-b.png\n' > work/m.txt
+  printf 'https://x.invalid/a.jpg\nTAG=Second\nmissing-c.png\n' >> work/m.txt
+  parseManifest work/m.txt 2> /dev/null || true
+  run sed -n '/^[A-Z]/,$p' work/m.txt.err
+  assert_line --index 0 "LIBRARY=$(realpath lib)"
+  assert_line --index 1 "FLATTEN=off"
+  run grep -A2 '^TOR=' work/m.txt.err
+  assert_output "TOR=off
+
+TAG=First"
+  run grep -c '^# NOFILE' work/m.txt.err
+  assert_output 1
+  run sed -n '/^# NOFILE/,/^$/p' work/m.txt.err
+  assert_output "# NOFILE: Local file does not exist
+missing-a.png
+bad|.invalid
+missing-b.png
+TAG=Second
+missing-c.png"
+  run sed -n '/^# UNREACHABLE/,/^$/p' work/m.txt.err
+  assert_output "# UNREACHABLE: Could not connect to the website
+TAG=First
+https://x.invalid/a.jpg"
+}
+
+@test "failures from before the first TAG stay before it in the error log" {
+  printf 'missing-a.png\nhttps://x.invalid/a.jpg\nTAG=Late\nmissing-b.png\n' > work/m.txt
+  parseManifest work/m.txt 2> /dev/null || true
+  run grep -v '^#' work/m.txt.err
+  refute_line --index 0 --partial "TAG="
+  run grep -c '^# NOFILE' work/m.txt.err
+  assert_output 2
+  run sed -n '/^https/,$p' work/m.txt.err
+  assert_output "https://x.invalid/a.jpg
+
+# NOFILE: Local file does not exist
+TAG=Late
+missing-b.png"
+}
+
+@test "an error log from a manifest that set LIBRARY retries into it" {
+  printf 'LIBRARY=../lib\nlate.png\n' > work/m.txt
+  parseManifest work/m.txt 2> /dev/null || true
+  cp work/plasma.png work/late.png
+  mv work/m.txt.err work/retry.txt
+  unset SIL_LIBRARY
+  run parseManifest work/retry.txt
+  assert_success
+  assert_output --partial "[ADDED]"
+}
+
+@test "a regrouped error log retries each URI with its own TAG" {
+  printf 'TAG=One\nlate-a.png\nhttps://x.invalid/a.jpg\nTAG=Two\nlate-b.png\n' > work/m.txt
+  parseManifest work/m.txt 2> /dev/null || true
+  cp work/plasma.png work/late-a.png
+  convert -size 64x64 -seed 3 plasma:fractal work/late-b.png
+  grep -v invalid work/m.txt.err > work/retry.txt
+  parseManifest work/retry.txt 2> /dev/null
+  run find lib/tags/One lib/tags/Two -type l
+  assert_equal "${#lines[@]}" 2
+  assert_line --partial "tags/One/"
+  assert_line --partial "tags/Two/"
 }
 
 @test "error log comments are at most 80 characters" {

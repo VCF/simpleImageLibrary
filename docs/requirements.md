@@ -313,18 +313,27 @@ characters.
       by renaming it to a `.txt` file. The `.err` suffix deliberately stops it
       being used as a manifest by accident
     * Written as failures happen, so it is useful even if a run is
-      interrupted. A header explains how to retry
-    * All parameters in effect (except `LIBRARY`, `CHECK` and `REBUILD`) are
-      written before the first failed URI, and each one again whenever it
-      changes before a later failed URI. A retry therefore uses the original
-      settings, whatever the configuration files or command line say then
+      interrupted, then rewritten grouped by reason when the run finishes. A
+      header explains how to retry
+    * All parameters in effect (except `LINK`, `CHECK` and `REBUILD`) are
+      written before the first failed URI, `LIBRARY` first as an absolute
+      path, and each one again
+      whenever it differs before a later failed URI. A retry therefore uses
+      the original settings, whatever the configuration files or command line
+      say then
+      * The first failure's image parameters (`TAG` first, then `REMOVE` and
+        `UNTAG`) follow the others after a blank line
     * Values are written so they read back the same, eg sizes in bytes
       (`SHRINK=512000b`) and percents with `%`
     * Relative paths are kept as written; they still work for a renamed copy
       in the same folder
     * With no failures, it holds only its header and `# No failures`
-    * Failed URIs are written one per line, each preceded by a comment of 80
-      characters or less giving the reason tag and explaining why it failed
+    * Failed URIs are written one per line, grouped by reason. Each group
+      starts with a comment of 80 characters or less giving the reason tag
+      and its meaning, and URIs keep their manifest order within it
+    * `TAG` and `UNTAG` can't be cleared in a manifest, so failures from
+      before one was first set are kept before it: groups start again where a
+      parameter is first set, and a reason may then appear more than once
   * An informative log named `foo.txt.md`
     * A compact markdown file
     * An h1 header `# Load report for foo.txt`, then the run's date and library
