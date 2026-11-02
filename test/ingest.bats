@@ -69,9 +69,21 @@ assert_no_temp_files() {
   assert_success
   assert_output --partial "[ADDED]"
   assert_output --partial "Tagged: Test"
+  refute_output --partial "Tagged: Untagged"
   run find lib/tags/Test -type l
   assert_output --regexp '\.png$'
   assert_no_temp_files
+}
+
+@test "a new image given no tags reports the Untagged tag" {
+  run processURI "$DATA/plasma.png"
+  assert_success
+  assert_output --partial "Tagged: Untagged"
+}
+
+@test "a line number, when given, is shown before the URI" {
+  run processURI "$DATA/plasma.png" "" 7
+  assert_output --partial "[7] $DATA/plasma.png"
 }
 
 @test "a large image is shrunk (SHRINK)" {

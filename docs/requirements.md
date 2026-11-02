@@ -215,6 +215,10 @@ Each stored image has two identifiers with different jobs:
 * A line shaped like `NAME=VALUE` with an unrecognized `NAME` is reported and
   ignored, rather than treated as a file
 * A failed URI is reported and processing continues with the next line
+* Each URI's progress starts with its line number, eg
+  `[7] https://example.com/dog.jpg`
+* `TAG=` or `UNTAG=` with no value clears the earlier setting for the URIs
+  after it
 
 # REQ-07 Image shrinking
 
@@ -472,8 +476,9 @@ Every image can be found through `tags`, even one never given a tag
 
 * `Untagged` is a reserved top-level tag, at `tags/Untagged`. An image is
   linked there exactly when it has no tags other than its date tag (`TAG-02`)
-  * A new image (`ADDED` or `SHRINK`) given no tags is tagged `Untagged`. A
-    `DUPE` is left as it is
+  * A new image (`ADDED` or `SHRINK`) given no tags is tagged `Untagged`, and
+    reported like any other tag (`Tagged: Untagged`). A `DUPE` is left as it
+    is
   * Giving an image any tag removes its `Untagged` tag
   * `UNTAG` removing an image's last tag, or `UNTAG=*` removing them all, tags
     it `Untagged`

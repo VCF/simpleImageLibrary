@@ -51,6 +51,12 @@ declare -gA _silParamDefault=(
     [TOR]=0
 )
 
+## Parameters that an empty value clears (eg 'TAG='), rather than halting
+declare -gA _silParamClearable=(
+    [TAG]=1
+    [UNTAG]=1
+)
+
 ## Parameters restricted in configuration files. Unlisted parameters
 ## are library-wide settings, allowed anywhere.
 ##   image  - applied to individual images; never in a conf file
@@ -216,9 +222,10 @@ function looksLikeParam {
 #######################################
 # Parse a NAME or NAME=VALUE token and set the matching SIL_<NAME>
 # variable. Flags become 1, or 0 if given 0/no/false/off (any case).
-# Value parameters are trimmed and unquoted.
+# Value parameters are trimmed and unquoted. An empty value clears a
+# parameter listed in _silParamClearable.
 # Globals:
-#   _silParamType; sets SIL_<NAME>
+#   _silParamType, _silParamClearable; sets SIL_<NAME>
 # Arguments:
 #   $1 - Token, eg 'tag = Meme' or 'TOR'
 #   $2 - Optional source description for messages
@@ -254,6 +261,8 @@ function setParamToken {
         else
             value=1
         fi
+    elif (( hasValue )) && [[ -z "$value" && -n "${_silParamClearable[$canon]:-}" ]]; then
+        value=""
     elif (( ! hasValue )) || [[ -z "$value" ]]; then
         msgError "[!] Parameter $canon requires a value, eg: $canon=something
     Found in: $src"

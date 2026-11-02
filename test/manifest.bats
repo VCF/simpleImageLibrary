@@ -44,6 +44,18 @@ EOF
   assert_equal "${#lines[@]}" 2
 }
 
+@test "TAG= clears an earlier TAG; URIs are shown with line numbers" {
+  printf 'TAG=First\nplasma.png\nTAG=\nanimated.gif\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_success
+  assert_output --partial "[2] plasma.png"
+  assert_output --partial "[4] animated.gif"
+  run find lib/tags/First lib/tags/Untagged -type l
+  assert_line --regexp "First/.*\\.png$"
+  assert_line --regexp "Untagged/.*\\.gif$"
+  assert_equal "${#lines[@]}" 2
+}
+
 @test "settings are restored after the manifest" {
   SIL_TAG=Outer
   printf 'TAG=Inner\nTHRESHOLD=99\nplasma.png\n' > work/m.txt

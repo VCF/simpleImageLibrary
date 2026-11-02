@@ -116,6 +116,18 @@ teardown() {
   assert_output --partial "requires a value"
 }
 
+@test "an empty value clears TAG and UNTAG, but halts for others" {
+  setParamToken "TAG=Foo"
+  setParamToken "TAG="
+  assert_equal "$SIL_TAG" ""
+  setParamToken "UNTAG=Foo"
+  setParamToken "UNTAG = "
+  assert_equal "$SIL_UNTAG" ""
+  run setParamToken "LINK="
+  assert_failure
+  assert_output --partial "requires a value"
+}
+
 @test "unknown parameter warns and returns failure" {
   run setParamToken "BOGUS=1"
   assert_failure

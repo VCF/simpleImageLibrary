@@ -208,6 +208,7 @@ function updateStored {
 #   $1 - URI
 #   $2 - Folder that relative paths are relative to (default: current
 #        folder; a manifest's folder for manifests, REQ-06)
+#   $3 - Optional manifest line number, shown before the URI as '[7]'
 # Outputs:
 #   Progress and the outcome to STDERR
 # Returns:
@@ -215,9 +216,9 @@ function updateStored {
 #   missing
 #######################################
 function processURI {
-    local uri="$1" base="${2:-}"
+    local uri="$1" base="${2:-}" lineNum="${3:-}"
     local kind path tmp hash rv
-    msgInfo "$uri"
+    msgInfo "${lineNum:+[$lineNum] }$uri"
     requireTool identify imagemagick "inspect images"
     requireTool findimagedupes findimagedupes "fingerprint images"
     requireTool ffmpeg ffmpeg "fingerprint animations (GIF, AVIF)"
@@ -273,7 +274,12 @@ function processURI {
     fi
     applyTags "$_silOutcomeHash" || rv=1
     if [[ "$_silOutcome" != DUPE ]] && (( _silTagsApplied == 0 )); then
-        markUntagged "$_silOutcomeHash" || { msgWarn "[!] Could not apply the $_silUntaggedTag tag"; rv=1; }
+        if markUntagged "$_silOutcomeHash"; then
+            msgInfo "  Tagged: $_silUntaggedTag"
+        else
+            msgWarn "[!] Could not apply the $_silUntaggedTag tag"
+            rv=1
+        fi
     fi
     return "$rv"
 }

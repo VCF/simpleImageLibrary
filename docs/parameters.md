@@ -122,8 +122,9 @@ The tag parameter defines one or more tags within the library
     value are still applied
 * A new image given no tags is tagged `Untagged`; giving an image any tag
   removes its `Untagged` tag (`TAG-03`)
-* `TAG=` (empty) applies no tags: earlier tags are kept, and only a new image
-  becomes `Untagged`
+* `TAG=` (empty) clears an earlier `TAG` setting, eg partway through a
+  manifest, so following images get no tags: tags they already have are kept,
+  and only a new image becomes `Untagged`
 * Tagging an image results in a symlink being placed in the relevant tag folder,
   pointing by relative path to the image in `images`
   * Given `TAG=Animal/Dog` to image `f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
@@ -150,6 +151,8 @@ Removes tags from images already in the library. Values are written as for
 * An image left with no tags is quietly tagged `Untagged` (`TAG-03`)
 * `Date` and `Untagged` tags can't be removed (`TAG-02`, `TAG-03`); they are
   ignored with a warning
+* `UNTAG=` (empty) clears an earlier `UNTAG` setting, so following URIs are
+  added as normal
 * `TAG` may be given too, to retag in one step: `sil TAG=New UNTAG=Old <uri>`.
   `UNTAG` is applied first, so `sil TAG=New UNTAG='*' <uri>` replaces every tag
   with `New`

@@ -100,7 +100,7 @@ function parseManifest {
                 break
             fi
             urisSeen=1
-            processURI "$line" "$base" || rv=1
+            processURI "$line" "$base" "$lineNum" || rv=1
             logOutcome "$line"
         fi
     done < "$path"
