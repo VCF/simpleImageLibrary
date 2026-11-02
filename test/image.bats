@@ -233,3 +233,62 @@ blankOpening() {
     "$(imageFingerprint other.png)" 90
   assert_failure
 }
+
+# --- videos ----------------------------------------------------------
+
+## Write a 2 second, 10 frame/second test video with sound. The container
+## comes from the suffix; videos are then copied to suffix-free names
+makeVideo() {
+  local codec=libx264
+  [[ "$1" == *.webm ]] && codec=libvpx-vp9
+  ffmpeg -v error -y -f lavfi -i testsrc=size=160x120:rate=10:duration=2 \
+    -f lavfi -i sine=d=2 -c:v "$codec" -pix_fmt yuv420p -shortest "$1"
+}
+
+@test "imageFormat recognizes MP4, WebM and MOV videos by content" {
+  makeVideo v.mp4
+  makeVideo v.webm
+  makeVideo v.mov
+  cp v.mp4 mp4
+  run imageFormat mp4
+  assert_success
+  assert_output MP4
+  cp v.webm webm
+  run imageFormat webm
+  assert_output WEBM
+  cp v.mov mov
+  run imageFormat mov
+  assert_output MOV
+}
+
+@test "imageFormat flags a truncated video as damaged (2)" {
+  makeVideo v.mp4
+  head -c 2000 v.mp4 > truncated
+  run imageFormat truncated
+  assert_failure 2
+  assert_output MP4
+}
+
+@test "frameDurations and imageFrames read video frames" {
+  makeVideo v.mp4
+  run imageFrames v.mp4
+  assert_output 20
+  run frameDurations v.mp4 MP4
+  assert_line --index 0 0.100000
+}
+
+@test "a video is fingerprinted from its middle frame" {
+  makeVideo v.mp4
+  ffmpeg -v error -i v.mp4 -vf "select=eq(n\,10)" -frames:v 1 mid.png
+  run fingerprintsMatch "$(imageFingerprint v.mp4)" "$(imageFingerprint mid.png)" 95
+  assert_success
+}
+
+@test "hasAudio tells videos with sound from those without" {
+  makeVideo v.mp4
+  run hasAudio v.mp4
+  assert_success
+  ffmpeg -v error -i v.mp4 -an -c copy silent.mp4
+  run hasAudio silent.mp4
+  assert_failure
+}

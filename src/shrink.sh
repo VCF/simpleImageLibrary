@@ -123,15 +123,16 @@ function verifyShrunk {
 }
 
 #######################################
-# Re-encode an animated GIF or WebP as animated AVIF (AV1), at the
-# SHRINKVID quality level, then check the result with verifyShrunk.
-# Frames are placed on white, as AVIF is written without transparency.
+# Re-encode an animated GIF or WebP, or a video, as animated AVIF (AV1),
+# at the SHRINKVID quality level, then check the result with
+# verifyShrunk. Frames are placed on white, as AVIF is written without
+# transparency, and any sound is dropped.
 # Helper for shrinkAnimation, which handles cleanup.
 # Globals:
 #   SIL_SHRINKVID, _silShrinkVidCrf, _silShrinkVidVerify, _silFlattenVf
 # Arguments:
 #   $1 - Original animation path
-#   $2 - Its format: GIF or WEBP
+#   $2 - Its format: GIF, WEBP or a video format (eg MP4)
 #   $3 - Output path for the AVIF
 #   $4 - Size of the original, in bytes
 # Outputs:
@@ -169,6 +170,8 @@ function encodeAnimation {
     else
         input=(-i "file:$src")
     fi
+    ## V (not v) skips cover art, which containers store as a video stream
+    input+=(-map 0:V:0 -an)
 
     msgStatus "  Shrinking $(humanSize "$srcBytes") animation to AVIF (SHRINKVID=$SIL_SHRINKVID)"
     errTxt="$(ffmpeg -v error -y "${input[@]}" -fps_mode passthrough \
@@ -187,9 +190,9 @@ function encodeAnimation {
 }
 
 #######################################
-# Shrink an animated GIF or WebP by re-encoding it as animated AVIF
-# (SHRINKVID). Other animations, eg already AVIF, are left unchanged.
-# Transparency is lost (placed on white), with a warning.
+# Shrink an animated GIF or WebP, or a video, by re-encoding it as
+# animated AVIF (SHRINKVID). Other animations, eg already AVIF, are left
+# unchanged. Transparency and sound are lost, with a warning.
 # Globals:
 #   SIL_SHRINKVID; sets _silShrinkNote
 # Arguments:
@@ -209,13 +212,16 @@ function shrinkAnimation {
     fi
     local _format
     _format="$(imageFormat "$_src")"
-    if [[ "$_format" != GIF && "$_format" != WEBP ]]; then
+    if [[ "$_format" != GIF && "$_format" != WEBP ]] && ! isVideoFormat "$_format"; then
         _silShrinkNote="As is (animated $_format)"
         return 0
     fi
     requireTool ffmpeg ffmpeg "shrink animations (SHRINKVID parameter)"
     if hasTransparency "$_src"; then
         msgWarn "[!] Animation has transparency, which AVIF will lose: placing it on white"
+    fi
+    if isVideoFormat "$_format" && hasAudio "$_src"; then
+        msgWarn "[!] Video has sound, which AVIF will lose"
     fi
 
     local _out _rc=0
@@ -232,9 +238,9 @@ function shrinkAnimation {
 }
 
 #######################################
-# Shrink an image. Animations go to shrinkAnimation (SHRINKVID); other
-# images are re-encoded as JPEG of about SIL_SHRINK bytes (ImageMagick
-# jpeg:extent). The original is kept if shrinking is off, not triggered,
+# Shrink an image. Animations and videos go to shrinkAnimation
+# (SHRINKVID); other images are re-encoded as JPEG of about SIL_SHRINK
+# bytes (ImageMagick jpeg:extent). The original is kept if shrinking is off, not triggered,
 # not possible, saves too little, or changes the image.
 # Transparent images are only shrunk to JPEG with FLATTEN, which places
 # them on a white background first.
@@ -267,7 +273,7 @@ function shrinkImage {
     requireTool findimagedupes findimagedupes \
         "check shrunk images still match their originals"
 
-    if (( $(imageFrames "$_src") > 1 )); then
+    if isVideoFormat "$(imageFormat "$_src")" || (( $(imageFrames "$_src") > 1 )); then
         shrinkAnimation "$_src" "$_resultVar"
         return
     fi

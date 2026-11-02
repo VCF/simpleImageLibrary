@@ -96,6 +96,18 @@ assert_no_temp_files() {
   assert_no_temp_files
 }
 
+@test "a video URL is ADDED and stored with its own suffix" {
+  startServer
+  ffmpeg -v error -f lavfi -i testsrc=size=160x120:rate=10:duration=1 \
+    -c:v libvpx-vp9 www/clip.webm
+  run processURI "$URL/clip.webm"
+  assert_success
+  assert_output --partial "[ADDED]"
+  run find lib/images -name '*.webm'
+  assert_output --regexp '\.webm$'
+  assert_no_temp_files
+}
+
 @test "the same image again is a DUPE, and new tags go to the original" {
   processURI "$DATA/plasma.png" 2> /dev/null
   SIL_TAG=Again

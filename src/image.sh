@@ -1,7 +1,8 @@
 ## Image inspection and fingerprinting - see REQ-05
 
-## Supported formats, as reported by identify (%m), and the suffix used
-## when storing them. Anything else is rejected, including SVG (shelved)
+## Supported formats, as reported by identify (%m) or videoFormat, and
+## the suffix used when storing them. Anything else is rejected, including
+## SVG (shelved)
 declare -gA _silImageSuffix=(
     [JPEG]=jpg
     [PNG]=png
@@ -10,6 +11,18 @@ declare -gA _silImageSuffix=(
     [BMP]=bmp
     [TIFF]=tif
     [AVIF]=avif
+    [MP4]=mp4
+    [WEBM]=webm
+    [MOV]=mov
+)
+
+## Supported video containers, by file(1) MIME type, and their SIL format
+## names. ImageMagick has no video decoder, so ffmpeg handles these
+declare -gA _silVideoMime=(
+    [video/mp4]=MP4
+    [video/x-m4v]=MP4
+    [video/webm]=WEBM
+    [video/quicktime]=MOV
 )
 
 ## ffmpeg filter placing frames on a white background, so transparency
@@ -17,9 +30,51 @@ declare -gA _silImageSuffix=(
 declare -g _silFlattenVf="split[a][b];[a]drawbox=t=fill:c=white:replace=1[bg];[bg][b]overlay=format=auto,format=rgb24"
 
 #######################################
-# Determine an image's format from its content, using ImageMagick.
-# ImageMagick also takes hints from the file suffix (eg trying to render
-# '.html' files), so files being identified should have no suffix.
+# Test whether a format name, as from imageFormat, is a video.
+# Globals:
+#   _silVideoMime
+# Arguments:
+#   $1 - Format name (eg MP4)
+# Returns:
+#   0 if a video format, 1 otherwise
+#######################################
+function isVideoFormat {
+    [[ -n "$1" && " ${_silVideoMime[*]} " == *" $1 "* ]]
+}
+
+#######################################
+# Determine whether a file is a supported video, from its content: the
+# container by file(1) MIME type, then a check with ffprobe that it holds
+# a readable video stream. Only the container header is checked, so
+# damage later in the file goes unnoticed until it is decoded.
+# Globals:
+#   _silVideoMime
+# Arguments:
+#   $1 - File path
+# Outputs:
+#   Format name to STDOUT (eg MP4), when the container is recognized
+# Returns:
+#   0 - supported video
+#   1 - not a supported video container
+#   2 - supported container, but no readable video stream (eg truncated)
+#######################################
+function videoFormat {
+    local mime format
+    mime="$(file -b --mime-type -- "$1" 2> /dev/null)"
+    [[ -n "$mime" ]] || return 1
+    format="${_silVideoMime[$mime]:-}"
+    [[ -n "$format" ]] || return 1
+    printf '%s\n' "$format"
+    ## V (not v) skips cover art, which containers store as a video stream
+    [[ -n "$(ffprobe -v error -select_streams V:0 -show_entries stream=codec_type \
+        -of csv=p=0 "file:$1" < /dev/null 2> /dev/null)" ]] || return 2
+}
+
+#######################################
+# Determine an image's format from its content: videos with videoFormat,
+# anything else with ImageMagick. ImageMagick also takes hints from the
+# file suffix (eg trying to render '.html' files), so files being
+# identified should have no suffix.
 # Globals:
 #   _silImageSuffix
 # Arguments:
@@ -33,7 +88,12 @@ declare -g _silFlattenVf="split[a][b];[a]drawbox=t=fill:c=white:replace=1[bg];[b
 #   3 - an image, but an unsupported format (eg SVG)
 #######################################
 function imageFormat {
-    local format errTxt
+    local format errTxt rc=0
+    format="$(videoFormat "$1")" || rc=$?
+    if [[ -n "$format" ]]; then
+        printf '%s\n' "$format"
+        return "$rc"
+    fi
     errTxt="$(identify -format '%m' "$1[0]" 2>&1 > /dev/null)"
     format="$(identify -format '%m' "$1[0]" 2> /dev/null)" || return 1
     [[ -n "$format" ]] || return 1
@@ -43,10 +103,10 @@ function imageFormat {
 }
 
 #######################################
-# List the display time of each frame of an animation, for the formats
-# whose animations SIL handles. ffmpeg reads GIF and AVIF (ImageMagick
-# sees only the first frame of an animated AVIF); ImageMagick reads
-# WebP (ffmpeg can't decode animated WebP). A WebP delay of 0 is shown
+# List the display time of each frame of an animation or video, for the
+# formats whose animations SIL handles. ffmpeg reads GIF, AVIF and videos
+# (ImageMagick sees only the first frame of an animated AVIF); ImageMagick
+# reads WebP (ffmpeg can't decode animated WebP). A WebP delay of 0 is shown
 # by browsers as 0.1 seconds, as ffmpeg already does for GIF.
 # ffmpeg and ffprobe are kept off STDIN throughout, as they would
 # otherwise consume input meant for the caller (eg a while-read loop).
@@ -58,17 +118,14 @@ function imageFormat {
 #   formats or unreadable files
 #######################################
 function frameDurations {
-    case "$2" in
-        GIF|AVIF)
-            ffprobe -v error -select_streams v:0 \
-                -show_entries packet=duration_time -of csv=p=0 "file:$1" \
-                < /dev/null 2> /dev/null
-            ;;
-        WEBP)
-            identify -format '%T\n' "$1" 2> /dev/null \
-                | awk '{ printf "%.2f\n", ($1 > 0 ? $1 : 10) / 100 }'
-            ;;
-    esac
+    if [[ "$2" == WEBP ]]; then
+        identify -format '%T\n' "$1" 2> /dev/null \
+            | awk '{ printf "%.2f\n", ($1 > 0 ? $1 : 10) / 100 }'
+    elif [[ "$2" == GIF || "$2" == AVIF ]] || isVideoFormat "$2"; then
+        ffprobe -v error -select_streams V:0 \
+            -show_entries packet=duration_time -of csv=p=0 "file:$1" \
+            < /dev/null 2> /dev/null
+    fi
 }
 
 #######################################
@@ -80,7 +137,7 @@ function frameDurations {
 #######################################
 function imageFrames {
     local format n
-    format="$(identify -format '%m' "$1[0]" 2> /dev/null)"
+    format="$(imageFormat "$1")"
     n="$(frameDurations "$1" "$format" | wc -l)"
     if (( n == 0 )); then
         n="$(identify -format '%n\n' "$1" 2> /dev/null | head -n 1)"
@@ -112,8 +169,8 @@ function middleFrame {
 
 #######################################
 # Write the frame of an image that represents it for fingerprinting:
-# for animations, the middle frame (middleFrame) flattened onto white;
-# otherwise the first frame. Profiles and metadata are stripped, as
+# for animations and videos, the middle frame (middleFrame) flattened
+# onto white; otherwise the first frame. Profiles and metadata are stripped, as
 # findimagedupes rejects some harmless flaws (eg "iCCP: known incorrect
 # sRGB profile").
 # Arguments:
@@ -124,9 +181,9 @@ function middleFrame {
 #######################################
 function fingerprintFrame {
     local format durations k
-    format="$(identify -format '%m' "$1[0]" 2> /dev/null)"
+    format="$(imageFormat "$1")"
     durations="$(frameDurations "$1" "$format")"
-    if (( $(grep -c . <<< "$durations") <= 1 )); then
+    if ! isVideoFormat "$format" && (( $(grep -c . <<< "$durations") <= 1 )); then
         convert "$1[0]" -strip "$2" 2> /dev/null
         return
     fi
@@ -135,7 +192,7 @@ function fingerprintFrame {
         convert "$1" -coalesce -background white -alpha remove miff:- 2> /dev/null \
             | convert "miff:-[$k]" -strip "$2" 2> /dev/null
     else
-        ffmpeg -v error -y -i "file:$1" -vf "$_silFlattenVf,select=eq(n\,$k)" \
+        ffmpeg -v error -y -i "file:$1" -map 0:V:0 -vf "$_silFlattenVf,select=eq(n\,$k)" \
             -fps_mode passthrough -frames:v 1 "file:$2" < /dev/null 2> /dev/null
     fi
 }
@@ -151,6 +208,18 @@ function hasTransparency {
     local opaque
     opaque="$(identify -format '%[opaque]' "$1[0]" 2> /dev/null)"
     [[ "${opaque,,}" == false ]]
+}
+
+#######################################
+# Test whether a video has sound.
+# Arguments:
+#   $1 - Video path
+# Returns:
+#   0 if it has an audio stream, 1 otherwise
+#######################################
+function hasAudio {
+    [[ -n "$(ffprobe -v error -select_streams a -show_entries stream=index \
+        -of csv=p=0 "file:$1" < /dev/null 2> /dev/null)" ]]
 }
 
 #######################################

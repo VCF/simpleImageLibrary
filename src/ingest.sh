@@ -221,7 +221,7 @@ function processURI {
     msgInfo "${lineNum:+[$lineNum] }$uri"
     requireTool identify imagemagick "inspect images"
     requireTool findimagedupes findimagedupes "fingerprint images"
-    requireTool ffmpeg ffmpeg "fingerprint animations (GIF, AVIF)"
+    requireTool ffmpeg ffmpeg "fingerprint animations and videos"
 
     kind="$(uriKind "$uri")"
     path="$uri"

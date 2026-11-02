@@ -271,8 +271,9 @@ background before conversion to JPEG
 * Level parameter: `HIGH` (alias `HI`, `H`), `MEDIUM` (`MED`, `M`), `LOW`
   (`LO`, `L`), or `OFF` (`0`, `NO`, `FALSE`). Any case
 
-Shrinks animated GIF and WebP images by re-encoding them as animated AVIF
-(AV1), an open, royalty-free format (see `REQ-07`)
+Shrinks animated GIF and WebP images, and videos (MP4, WebM, MOV), by
+re-encoding them as animated AVIF (AV1), an open, royalty-free format (see
+`REQ-07`)
 
 * The level sets the AV1 quality (ffmpeg libaom `-crf`; lower is better).
   Measured on seven sample animations from 19 KB to 100 MB, the AVIF was:
@@ -287,6 +288,8 @@ Shrinks animated GIF and WebP images by re-encoding them as animated AVIF
 * Independent of `SHRINK`: either may be set without the other. `SHRINKTRIGGER`
   does not apply, as there is no target size; `SHRINKMINSAVE` does
 * Transparency is lost: frames are placed on a white background, with a warning
+* Sound is lost, as animated AVIF has none, with a warning. The AVIF loops
+  like a GIF
 * Animations already in other formats (eg AVIF) are left unchanged
 * Requires ffmpeg, ImageMagick and findimagedupes. If any is missing, SIL halts
   with the command to install it

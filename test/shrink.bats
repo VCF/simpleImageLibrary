@@ -164,6 +164,30 @@ assert_no_temp_files() {
   assert_output "$kept"
 }
 
+@test "SHRINKVID shrinks a video to AVIF, warning that sound is lost" {
+  ffmpeg -v error -f lavfi -i testsrc=size=320x240:rate=10:duration=2 \
+    -f lavfi -i sine=d=2 -c:v libx264 -crf 10 -pix_fmt yuv420p -shortest v.mp4
+  SIL_SHRINK=0
+  SIL_SHRINKVID=LOW
+  shrinkImage v.mp4 kept 2> err.txt
+  run cat err.txt
+  assert_output --partial "Video has sound, which AVIF will lose"
+  run imageFormat "$kept"
+  assert_output AVIF
+  run hasAudio "$kept"
+  assert_failure
+  assert_equal "$(frameDurations "$kept" AVIF)" "$(frameDurations v.mp4 MP4)"
+}
+
+@test "SHRINKVID off leaves a video as is" {
+  ffmpeg -v error -f lavfi -i testsrc=size=160x120:rate=10:duration=1 \
+    -c:v libvpx-vp9 v.webm
+  shrinkImage v.webm kept
+  assert_equal "$kept" v.webm
+  assert_equal "$_silShrinkNote" "As is (animated; SHRINKVID is off)"
+  assert_no_temp_files
+}
+
 @test "SHRINKVID leaves still images to SHRINK" {
   SIL_SHRINK=0
   SIL_SHRINKVID=LOW

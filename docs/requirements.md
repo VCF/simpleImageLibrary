@@ -117,8 +117,15 @@ Each stored image has two identifiers with different jobs:
 * Image format is determined from content with ImageMagick
   (`identify -format %m`), never from the file or URL suffix
   * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF, AVIF. SVG is shelved for now
+* Videos are also accepted, and handled as animations: MP4 (including M4V),
+  WebM and MOV (QuickTime). ImageMagick can't decode video, so the container
+  is recognized by `file --mime-type` and checked with ffprobe for a readable
+  video stream. Only the header is checked, so damage further into a video
+  is not caught as `BADIMAGE`
+  * Videos are stored as is, with suffix `.mp4`, `.webm` or `.mov`, unless
+    `SHRINKVID` converts them
   * ImageMagick sees only the first frame of an animated AVIF, so frames of GIF
-    and AVIF animations are counted and read with ffmpeg; WebP animations with
+    and AVIF animations, and videos, are counted and read with ffmpeg; WebP animations with
     ImageMagick, as ffmpeg can't decode them
   * Files are inspected without a suffix, as ImageMagick otherwise takes hints
     from it (eg attempting to render `.html` files)
@@ -250,8 +257,11 @@ Optional reduction of image file size, controlled by the `SHRINK`,
 
 ## Animations (`SHRINKVID`)
 
-* Animated GIF and WebP images are re-encoded as animated AVIF with ffmpeg
-  (libaom AV1) at the `SHRINKVID` quality level. Other animations are kept
+* Animated GIF and WebP images, and videos, are re-encoded as animated AVIF
+  with ffmpeg (libaom AV1) at the `SHRINKVID` quality level. Other animations
+  are kept
+* Sound is dropped, as animated AVIF has no audio. The user is warned when a
+  video had sound
 * Each frame keeps its original duration
 * Frames are placed on a white background, as the AVIF is written without
   transparency. The user is warned when an animation had transparency
