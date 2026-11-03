@@ -67,12 +67,20 @@ function fetchPath {
 #######################################
 function fetchURL {
     local url="$1" dest="$2"
-    local host code rc errTxt
+    local host path code rc errTxt
     local -a cmd=()
 
     [[ "${url,,}" =~ ^https?:// ]] \
         || fetchFailed UNSUPPORTED "Only http and https URLs are supported" || return 1
     requireTool curl curl "download images from URLs"
+
+    ## .gifv (Imgur) addresses an HTML page wrapping a video; the video
+    ## itself is at the same address with a .mp4 suffix
+    path="${url%%[?#]*}"
+    if [[ "${path,,}" == *.gifv ]]; then
+        url="${path%.*}.mp4${url:${#path}}"
+        msgInfo "  GIFV: fetching its video, $url"
+    fi
 
     host="${url#*://}"
     host="${host%%[/?#]*}"

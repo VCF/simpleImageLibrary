@@ -80,6 +80,9 @@ SIL will locate images through the following URIs:
   * Images are initially recovered to a temp directory pending later processing
   * Onion URLs are always recovered with torsocks
   * All URLs can optionally be recovered with torsocks if the `TOR` parameter is set
+  * A URL ending `.gifv` (Imgur's convention: an HTML page wrapping a video)
+    is fetched from the same address with suffix `.mp4`. The source is
+    recorded as given, with `.gifv`
 * Local files (via filepath) are copied to a temp directory pending later processing
 * Files in the temp directory are saved without a suffix, so their format is
   judged by content alone (`REQ-05`)

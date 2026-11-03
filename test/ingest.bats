@@ -108,6 +108,22 @@ assert_no_temp_files() {
   assert_no_temp_files
 }
 
+@test "a .gifv URL fetches its .mp4 video, and records the .gifv source" {
+  startServer
+  ffmpeg -v error -f lavfi -i testsrc=size=160x120:rate=10:duration=1 \
+    -c:v libx264 -pix_fmt yuv420p -f mp4 www/clip.mp4
+  echo '<html><video src="clip.mp4"></video></html>' > www/clip.gifv
+  run processURI "$URL/clip.GIFV?s=1"
+  assert_success
+  assert_output --partial "[ADDED]"
+  assert_output --partial "$URL/clip.mp4?s=1"
+  run find lib/images -name '*.mp4'
+  assert_output --regexp '\.mp4$'
+  run cat "$(sourcesFile)"
+  assert_output --partial " $URL/clip.GIFV?s=1"
+  assert_no_temp_files
+}
+
 @test "the same image again is a DUPE, and new tags go to the original" {
   processURI "$DATA/plasma.png" 2> /dev/null
   SIL_TAG=Again
