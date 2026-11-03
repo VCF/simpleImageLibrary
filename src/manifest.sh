@@ -16,7 +16,9 @@ declare -gA _silManifestBlocked=(
 # URIs after them; every other line is a URI. Relative paths are
 # relative to the manifest's folder. LIBRARY may be set before the first
 # URI, and the library's settings are then loaded (REQ-02). LINK is
-# carried out at its line, waiting for the user if it must ask. Settings,
+# carried out at its line, waiting for the user if it must ask. Each
+# setting other than TAG and UNTAG is echoed with its previous value, so
+# overrides of the library's settings are visible. Settings,
 # including the library, are restored afterwards, so each manifest is
 # self-contained. Outcomes are logged beside the
 # manifest in <manifest>.err (failures, as a manifest) and <manifest>.md
@@ -32,7 +34,7 @@ declare -gA _silManifestBlocked=(
 #######################################
 function parseManifest {
     local path="$1"
-    local base line lineNum=0 canon lib rv=0 urisSeen=0
+    local base line lineNum=0 canon lib was now rv=0 urisSeen=0
     local -a tokens=()
 
     if [[ ! -f "$path" || ! -r "$path" ]]; then
@@ -86,8 +88,19 @@ function parseManifest {
                 linkTag "$SIL_LINK" || rv=1
                 continue
             fi
+            was="$(paramValueText "$canon")"
             setParamToken "$line" "$path line $lineNum"
             tokens+=("$line")
+            ## TAG and UNTAG aren't echoed: the tags applied are shown
+            ## for each image instead
+            if [[ "$canon" != TAG && "$canon" != UNTAG ]]; then
+                now="$(paramValueText "$canon")"
+                if [[ "$now" == "$was" ]]; then
+                    msgInfo "  $canon = $now, unchanged (line $lineNum)"
+                else
+                    msgInfo "  $canon = $now, was $was (line $lineNum)"
+                fi
+            fi
         elif looksLikeParam "$line" && [[ ! -e "$base/$line" ]]; then
             msgWarn "[!] Unrecognized parameter '$(trim "${line%%=*}")' - ignored
     Found in: $path line $lineNum"

@@ -103,6 +103,18 @@ EOF
   assert_output --partial "seen 70 4"
 }
 
+@test "manifest settings are echoed with the value they replace, except TAG" {
+  printf 'SHRINK=3k\n' > lib/sil.conf
+  printf 'SHRINK=200k\nSHRINKVID=LOW\nTHRESHOLD=90\nTAG=First\n' > work/m.txt
+  processURI() { :; }
+  SIL_SHRINK=3072
+  run parseManifest work/m.txt
+  assert_output --partial "SHRINK = 204800 (200.0 KB), was 3072 (3.0 KB) (line 1)"
+  assert_output --partial "SHRINKVID = LOW, was OFF (line 2)"
+  assert_output --partial "THRESHOLD = 90, unchanged (line 3)"
+  refute_output --partial "TAG ="
+}
+
 @test "LIBRARY after the first URI is ignored" {
   printf 'plasma.png\nLIBRARY=%s\nanimated.gif\n' "$TEST_SANDBOX/other" > work/m.txt
   run parseManifest work/m.txt

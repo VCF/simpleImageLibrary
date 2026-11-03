@@ -539,6 +539,27 @@ function reloadParamsForLibrary {
 }
 
 #######################################
+# Describe a parameter's current value for the user: sizes also show
+# a human size, eg '204800 (200.0 KB)'.
+# Globals:
+#   _silParamType, SIL_<NAME>
+# Arguments:
+#   $1 - Canonical parameter name
+# Outputs:
+#   The value, or 'unset', to STDOUT (no trailing newline)
+#######################################
+function paramValueText {
+    local canon="$1" var="SIL_$1"
+    if [[ -z "${!var+x}" ]]; then
+        printf 'unset'
+    elif [[ "${_silParamType[$canon]}" == size && "${!var}" != 0 ]]; then
+        printf '%s (%s)' "${!var}" "$(humanSize "${!var}")"
+    else
+        printf '%s' "${!var}"
+    fi
+}
+
+#######################################
 # Report current parameter values to the user (UI-01), aligned on the
 # '=' with names right justified. LIBRARY is left out, as it is
 # reported separately.
@@ -557,11 +578,6 @@ function showParams {
         (( ${#canon} > width )) && width=${#canon}
     done
     for canon in "${shown[@]}"; do
-        var="SIL_$canon"
-        if [[ "${_silParamType[$canon]}" == size && "${!var}" != 0 ]]; then
-            msgInfo "$(printf '  %*s = %s (%s)' "$width" "$canon" "${!var}" "$(humanSize "${!var}")")"
-        else
-            msgInfo "$(printf '  %*s = %s' "$width" "$canon" "${!var}")"
-        fi
+        msgInfo "$(printf '  %*s = %s' "$width" "$canon" "$(paramValueText "$canon")")"
     done
 }
