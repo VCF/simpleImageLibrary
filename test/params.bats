@@ -242,6 +242,15 @@ teardown() {
   assert_output --partial "Unrecognized parameter 'TAGG'"
 }
 
+@test "parseCliParams ignores STOPSIL with a warning" {
+  run parseCliParams stopsil TAG=Meme a.jpg
+  assert_success
+  assert_output --partial "STOPSIL only applies in a manifest - ignored"
+  parseCliParams stopsil TAG=Meme a.jpg 2> /dev/null
+  assert_equal "${_silCliParams[*]}" "TAG=Meme"
+  assert_equal "${_silArgs[*]}" "a.jpg"
+}
+
 @test "parseCliParams treats an existing NAME=x file as a URI" {
   touch "weird=name.jpg"
   parseCliParams "weird=name.jpg"

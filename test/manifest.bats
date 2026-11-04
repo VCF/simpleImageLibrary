@@ -73,6 +73,26 @@ EOF
   assert_output --partial "[ADDED]"
 }
 
+@test "STOPSIL ends the manifest at its line" {
+  printf 'TAG=First\nplasma.png\nSTOPSIL\nanimated.gif\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_success
+  assert_output --partial "STOPSIL: rest of manifest skipped (line 3)"
+  refute_output --partial "animated.gif"
+  run find lib/images -name '*.gif'
+  assert_output ""
+  parseManifest work/m.txt 2> /dev/null
+  assert_equal "${SIL_STOPSIL+set}" ""
+}
+
+@test "STOPSIL=off does not stop the manifest" {
+  printf 'plasma.png\nSTOPSIL=off\nanimated.gif\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_success
+  refute_output --partial "rest of manifest skipped"
+  assert_output --partial "[3] animated.gif"
+}
+
 @test "LIBRARY in a manifest is used, created if needed, then restored" {
   printf 'LIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/other" > work/m.txt
   run parseManifest work/m.txt
@@ -98,6 +118,7 @@ EOF
   printf 'THRESHOLD=70\nSHRINKTRIGGER=3\n' > other/sil.conf
   printf 'SHRINKTRIGGER=4\nLIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/other" > work/m.txt
   ## Check settings while the manifest runs, from within processURI
+  # shellcheck disable=SC2317  # Called by parseManifest
   processURI() { echo "seen $SIL_THRESHOLD $SIL_SHRINKTRIGGER" >&2; }
   run parseManifest work/m.txt
   assert_output --partial "seen 70 4"

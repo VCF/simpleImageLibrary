@@ -48,7 +48,7 @@ precedence). Blank lines and lines starting with `#` are ignored.
 Configuration files hold settings that apply broadly. Some parameters can't be
 set in them; SIL warns and ignores those lines:
 
-* `TAG`, `UNTAG`, `REMOVE` and `LINK` - in neither file. They apply to
+* `TAG`, `UNTAG`, `REMOVE`, `LINK` and `STOPSIL` - in neither file. They apply to
   individual images or are one-time actions; use the command line or a manifest
 * `LIBRARY` - in `~/.sil.conf` only, as a default library
 
@@ -359,3 +359,15 @@ Indicates that `torsocks` should be used to recover a remote URI
 * Will be ignored for local files or image hashes
 * Will halt and provide instruction to user on installing `torsocks` if it is
   not available
+## STOPSIL
+
+* Flag parameter; only applies in a manifest
+
+Stops reading a manifest at its line: the lines after it are ignored, as if the
+manifest ended there (see `REQ-06`). Use it to load part of a manifest, eg to
+debug how its first URIs behave, without editing out the rest
+
+* Settings are restored and logs written as at the end of any manifest
+* `STOPSIL=off` (or `0`, `no`, `false`) does nothing, so a stop can be
+  disabled in place
+* Ignored, with a warning, on the command line, and in configuration files

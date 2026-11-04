@@ -16,7 +16,8 @@ declare -gA _silManifestBlocked=(
 # URIs after them; every other line is a URI. Relative paths are
 # relative to the manifest's folder. LIBRARY may be set before the first
 # URI, and the library's settings are then loaded (REQ-02). LINK is
-# carried out at its line, waiting for the user if it must ask. Each
+# carried out at its line, waiting for the user if it must ask. STOPSIL
+# ends the manifest at its line, leaving the remaining lines unread. Each
 # setting other than TAG and UNTAG is echoed with its previous value, so
 # overrides of the library's settings are visible. Settings,
 # including the library, are restored afterwards, so each manifest is
@@ -86,6 +87,14 @@ function parseManifest {
                 setParamToken "$line" "$path line $lineNum"
                 msgInfo "  LINK (line $lineNum)"
                 linkTag "$SIL_LINK" || rv=1
+                continue
+            fi
+            if [[ "$canon" == STOPSIL ]]; then
+                setParamToken "$line" "$path line $lineNum"
+                if flagIsSet STOPSIL; then
+                    msgInfo "  STOPSIL: rest of manifest skipped (line $lineNum)"
+                    break
+                fi
                 continue
             fi
             was="$(paramValueText "$canon")"

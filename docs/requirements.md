@@ -219,6 +219,7 @@ Each stored image has two identifiers with different jobs:
     names none is skipped with a warning
 * `CHECK` and `REBUILD` can't be set in a manifest, and are ignored with a
   warning
+* `STOPSIL` ends the manifest at its line; later lines are ignored
 * `LINK` is carried out at its line, once, rather than applying to later URIs.
   If it must ask the user (`REQ-11`), processing waits for the answer. It is
   not written to the error log, so a retry doesn't repeat it

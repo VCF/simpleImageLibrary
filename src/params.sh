@@ -29,6 +29,7 @@ declare -gA _silParamType=(
     [CHECK]=flag
     [REBUILD]=flag
     [TOR]=flag
+    [STOPSIL]=flag
 )
 
 ## Alias -> canonical name
@@ -69,6 +70,7 @@ declare -gA _silParamScope=(
     [LINK]=action
     [CHECK]=action
     [REBUILD]=action
+    [STOPSIL]=action
     [LIBRARY]=global
 )
 
@@ -319,6 +321,8 @@ function resetParams {
 #   Sets _silCliParams, _silArgs
 # Arguments:
 #   $@ - Command line arguments
+# Outputs:
+#   A warning to STDERR for STOPSIL, which only applies in manifests
 # Returns:
 #   Halts (msgError) on an unrecognized NAME=VALUE token, or on a parameter
 #   following a URI.
@@ -333,6 +337,10 @@ function parseCliParams {
                 msgError "[!] Parameter '$arg' follows a URI
     Parameters must come before any URIs or manifests, eg:
       sil TAG=Meme https://example.com/funny.jpg"
+            fi
+            if [[ "$(paramCanonical "$(trim "${arg%%=*}")")" == STOPSIL ]]; then
+                msgWarn "[!] STOPSIL only applies in a manifest - ignored"
+                continue
             fi
             _silCliParams+=("$arg")
         elif looksLikeParam "$arg" && [[ ! -e "$arg" ]]; then
