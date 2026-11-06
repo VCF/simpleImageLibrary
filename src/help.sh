@@ -29,6 +29,7 @@ must come before any URIs. Flags are turned off with NAME=off.
 
 Library:
   LIBRARY=PATH         Library folder, created if needed. If not given: the
+                       library containing the manifest (for its URIs), the
                        library containing the current folder, then LIBRARY in
                        ~/.sil.conf
 

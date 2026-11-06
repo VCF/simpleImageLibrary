@@ -71,10 +71,12 @@ The library parameter specifies the file path to the image library
   1. `LIBRARY` set at the top of a manifest, for that manifest's URIs (see
      `REQ-06`)
   2. `LIBRARY` given on the command line
-  3. The library containing the current folder. The current folder and each
+  3. The library containing a manifest, for that manifest's URIs. The
+     manifest's folder and each of its parents are checked
+  4. The library containing the current folder. The current folder and each
      of its parents are checked, so running SIL from eg `tags/Animal/Dog`
      finds the library
-  4. `LIBRARY` set in `~/.sil.conf`
+  5. `LIBRARY` set in `~/.sil.conf`
 * A leading `~` is expanded to the home folder, including in `~/.sil.conf`
 * If the chosen folder does not exist, or is empty, it is made into a new
   library: `images` and `tags` folders are created, and `sil.conf` is copied

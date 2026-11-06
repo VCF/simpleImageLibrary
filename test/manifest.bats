@@ -151,6 +151,57 @@ EOF
   assert_output --partial "No library for this manifest"
 }
 
+@test "a manifest inside a library uses it, at any depth, then restores" {
+  unset SIL_LIBRARY
+  mkdir -p lib/lists/old
+  cp work/plasma.png lib/lists/old/
+  printf 'THRESHOLD=70\n' > lib/sil.conf
+  printf 'THRESHOLD=90\nplasma.png\n' > lib/lists/old/m.txt
+  run parseManifest lib/lists/old/m.txt
+  assert_success
+  assert_output --partial "Library: $TEST_SANDBOX/lib (contains this manifest)"
+  assert_output --partial "THRESHOLD = 90, was 70"
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output 1
+  parseManifest lib/lists/old/m.txt 2> /dev/null
+  assert_equal "${SIL_LIBRARY+set}" ""
+}
+
+@test "a manifest's own library beats the current one" {
+  initLibrary "$TEST_SANDBOX/other" 2> /dev/null
+  cp work/plasma.png other/
+  printf 'plasma.png\n' > other/m.txt
+  run parseManifest other/m.txt
+  assert_success
+  run grep -cv '^#' other/images/fingerprints.txt
+  assert_output 1
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output 0
+  parseManifest other/m.txt 2> /dev/null
+  assert_equal "$SIL_LIBRARY" "$TEST_SANDBOX/lib"
+}
+
+@test "LIBRARY in a manifest beats the library containing it" {
+  initLibrary "$TEST_SANDBOX/other" 2> /dev/null
+  cp work/plasma.png lib/
+  printf 'LIBRARY=../other\nplasma.png\n' > lib/m.txt
+  unset SIL_LIBRARY
+  run parseManifest lib/m.txt
+  assert_success
+  run grep -cv '^#' other/images/fingerprints.txt
+  assert_output 1
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output 0
+}
+
+@test "REMAP before any URI acts on the library containing the manifest" {
+  unset SIL_LIBRARY
+  printf 'REMAP=Dog -> Animal/Canine\n' > lib/m.txt
+  run parseManifest lib/m.txt
+  assert_success
+  assert_file_contains lib/RemappedTags.txt 'Dog'
+}
+
 @test "an unknown parameter is reported, not treated as a file" {
   printf 'TAGG=Oops\nplasma.png\n' > work/m.txt
   run parseManifest work/m.txt

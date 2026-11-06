@@ -233,9 +233,13 @@ the closest match if it has a larger pixel area, as it would be stored (after
   ignored with a warning). The library is created if needed, and its
   `sil.conf` applied below the manifest's own settings (`REQ-02`). A relative
   path is relative to the manifest's folder
-  * If no library comes from the command line, current folder or
-    `~/.sil.conf`, SIL waits for the manifest to name one. A manifest that
-    names none is skipped with a warning
+  * Unless the command line gives `LIBRARY`, a manifest inside a library
+    (at any depth) uses that library, ahead of the library containing the
+    current folder and `~/.sil.conf`. A `LIBRARY` line in the manifest still
+    takes precedence
+  * If no library comes from the command line, the manifest's location, the
+    current folder or `~/.sil.conf`, SIL waits for the manifest to name one. A
+    manifest that names none is skipped with a warning
 * `CHECK` and `REBUILD` can't be set in a manifest, and are ignored with a
   warning
 * `STOPSIL` ends the manifest at its line; later lines are ignored

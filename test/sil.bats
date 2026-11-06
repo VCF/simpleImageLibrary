@@ -68,6 +68,32 @@ teardown() {
   assert_dir_exists fromManifest/tags/Fine
 }
 
+@test "sil takes the library from the manifest's location when none is given" {
+  mkdir -p lib/images lib/tags lib/lists
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" lib/lists/
+  printf 'TAG=Fine\nplasma.png\n' > lib/lists/m.txt
+  run "$PROJECT_ROOT/sil" lib/lists/m.txt
+  assert_success
+  assert_output --partial "Library: $TEST_SANDBOX/lib (contains this manifest)"
+  assert_dir_exists lib/tags/Fine
+}
+
+@test "the manifest's location beats ~/.sil.conf, but not the command line" {
+  mkdir -p lib/images lib/tags conf/images conf/tags cli/images cli/tags
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" lib/
+  printf 'plasma.png\n' > lib/m.txt
+  echo "LIBRARY=$TEST_SANDBOX/conf" > "$HOME/.sil.conf"
+  run "$PROJECT_ROOT/sil" lib/m.txt
+  assert_success
+  run find lib/images conf/images -type f -name '*.png'
+  assert_output --partial "lib/images/"
+  refute_output --partial "conf/images/"
+  run "$PROJECT_ROOT/sil" LIBRARY=cli lib/m.txt
+  assert_success
+  run find cli/images -type f -name '*.png'
+  assert_output --partial "cli/images/"
+}
+
 @test "sil still needs a library for URIs outside manifests" {
   cp "$PROJECT_ROOT/test/data/images/plasma.png" .
   printf 'LIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/fromManifest" > m.txt

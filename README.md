@@ -65,8 +65,10 @@ it is known. The first of these is used:
 
 1. `LIBRARY` at the top of a manifest, for the URIs in that manifest
 2. `LIBRARY` on the command line
-3. The library containing the current folder, however deep within it
-4. `LIBRARY` in `~/.sil.conf`
+3. The library containing a manifest, however deep within it, for the URIs in
+   that manifest
+4. The library containing the current folder, however deep within it
+5. `LIBRARY` in `~/.sil.conf`
 
 A folder that doesn't exist or is empty is made into a new library. A folder with
 other contents is left alone, and SIL halts.

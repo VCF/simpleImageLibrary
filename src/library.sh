@@ -104,7 +104,8 @@ function initLibrary {
 #   1. LIBRARY from the command line
 #   2. The library containing the current folder
 #   3. LIBRARY from ~/.sil.conf
-# A manifest may also name one (REQ-06), handled by parseManifest.
+# A manifest may also name or be inside one (REQ-06), handled by
+# parseManifest.
 # Globals:
 #   SIL_LIBRARY, PWD
 # Outputs:

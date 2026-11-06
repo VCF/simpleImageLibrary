@@ -14,8 +14,10 @@ declare -gA _silManifestBlocked=(
 #######################################
 # Process a manifest (REQ-06). Parameter lines change settings for the
 # URIs after them; every other line is a URI. Relative paths are
-# relative to the manifest's folder. LIBRARY may be set before the first
-# URI, and the library's settings are then loaded (REQ-02). LINK and REMAP
+# relative to the manifest's folder. Unless the command line names a
+# library, a manifest inside a library starts out using it. LIBRARY may be
+# set before the first URI, and the library's settings are then loaded
+# (REQ-02). LINK and REMAP
 # are carried out at their line, LINK waiting for the user if it must ask.
 # STOPSIL ends the manifest at its line, leaving the remaining lines unread. Each
 # setting other than TAG and UNTAG is echoed with its previous value, so
@@ -38,7 +40,7 @@ declare -gA _silManifestBlocked=(
 #######################################
 function parseManifest {
     local path="$1"
-    local base line lineNum=0 canon lib was now rv=0 urisSeen=0
+    local base line lineNum=0 canon lib home was now rv=0 urisSeen=0
     local -a tokens=()
 
     if [[ ! -f "$path" || ! -r "$path" ]]; then
@@ -50,6 +52,13 @@ function parseManifest {
     saveParams
     logStart "$path" || :
     _silHaltHook=logHalted
+
+    if ! cliHasParam LIBRARY && home="$(findLibrary "$base")" \
+        && [[ "$home" != "${SIL_LIBRARY:-}" ]]; then
+        reloadParamsForLibrary "$home"
+        msgInfo "  Library: $home (contains this manifest)"
+        syncRemaps || rv=1
+    fi
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         lineNum=$(( lineNum + 1 ))
@@ -126,7 +135,8 @@ function parseManifest {
         else
             if (( ! urisSeen )) && [[ -z "${SIL_LIBRARY:-}" ]]; then
                 msgWarn "[!] No library for this manifest - skipped: $path
-    Set LIBRARY at the top of the manifest, or give one on the command line"
+    Set LIBRARY at the top of the manifest, give one on the command line,
+    or keep the manifest inside a library folder"
                 rv=1
                 break
             fi
