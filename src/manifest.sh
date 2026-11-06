@@ -23,9 +23,12 @@ declare -gA _silManifestBlocked=(
 # including the library, are restored afterwards, so each manifest is
 # self-contained. Outcomes are logged beside the
 # manifest in <manifest>.err (failures, as a manifest) and <manifest>.md
-# (report), overwriting earlier logs (REQ-08).
+# (report), overwriting earlier logs (REQ-08); if SIL halts part way, eg
+# when the user declines a LINK, they are finished first (logHalted).
+# A manifest can't name another manifest: only the command line runs
+# them, so a .txt line here is a URI like any other (NOTIMAGE).
 # Globals:
-#   SIL_<NAME> (changed, then restored)
+#   SIL_<NAME> (changed, then restored); sets _silHaltHook
 # Arguments:
 #   $1 - Manifest path
 # Outputs:
@@ -46,6 +49,7 @@ function parseManifest {
     msgInfo "Manifest: $path"
     saveParams
     logStart "$path" || :
+    _silHaltHook=logHalted
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         lineNum=$(( lineNum + 1 ))
@@ -133,6 +137,7 @@ function parseManifest {
     done < "$path"
 
     logFinish
+    _silHaltHook=""
     restoreParams
     return "$rv"
 }

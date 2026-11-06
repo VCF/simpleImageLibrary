@@ -49,6 +49,10 @@ srcLib "colors"
 declare -g _silStatusTty=0
 [[ -t 2 ]] && _silStatusTty=1
 
+## Function msgError calls with its message before halting, if any: a
+## manifest uses it to finish its logs
+declare -g _silHaltHook=""
+
 function ansiStart {
     ## Starting ANSI codes
     ## $1 - additional codes to add, presumably colors
@@ -119,7 +123,10 @@ function msgWarn {
 }
 
 #######################################
-# Fatal error; halts execution (UI-02: red on yellow).
+# Fatal error; halts execution (UI-02: red on yellow). Runs _silHaltHook
+# first, if set.
+# Globals:
+#   _silHaltHook (cleared)
 # Arguments:
 #   $1 - The text to print
 # Outputs:
@@ -129,6 +136,11 @@ function msgWarn {
 #######################################
 function msgError {
     msg "$BgYellow;$FgRed" "$1"
+    if [[ -n "${_silHaltHook:-}" ]]; then
+        local hook="$_silHaltHook"
+        _silHaltHook=""
+        "$hook" "$1"
+    fi
     exit 1
 }
 

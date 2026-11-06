@@ -5,8 +5,6 @@ load test_helper
 
 setup() {
   setup_sandbox
-  export HOME="$TEST_SANDBOX/home"
-  mkdir -p "$HOME"
   myDir="$PROJECT_ROOT"
   source "$PROJECT_ROOT/src/utils.sh"
   srcLib "params"

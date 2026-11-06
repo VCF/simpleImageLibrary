@@ -9,8 +9,6 @@ load test_helper
 
 setup() {
   setup_sandbox
-  export HOME="$TEST_SANDBOX/home"
-  mkdir -p "$HOME"
   myDir="$PROJECT_ROOT"
   source "$PROJECT_ROOT/src/utils.sh"
   srcLib "params"
@@ -72,11 +70,14 @@ gitq() {
   assert_output ""
 }
 
-@test "the fingerprint index merges by union" {
+@test "files that two people add to are merged by union" {
   initLibrary "$TEST_SANDBOX/lib"
-  gitq -C lib init
-  run git -C lib check-attr merge images/fingerprints.txt
-  assert_output "images/fingerprints.txt: merge: union"
+  git -C lib init -q
+  local file
+  for file in images/fingerprints.txt images/sources.txt RemappedTags.txt ReplacedImages.tsv; do
+    run git -C lib check-attr merge "$file"
+    assert_output "$file: merge: union"
+  done
 }
 
 @test "initLibrary keeps an existing sil.conf" {

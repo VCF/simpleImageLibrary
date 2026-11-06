@@ -10,7 +10,7 @@ live in [requirements.md](./requirements.md); parameter specs in
 | -------------------- | --------------------------------------------------- |
 | `sil.sh` (`sil`)     | Entry point; sources libraries via `srcLib`         |
 | `src/<name>.sh`      | Function libraries, loaded with `srcLib "<name>"`   |
-| `test/<name>.bats`   | Tests for `src/<name>.sh`                           |
+| `test/<name>.bats`   | Tests for `src/<name>.sh`. `report.sh` is tested in `manifest.bats`, as it only serves manifests; `fetch.bats` covers what `ingest.bats` can't test with real downloads |
 | `test/test_helper.bash` | Shared test setup (`load test_helper`)           |
 | `templates/`         | Files copied when creating a new library            |
 | `.shellcheckrc`      | Lint settings for `make lint`                       |
@@ -119,7 +119,12 @@ Google Shell Style Guide header, omitting sections that don't apply:
 * Prefer fixing a lint warning over silencing it. When silencing is right, use
   an inline `# shellcheck disable=SCxxxx` with a reason, not `.shellcheckrc`
 * Every `src/` function with logic gets a test in `test/<name>.bats`
-* Test setup: `load test_helper`, `setup_sandbox`, point `HOME` into the sandbox,
-  set `myDir="$PROJECT_ROOT"`, then `source "$PROJECT_ROOT/src/utils.sh"` and
-  `srcLib` what's needed
+* Test setup: `load test_helper`, `setup_sandbox` (which also points `HOME` into
+  the sandbox), set `myDir="$PROJECT_ROOT"`, then
+  `source "$PROJECT_ROOT/src/utils.sh"` and `srcLib` what's needed
+* Tests make no network requests. Use the local web server in `ingest.bats`, a
+  stand-in function (see `fetch.bats`), or `http://127.0.0.1:1/` for a connection
+  that is refused at once
+* `make test-spaces` runs the whole suite under a folder with a space in its
+  name. Run it after changing how paths reach external tools
 * Use `run` to test failures and `msgError`, since `msgError` exits the shell

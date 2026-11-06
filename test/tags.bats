@@ -373,12 +373,22 @@ storeOn() {
 }
 
 @test "LINK refuses bad values, loops and reserved tags" {
-  local bad
-  for bad in "Politics" "A,B -> C" "-> C" "A -> Date/2020" "Date -> A" \
-    "untagged -> A" "A -> Untagged" "Meme/Politics -> Meme" "Meme -> Meme/Politics"; do
+  local bad reason
+  while IFS='|' read -r bad reason; do
     run linkTag "$bad"
     assert_failure
-  done
+    assert_output --partial "$reason"
+  done <<'EOF'
+Politics|needs a source and target
+A,B -> C|exactly one source and one target
+-> C|exactly one source and one target
+A -> Date/2020|'Date' is a reserved tag
+Date -> A|'Date' is a reserved tag
+untagged -> A|'Untagged' is a reserved tag
+A -> Untagged|'Untagged' is a reserved tag
+Meme/Politics -> Meme|source can't be inside its target
+Meme -> Meme/Politics|target can't be inside its source
+EOF
   [[ ! -L lib/tags/Date && ! -L lib/tags/Meme && ! -e lib/tags/A ]]
 }
 
@@ -387,6 +397,31 @@ storeOn() {
     srcLib tags; askYesNo 'Go on?'" < /dev/null
   assert_failure
   assert_output --partial "no terminal to ask at"
+}
+
+## Run a LINK through sil at a real terminal, typing the given answers
+linkAtTerminal() {
+  command -v script > /dev/null || skip "script (bsdutils) is not installed"
+  printf '%b' "$1" | script -qec \
+    "'$PROJECT_ROOT/sil' LIBRARY=lib 'LINK=Politics -> Meme/Politics'" /dev/null
+}
+
+@test "at a terminal, answering N to LINK changes nothing" {
+  tagImage "$hash" Politics
+  run linkAtTerminal 'n\n'
+  assert_failure
+  assert_output --partial "[Y/N]"
+  assert_output --partial "No changes made"
+  [[ ! -L lib/tags/Politics ]]
+  assert_file_exists "lib/tags/Politics/$hash.png"
+}
+
+@test "at a terminal, LINK asks again until answered Y, then moves the images" {
+  tagImage "$hash" Politics
+  run linkAtTerminal 'maybe\nY\n'
+  assert_success
+  assert_link_exists lib/tags/Politics
+  assert_file_exists "lib/tags/Meme/Politics/$hash.png"
 }
 
 # --- REMAP -----------------------------------------------------------
@@ -511,13 +546,23 @@ nextRun() {
 }
 
 @test "REMAP refuses bad values, loops and reserved tags" {
-  local bad
-  for bad in "Dog" "A,B -> C" "-> C" "A -> B -> C" "A -> Date/2020" "Date -> A" \
-    "untagged -> A" "A -> Untagged" "Dog -> Dog" "Dog -> dog/Sub"; do
+  local bad reason
+  while IFS='|' read -r bad reason; do
     run remapAdd "$bad"
     assert_failure
-    assert_output --partial "[!]"
-  done
+    assert_output --partial "$reason"
+  done <<'EOF'
+Dog|needs a source and target
+A,B -> C|exactly one source and one target
+-> C|exactly one source and one target
+A -> B -> C|needs a source and target
+A -> Date/2020|'Date' is a reserved tag
+Date -> A|'Date' is a reserved tag
+untagged -> A|'Untagged' is a reserved tag
+A -> Untagged|'Untagged' is a reserved tag
+Dog -> Dog|target can't be its source or inside it
+Dog -> dog/Sub|target can't be its source or inside it
+EOF
   assert_not_exists lib/RemappedTags.txt
 }
 

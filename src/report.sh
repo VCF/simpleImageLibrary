@@ -31,6 +31,9 @@ declare -g _silSep=$'\x1f'
 
 ## State for the manifest being logged
 declare -g _silErrLog="" _silMdLog="" _silLogName=""
+
+## Why the run halted part way, if it did (logHalted)
+declare -g _silLogHaltNote=""
 declare -gA _silErrWritten=()
 declare -ga _silLogRows=()
 
@@ -82,7 +85,7 @@ EOF
 # interrupted run; logFinish then rewrites it grouped by reason.
 # Globals:
 #   Sets _silErrLog, _silMdLog, _silLogName, _silErrWritten, _silLogRows,
-#   _silErrRows, _silErrSettings
+#   _silErrRows, _silErrSettings, _silLogHaltNote
 # Arguments:
 #   $1 - Manifest path
 # Returns:
@@ -96,7 +99,9 @@ function logStart {
     _silLogRows=()
     _silErrRows=()
     _silErrSettings=()
-    if ! logErrHeader > "$_silErrLog" 2> /dev/null; then
+    _silLogHaltNote=""
+    ## Braces, so that the error from the redirection itself is hidden too
+    if ! { logErrHeader > "$_silErrLog"; } 2> /dev/null; then
         msgWarn "[!] Can't write logs beside the manifest: $_silErrLog"
         _silErrLog=""
         _silMdLog=""
@@ -153,16 +158,23 @@ function logOutcome {
 
 #######################################
 # Write the settings of a failure that differ from those already written
-# to the error log, and note them as written.
+# to the error log, and note them as written. A clearable setting already
+# written but no longer set is written with no value, clearing it on retry.
 # Globals:
-#   Updates _silErrWritten
+#   _silParamClearable; updates _silErrWritten
 # Arguments:
 #   $1 - Settings, as from logSettings
 # Outputs:
 #   CANON=value lines to STDOUT
 #######################################
 function logSettingsChanged {
-    local line
+    local line canon
+    for canon in $(printf '%s\n' "${!_silParamClearable[@]}" | sort); do
+        [[ -n "${_silErrWritten[$canon]:-}" ]] || continue
+        grep -q "^$canon=" <<< "$1" && continue
+        printf '%s=\n' "$canon"
+        unset "_silErrWritten[$canon]"
+    done
     while IFS= read -r line; do
         [[ -n "$line" && "${_silErrWritten[${line%%=*}]:-}" != "${line#*=}" ]] || continue
         printf '%s\n' "$line"
@@ -174,11 +186,10 @@ function logSettingsChanged {
 # Rewrite the error log with failures grouped under one comment per
 # reason. Settings of the first failure come first, with TAG and the
 # other image settings in a block of their own; after that, settings are
-# written only where they change before a URI.
-# TAG and UNTAG can't be cleared in a manifest, so a failure from before
-# one was first set can't follow a failure that had it. Failures are
-# therefore grouped in runs, starting a new run wherever a setting is
-# first set; reasons can appear once in each run.
+# written only where they change before a URI, including TAG= and UNTAG=
+# where one is cleared. Failures from before a setting was first set stay
+# before it: failures are grouped in runs, starting a new run wherever a
+# setting is first set; reasons can appear once in each run.
 # Globals:
 #   _silErrLog, _silErrRows, _silErrSettings, _silParamScope,
 #   _silOutcomeMeaning; resets _silErrWritten
@@ -284,16 +295,33 @@ function logLegend {
 }
 
 #######################################
-# Finish the logs: write the markdown report, regroup the error log by
-# reason, and report both paths.
+# Finish the logs of a manifest that SIL is halting part way through, eg
+# when the user declines a LINK, so the results so far aren't lost. Run by
+# msgError (_silHaltHook).
 # Globals:
-#   _silMdLog, _silErrLog, _silLogName, _silLogRows
+#   Sets _silLogHaltNote
+# Arguments:
+#   $1 - The message SIL is halting with; its first line is the reason
+# Outputs:
+#   As logFinish
+#######################################
+function logHalted {
+    _silLogHaltNote="${1%%$'\n'*}"
+    _silLogHaltNote="${_silLogHaltNote#\[!\] }"
+    logFinish
+}
+
+#######################################
+# Finish the logs: write the markdown report, regroup the error log by
+# reason, and report both paths. Both note if the run halted part way.
+# Globals:
+#   _silMdLog, _silErrLog, _silLogName, _silLogRows, _silLogHaltNote
 # Outputs:
 #   The report file; log paths to STDERR
 #######################################
 function logFinish {
     [[ -n "$_silMdLog" ]] || return 0
-    local row tag hash uri nFailed=0
+    local row tag hash uri comment nFailed=0
     for row in "${_silLogRows[@]}"; do
         isSuccessTag "${row%%"$_silSep"*}" || nFailed=$(( nFailed + 1 ))
     done
@@ -302,6 +330,10 @@ function logFinish {
         printf '# Load report for %s\n\n' "$_silLogName"
         # shellcheck disable=SC2016  # Backticks are markdown, not expansion
         printf 'Run %s into `%s`\n\n' "$(date '+%Y-%m-%d %H:%M')" "$SIL_LIBRARY"
+        if [[ -n "$_silLogHaltNote" ]]; then
+            printf '**Stopped early; the rest of the manifest did not run:** %s\n\n' \
+                "$_silLogHaltNote"
+        fi
         if (( ${#_silLogRows[@]} > nFailed )); then
             logLegend success "${_silLogRows[@]}"
             printf '\n| Status | Hash | URI |\n| --- | --- | --- |\n'
@@ -331,5 +363,10 @@ function logFinish {
         msgInfo "Failures, ready to retry: $_silErrLog"
     else
         printf '# No failures\n' >> "$_silErrLog"
+    fi
+    if [[ -n "$_silLogHaltNote" ]]; then
+        comment="# Stopped: $_silLogHaltNote"
+        printf '\n# Stopped early; the rest of the manifest did not run\n%s\n' \
+            "${comment:0:80}" >> "$_silErrLog"
     fi
 }

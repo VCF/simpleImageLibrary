@@ -221,8 +221,10 @@ the closest match if it has a larger pixel area, as it would be stored (after
   * Parameters apply to all URIs following them
   * Parameters can be changed an arbitrary number of times in the manifest.
     Changes apply to all subsequent URIs, unless changed again
-* Manifest files are provided in the same context as URIs, but are recognized as
-  such by being text files with a `.txt` suffix.
+* Manifest files are provided on the command line, in the same context as URIs,
+  but are recognized as such by being text files with a `.txt` suffix.
+* A manifest can't run another manifest. A `.txt` file named in a manifest is
+  treated as any other file, so fails as `NOTIMAGE`
 * Relative local paths in a manifest are relative to the manifest's own folder,
   not the current folder, so a manifest works wherever SIL is run from
 * Parameter changes last only until the end of the manifest; settings are then
@@ -369,9 +371,11 @@ characters.
     * Failed URIs are written one per line, grouped by reason. Each group
       starts with a comment of 80 characters or less giving the reason tag
       and its meaning, and URIs keep their manifest order within it
-    * `TAG` and `UNTAG` can't be cleared in a manifest, so failures from
-      before one was first set are kept before it: groups start again where a
-      parameter is first set, and a reason may then appear more than once
+    * A `TAG` or `UNTAG` cleared in the manifest is written as `TAG=` or `UNTAG=`
+      before the next failed URI it applied to
+    * Failures from before a parameter was first set are kept before it: groups
+      start again where a parameter is first set, and a reason may then appear
+      more than once
   * An informative log named `foo.txt.md`
     * A compact markdown file
     * An h1 header `# Load report for foo.txt`, then the run's date and library
@@ -386,6 +390,9 @@ characters.
         only those
       * A markdown table with two columns: Reason and URI
   * `|` in a URI is escaped, so the tables stay intact
+  * If SIL halts part way through a manifest, eg the user declines a `LINK`
+    (`REQ-11`), both files are still written with the results so far, and each
+    says that the rest of the manifest did not run
   * If the manifest's folder can't be written, SIL warns and runs without logs
 
 # REQ-09 Library maintenance

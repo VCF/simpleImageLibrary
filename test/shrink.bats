@@ -2,9 +2,9 @@
 ## Tests for src/shrink.sh. Images are generated with ImageMagick's
 ## plasma, which compresses poorly and so makes large PNGs
 
-# Each bats test runs in its own subshell, which is intended, and SIL_*
-# parameters are read by the sourced code
-# shellcheck disable=SC2030,SC2031,SC2034
+# Each bats test runs in its own subshell, which is intended, SIL_* parameters
+# are read by the sourced code, and stand-in tools are called by it
+# shellcheck disable=SC2030,SC2031,SC2034,SC2317
 
 load test_helper
 
@@ -53,6 +53,21 @@ assert_no_temp_files() {
   assert_equal "$kept" big.png
   [[ "$_silShrinkNote" == "As is ("*" < 2.0 MB)" ]]
   assert_no_temp_files
+}
+
+@test "SHRINKTRIGGER sets how large an image must be to be shrunk" {
+  local bytes
+  bytes="$(stat -c %s big.png)"
+  SIL_SHRINK="$bytes"
+  ## Exactly at the trigger, so it is tried, whether or not it saves enough
+  SIL_SHRINKTRIGGER=1
+  shrinkImage big.png kept
+  [[ "$_silShrinkNote" != "As is ("[0-9]* ]]
+  ## Just under the trigger, so it is not
+  SIL_SHRINKTRIGGER=1.01
+  shrinkImage big.png kept
+  assert_equal "$kept" big.png
+  [[ "$_silShrinkNote" == "As is ("[0-9]*" < "* ]]
 }
 
 @test "large image is shrunk to about the target and verified" {
@@ -134,6 +149,48 @@ assert_no_temp_files() {
   assert_no_temp_files
 }
 
+@test "if ImageMagick can't shrink, the original is kept, with a warning" {
+  convert() {
+    if [[ "$*" == *jpeg:extent* ]]; then
+      echo "stand-in failure" >&2
+      return 1
+    fi
+    command convert "$@"
+  }
+  shrinkImage big.png kept 2> err.txt
+  assert_equal "$kept" big.png
+  run cat err.txt
+  assert_output --partial "could not shrink the image, keeping original"
+  assert_output --partial "stand-in failure"
+  assert_no_temp_files
+}
+
+@test "if ImageMagick can't flatten, the original is kept, with a warning" {
+  convert big.png -alpha set -channel A -evaluate set 50% +channel alpha.png
+  convert() {
+    if [[ "$*" == *-flatten* ]]; then
+      return 1
+    fi
+    command convert "$@"
+  }
+  SIL_FLATTEN=1
+  shrinkImage alpha.png kept 2> err.txt
+  assert_equal "$kept" alpha.png
+  run cat err.txt
+  assert_output --partial "could not flatten the image, keeping original"
+  assert_no_temp_files
+}
+
+@test "a shrunk copy that can't be fingerprinted is rejected" {
+  imageFingerprint() { return 1; }
+  local rc=0
+  shrinkImage big.png kept 2> /dev/null || rc=$?
+  assert_equal "$rc" 2
+  assert_equal "$_silShrinkFailDetail" "Shrunk copy could not be fingerprinted to check it"
+  assert_equal "$kept" big.png
+  assert_no_temp_files
+}
+
 # --- SHRINKVID ---------------------------------------------------------
 
 @test "SHRINKVID shrinks an animated GIF to AVIF, keeping its timing" {
@@ -162,6 +219,68 @@ assert_no_temp_files() {
   ## Only the kept AVIF remains; the extracted frames are gone
   run find "$TEST_SANDBOX/.tmp" -mindepth 1
   assert_output "$kept"
+}
+
+@test "SHRINKVID shrinks an animated WebP whatever the library is called" {
+  makeAnimation anim.gif
+  convert anim.gif -quality 95 anim.webp
+  SIL_SHRINKVID=LOW
+  local lib
+  for lib in "with space" "it's" "per%cent"; do
+    SIL_LIBRARY="$TEST_SANDBOX/$lib"
+    shrinkImage anim.webp kept
+    assert_equal "${kept#"$SIL_LIBRARY"/}" ".tmp/${kept##*/}"
+    run imageFormat "$kept"
+    assert_output AVIF
+  done
+}
+
+@test "the AVIF loops forever, as GIFs and WebPs do" {
+  makeAnimation anim.gif
+  ffmpeg() {
+    printf '%s\n' "$*" >> ffmpeg.log
+    command ffmpeg "$@"
+  }
+  SIL_SHRINKVID=LOW
+  shrinkImage anim.gif kept
+  run grep -c -- '-loop 0 -f avif' ffmpeg.log
+  assert_output 1
+}
+
+@test "if ffmpeg can't shrink an animation, the original is kept, with a warning" {
+  makeAnimation anim.gif
+  ffmpeg() {
+    if [[ "$*" == *" avif "* ]]; then
+      echo "stand-in failure" >&2
+      return 1
+    fi
+    command ffmpeg "$@"
+  }
+  SIL_SHRINKVID=LOW
+  shrinkImage anim.gif kept 2> err.txt
+  assert_equal "$kept" anim.gif
+  run cat err.txt
+  assert_output --partial "ffmpeg could not shrink the animation, keeping original"
+  assert_output --partial "stand-in failure"
+  assert_no_temp_files
+}
+
+@test "if a WebP's frames can't be read, the original is kept, with a warning" {
+  makeAnimation anim.gif
+  convert anim.gif anim.webp
+  convert() {
+    if [[ "$*" == *f%05d.png* ]]; then
+      return 1
+    fi
+    command convert "$@"
+  }
+  SIL_SHRINKVID=LOW
+  shrinkImage anim.webp kept 2> err.txt
+  assert_equal "$kept" anim.webp
+  run cat err.txt
+  assert_output --partial "could not read the animation frames, keeping original"
+  run find "$TEST_SANDBOX/.tmp" -mindepth 1
+  assert_output ""
 }
 
 @test "SHRINKVID shrinks a video to AVIF, warning that sound is lost" {

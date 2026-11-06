@@ -3,7 +3,7 @@
 srcLib "image"
 
 ## A stored image's file name: <hash>.<suffix>
-declare -g _silStoredNameRe='^([0-9a-f]{40})\.[a-z]+$'
+declare -g _silStoredNameRe='^([0-9a-f]{40})\.[a-z0-9]+$'
 
 #######################################
 # Path of the library's fingerprint index.

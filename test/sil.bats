@@ -5,20 +5,10 @@ load test_helper
 
 setup() {
   setup_sandbox
-  export HOME="$TEST_SANDBOX/home"
-  mkdir -p "$HOME"
 }
 
 teardown() {
   teardown_sandbox
-}
-
-@test "sil runs from a symlink in another folder" {
-  mkdir bin
-  ln -s "$PROJECT_ROOT/sil.sh" bin/sil
-  run bin/sil
-  assert_success
-  assert_output --partial "Simple Image Library"
 }
 
 @test "sil runs through a chain of symlinks" {
@@ -130,4 +120,85 @@ teardown() {
   assert_success
   assert_output --partial "Done: 1 REMOVED"
   assert_not_exists lib/tags/B
+}
+
+@test "sil writes nothing to STDOUT when processing images" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  printf 'plasma.png\nmissing.png\n' > m.txt
+  "$PROJECT_ROOT/sil" LIBRARY=lib plasma.png missing.png m.txt > out.txt 2> err.txt || true
+  assert_file_not_empty err.txt
+  assert_file_empty out.txt
+}
+
+@test "manifests given together don't share settings" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  convert -size 64x64 -seed 3 plasma:fractal other.png
+  printf 'TAG=First\nplasma.png\n' > a.txt
+  printf 'other.png\n' > b.txt
+  run "$PROJECT_ROOT/sil" LIBRARY=lib a.txt b.txt
+  assert_success
+  run find lib/tags/First lib/tags/Untagged -type l
+  assert_equal "${#lines[@]}" 2
+  assert_line --regexp "First/"
+  assert_line --regexp "Untagged/"
+}
+
+@test "the command line beats the sil.conf of a library named by a manifest" {
+  mkdir -p other/images other/tags
+  printf 'THRESHOLD=70\n' > other/sil.conf
+  printf 'LIBRARY=other\nTHRESHOLD=90\n' > m.txt
+  run "$PROJECT_ROOT/sil" THRESHOLD=55 m.txt
+  assert_output --partial "THRESHOLD = 90, was 55"
+}
+
+@test "with no terminal to ask at, a manifest's LINK halts but still reports" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  printf 'TAG=Old\nplasma.png\nLINK=Old -> New/Old\nmissing.png\n' > m.txt
+  run setsid -w "$PROJECT_ROOT/sil" LIBRARY=lib m.txt < /dev/null
+  assert_failure 1
+  assert_output --partial "no terminal to ask at"
+  assert_output --partial "Report: m.txt.md"
+  assert_file_contains m.txt.md '^| ADDED | '
+  assert_file_contains m.txt.md 'SIL needs an answer'
+  [[ ! -L lib/tags/Old ]]
+}
+
+# --- sharing a library with git (REQ-10) -------------------------------
+
+## Commit everything in a library
+commitAll() {
+  git -C "$1" add -A
+  git -C "$1" -c user.name=Test -c user.email=test@example.invalid \
+    commit -q -m "$2"
+}
+
+@test "two clones that add different images merge into a consistent library" {
+  convert -size 64x64 -seed 1 plasma:fractal first.png
+  convert -size 64x64 -seed 2 plasma:fractal second.png
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  "$PROJECT_ROOT/sil" LIBRARY=origin plasma.png 2> /dev/null
+  git init -q origin
+  commitAll origin start
+  git clone -q origin clone
+  "$PROJECT_ROOT/sil" LIBRARY=origin TAG=First first.png 2> /dev/null
+  commitAll origin first
+  "$PROJECT_ROOT/sil" LIBRARY=clone TAG=Second second.png 2> /dev/null
+  commitAll clone second
+  git -C clone -c user.name=Test -c user.email=test@example.invalid \
+    pull -q --no-rebase --no-edit
+  run "$PROJECT_ROOT/sil" LIBRARY=clone CHECK
+  assert_success
+  assert_output --partial "No problems found in 3 stored images"
+  run grep -cv '^#' clone/images/sources.txt
+  assert_output 3
+}
+
+@test "a library still passes CHECK after it is moved" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Animal/Dog plasma.png 2> /dev/null
+  mkdir elsewhere
+  mv lib elsewhere/renamed
+  run "$PROJECT_ROOT/sil" LIBRARY=elsewhere/renamed CHECK
+  assert_success
+  assert_output --partial "No problems found in 1 stored images"
 }

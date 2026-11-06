@@ -86,7 +86,8 @@ sil SHRINK=500kb REFETCH=off manifest.txt
 ```
 
 A manifest is a text file with a `.txt` suffix, with one parameter or URI per
-line. Blank lines, and lines starting with `#`, are ignored. A parameter applies
+line. Blank lines, and lines starting with `#`, are ignored. Manifests are given
+on the command line; a manifest can't run another manifest. A parameter applies
 to the URIs after it, and may be changed as often as needed:
 
 ```text

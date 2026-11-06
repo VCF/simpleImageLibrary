@@ -345,7 +345,8 @@ function libraryCheck {
             lineNum=$(( lineNum + 1 ))
             [[ "$line" == \#* ]] && continue
             if [[ ! "$line" =~ ^([0-9a-f]{40})\ .+$ ]]; then
-                msgWarn "[!] Malformed sources line $lineNum: $line"
+                msgWarn "[!] Malformed sources line $lineNum: $line
+    Fix: correct or remove this line in images/sources.txt"
                 problems=$(( problems + 1 ))
             elif [[ -z "${stored[${BASH_REMATCH[1]}]:-}" ]]; then
                 msgWarn "[!] Source recorded for an image that isn't stored: $line

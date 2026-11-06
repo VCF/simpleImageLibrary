@@ -9,7 +9,7 @@ folder; tests reference files here explicitly.
 | -------------- | ------- | ------------------------------------------------ |
 | `images/`      | Yes     | Image files we may redistribute (see below)      |
 | `local/`       | No      | Image files we may not redistribute              |
-| `manifest.txt` | Yes     | Test manifest, with the expected outcome of each URI |
+| `manifest.txt` | Yes     | Test manifest, with the expected outcome of each URI. Run by hand, as it needs network access; `make test` doesn't use it |
 
 The deciding question is whether the file may be published in this repository:
 
@@ -46,9 +46,8 @@ Useful traits for upcoming work (adding images, shrinking, duplicates, REQ-08):
 
 * Large JPEG photo (over 1 MB) - shrinking
 * PNG photo without transparency - shrinking and conversion to JPEG
-* PNG with transparency - must not be shrunk
-* Animated GIF - must not be shrunk
-* WebP image
+* PNG with an `iCCP: known incorrect sRGB profile` flaw - fingerprinting strips
+  profiles because of this flaw, and no test has one yet
 * Near-duplicates of one image: resized, recompressed, lightly cropped,
   watermarked - fingerprint `THRESHOLD`
 * Meme variants from one template (see `sampleManifest.txt`) - high similarity

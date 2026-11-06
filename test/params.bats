@@ -8,8 +8,6 @@ load test_helper
 
 setup() {
   setup_sandbox
-  export HOME="$TEST_SANDBOX/home"
-  mkdir -p "$HOME"
   myDir="$PROJECT_ROOT"
   source "$PROJECT_ROOT/src/utils.sh"
   srcLib "params"
@@ -84,18 +82,13 @@ teardown() {
   assert_equal "$SIL_LINK" "a=b"
 }
 
-@test "flags: bare, any value, and zero" {
+@test "flags: bare or any value sets; 0, no, false and off unset, any case" {
   setParamToken "TOR"
   assert_equal "$SIL_TOR" 1
-  setParamToken "TOR=0"
-  assert_equal "$SIL_TOR" 0
   setParamToken "usetor=yes"
   assert_equal "$SIL_TOR" 1
-}
-
-@test "flags: no, false and off unset, any case" {
   local v
-  for v in no NO false False off OFF; do
+  for v in 0 no NO false False off OFF; do
     setParamToken "TOR"
     setParamToken "TOR=$v"
     assert_equal "$SIL_TOR" 0
@@ -282,23 +275,33 @@ EOF
   assert_equal "$SIL_TOR" 1
 }
 
-@test "TAG, UNTAG, REMOVE, LINK and REMAP are ignored with a warning in any conf file" {
-  printf 'tags=Bird\nLINK=a -> b\nREMAP=c -> d\nUNTAG=Fish\nREMOVE\nTHRESHOLD=95\n' > conf
-  local kind name
+@test "image and action parameters are ignored with a warning in any conf file" {
+  local name var kind
+  local -a names=()
+  : > conf
+  for name in "${!_silParamScope[@]}"; do
+    [[ "${_silParamScope[$name]}" == global ]] && continue
+    names+=("$name")
+    if [[ "${_silParamType[$name]}" == flag ]]; then
+      printf '%s\n' "$name" >> conf
+    else
+      printf '%s=a -> b\n' "$name" >> conf
+    fi
+  done
+  printf 'THRESHOLD=95\n' >> conf
   for kind in global library; do
     run parseParamFile conf "$kind"
     assert_failure
-    for name in TAG LINK REMAP UNTAG REMOVE; do
+    for name in "${names[@]}"; do
       assert_output --partial "$name can't be set in a configuration file"
     done
     assert_output --partial "conf line 1"
   done
   parseParamFile conf global || true
-  assert_equal "${SIL_TAG+set}" ""
-  assert_equal "${SIL_LINK+set}" ""
-  assert_equal "${SIL_REMAP+set}" ""
-  assert_equal "${SIL_UNTAG+set}" ""
-  assert_equal "$SIL_REMOVE" 0
+  for name in "${names[@]}"; do
+    var="SIL_$name"
+    [[ "${!var:-0}" == 0 ]]
+  done
   assert_equal "$SIL_THRESHOLD" 95
 }
 

@@ -154,17 +154,17 @@ function encodeAnimation {
         ## rate of 100 keeps WebP's centisecond times exact. ffmpeg gives
         ## the last listed frame 0.01 seconds whatever its duration, so the
         ## last frame is listed twice: the AVIF gains an unseen 0.01 second
-        ## frame at its end
+        ## frame at its end. Frames are named relative to the list, so
+        ## nothing in the library's path needs escaping for ffmpeg
         if ! frames="$(mktemp -d --tmpdir="$(silTempDir)" sil.XXXXXX)" \
             || ! convert "$src" -coalesce "$frames/f%05d.png" 2> /dev/null; then
             [[ -n "$frames" ]] && rm -rf -- "$frames"
             msgWarn "[!] ImageMagick could not read the animation frames, keeping original"
             return 1
         fi
-        awk -v d="$frames" 'BEGIN { print "ffconcat version 1.0" }
-            { printf "file %s/f%05d.png\noption framerate 100\nduration %s\n",
-                d, NR - 1, $1 }
-            END { printf "file %s/f%05d.png\noption framerate 100\n", d, NR - 1 }' \
+        awk 'BEGIN { print "ffconcat version 1.0" }
+            { printf "file f%05d.png\noption framerate 100\nduration %s\n", NR - 1, $1 }
+            END { printf "file f%05d.png\noption framerate 100\n", NR - 1 }' \
             <<< "$durations" > "$frames/list.txt"
         input=(-f concat -safe 0 -i "file:$frames/list.txt")
     else

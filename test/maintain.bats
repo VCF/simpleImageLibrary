@@ -34,7 +34,6 @@ teardown() {
 }
 
 @test "CHECK finds a damaged file" {
-  chmod u+w "$PLASMA"
   printf 'x' >> "$PLASMA"
   run libraryCheck
   assert_failure
@@ -173,14 +172,19 @@ tagByHand() {
 
 @test "REBUILD merges a second copy, keeping both copies' tags" {
   ## A copy edited to match another stored image exactly
-  local anim="lib/images/${anim:0:2}/${anim:2:2}/$anim.gif"
+  local animFile="lib/images/${anim:0:2}/${anim:2:2}/$anim.gif"
   tagByHand "$PLASMA" Original
-  tagByHand "$anim" Copy
-  cp "$PLASMA" "$anim"
+  tagByHand "$animFile" Copy
+  sourceAdd "$plasma" https://example.com/first.png
+  sourceAdd "$anim" https://example.com/second.gif
+  cp "$PLASMA" "$animFile"
   libraryRebuild
-  assert_file_not_exists "$anim"
+  assert_file_not_exists "$animFile"
   assert_file_exists "lib/tags/Original/$plasma.png"
   assert_file_exists "lib/tags/Copy/$plasma.png"
+  run grep -v '^#' lib/images/sources.txt
+  assert_output "$plasma https://example.com/first.png
+$plasma https://example.com/second.gif"
   run libraryCheck
   assert_success
 }
@@ -196,8 +200,6 @@ tagByHand() {
 }
 
 @test "sil REBUILD CHECK runs both, rebuild first" {
-  export HOME="$TEST_SANDBOX/home"
-  mkdir -p "$HOME"
   rm lib/images/fingerprints.txt
   cd lib
   run "$PROJECT_ROOT/sil" CHECK REBUILD
@@ -208,8 +210,6 @@ tagByHand() {
 }
 
 @test "sil CHECK exits 1 on problems" {
-  export HOME="$TEST_SANDBOX/home"
-  mkdir -p "$HOME"
   touch lib/images/stray.txt
   run "$PROJECT_ROOT/sil" LIBRARY=lib CHECK
   assert_failure 1
@@ -234,6 +234,87 @@ $new https://example.com/p2.png"
   run libraryCheck
   assert_failure
   assert_output --partial "Source recorded for an image that isn't stored"
+  assert_output --partial "Fix: if the image was removed on purpose"
+}
+
+@test "CHECK reports malformed sources lines, with a fix" {
+  echo "garbage" >> lib/images/sources.txt
+  run libraryCheck
+  assert_failure
+  assert_output --regexp "Malformed sources line [0-9]+: garbage"
+  assert_output --partial "Fix: correct or remove this line in images/sources.txt"
+}
+
+@test "CHECK reports an image stored twice; REBUILD keeps one, with its tags" {
+  mkdir -p lib/images/zz/zz
+  cp "$PLASMA" lib/images/zz/zz/
+  tagByHand "lib/images/zz/zz/$plasma.png" Copy
+  run libraryCheck
+  assert_failure
+  assert_output --partial "Image stored twice"
+  assert_output --partial "Fix: sil REBUILD keeps one"
+  run libraryRebuild
+  assert_output --partial "Removed second copy"
+  assert_file_exists "lib/tags/Copy/$plasma.png"
+  run libraryCheck
+  assert_success
+}
+
+## Print every path in the library with its type, target, size, time and
+## content hash, so that any change at all shows up as a difference
+librarySnapshot() {
+  find lib -printf '%p %y %l %s %T@\n' | LC_ALL=C sort
+  find lib -type f -exec sha1sum {} + | LC_ALL=C sort
+}
+
+@test "CHECK changes nothing, however broken the library" {
+  ## One of each problem that REBUILD would act on
+  tagByHand "$PLASMA" Meme
+  rm lib/.gitignore lib/tags/Untagged/"$anim".gif
+  mkdir -p lib/images/zz/zz lib/tags/Date/2026/2026-10-30 lib/tags/Date/2026/2026-10-31
+  mv "$PLASMA" lib/images/zz/zz/
+  touch lib/images/holiday.jpg
+  ln -s ../nowhere.png lib/tags/Meme/broken.png
+  echo "garbage" | tee -a lib/images/fingerprints.txt >> lib/images/sources.txt
+  librarySnapshot > before.txt
+  run libraryCheck
+  assert_failure
+  librarySnapshot > after.txt
+  assert_files_equal before.txt after.txt
+}
+
+## Write one small file of a stored format, by its suffix
+makeStoredFormat() {
+  local suffix="$1" file="$2" still="$DATA/plasma.png"
+  case "$suffix" in
+    mp4|mov) ffmpeg -v error -f lavfi -i testsrc=size=64x48:rate=5:duration=1 \
+        -c:v libx264 -pix_fmt yuv420p "$file" ;;
+    webm) ffmpeg -v error -f lavfi -i testsrc=size=64x48:rate=5:duration=1 \
+        -c:v libvpx-vp9 "$file" ;;
+    avif) ffmpeg -v error -i "$still" -c:v libaom-av1 -still-picture 1 \
+        -pix_fmt yuv420p "$file" ;;
+    *) convert "$still" -resize 64x48! "$file" ;;
+  esac
+}
+
+@test "every stored format passes CHECK and stays in the index after REBUILD" {
+  local suffix hash n=2
+  for suffix in $(printf '%s\n' "${_silImageSuffix[@]}" | sort -u); do
+    [[ "$suffix" == png || "$suffix" == gif ]] && continue
+    makeStoredFormat "$suffix" "sample.$suffix"
+    storeImage "sample.$suffix" hash
+    markUntagged "$hash"
+    assert_file_exists "$(storedImagePath "$hash" "$suffix")"
+    n=$(( n + 1 ))
+  done
+  run libraryCheck
+  assert_success
+  assert_output --partial "No problems found in $n stored images"
+  libraryRebuild 2> /dev/null
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output "$n"
+  run libraryCheck
+  assert_success
 }
 
 @test "CHECK reports, and REBUILD fixes, out of date day links" {

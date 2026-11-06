@@ -28,10 +28,28 @@ fakeFingerprint() {
   assert_output PNG
   run imageFormat "$DATA/animated.gif"
   assert_output GIF
-  convert "$DATA/plasma.png" webp-as-jpg.jpg
-  convert webp-as-jpg.jpg webp:mislabeled
-  run imageFormat mislabeled
+  convert "$DATA/plasma.png" webp:mislabeled.jpg
+  run imageFormat mislabeled.jpg
   assert_output WEBP
+}
+
+@test "imageFormat accepts BMP in each of its versions, and TIFF" {
+  local version
+  for version in BMP BMP2 BMP3; do
+    convert "$DATA/plasma.png" "$version:pic"
+    run imageFormat pic
+    assert_success
+    assert_output "$version"
+    assert_equal "${_silImageSuffix[$output]}" bmp
+  done
+  ## The kind other tools write, eg ffmpeg
+  ffmpeg -v error -i "$DATA/plasma.png" other.bmp
+  run imageFormat other.bmp
+  assert_success
+  convert "$DATA/plasma.png" tiff:pic
+  run imageFormat pic
+  assert_success
+  assert_output TIFF
 }
 
 @test "imageFormat rejects non-images (1)" {
@@ -200,6 +218,8 @@ blankOpening() {
   assert_output 0
   run fingerprintDistance "$zero" "$one"
   assert_output 1
+  run fingerprintDistance "$twelve" "$zero"
+  assert_output 12
   run fingerprintDistance "$thirteen" "$zero"
   assert_output 13
   run fingerprintDistance "$zero" "notAFingerprint"
@@ -245,12 +265,18 @@ makeVideo() {
     -f lavfi -i sine=d=2 -c:v "$codec" -pix_fmt yuv420p -shortest "$1"
 }
 
-@test "imageFormat recognizes MP4, WebM and MOV videos by content" {
+@test "imageFormat recognizes MP4, M4V, WebM and MOV videos by content" {
   makeVideo v.mp4
   makeVideo v.webm
   makeVideo v.mov
   cp v.mp4 mp4
   run imageFormat mp4
+  assert_success
+  assert_output MP4
+  ffmpeg -v error -i v.mp4 -c copy -brand "M4V " -f mp4 m4v
+  run file -b --mime-type m4v
+  assert_output video/x-m4v
+  run imageFormat m4v
   assert_success
   assert_output MP4
   cp v.webm webm
@@ -278,10 +304,16 @@ makeVideo() {
 }
 
 @test "a video is fingerprinted from its middle frame" {
-  makeVideo v.mp4
-  ffmpeg -v error -i v.mp4 -vf "select=eq(n\,10)" -frames:v 1 mid.png
-  run fingerprintsMatch "$(imageFingerprint v.mp4)" "$(imageFingerprint mid.png)" 95
-  assert_success
+  ## Black, plasma, black: the first frame looks nothing like the middle one
+  blankOpening anim.gif
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -pix_fmt yuv420p v.mp4
+  convert "$DATA/plasma.png" -resize 120x80! middle.png
+  convert -size 120x80 xc:black first.png
+  local fp
+  fp="$(imageFingerprint v.mp4)"
+  fingerprintsMatch "$fp" "$(imageFingerprint middle.png)" 95
+  run fingerprintsMatch "$fp" "$(imageFingerprint first.png)" 95
+  assert_failure
 }
 
 @test "hasAudio tells videos with sound from those without" {

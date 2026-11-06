@@ -115,10 +115,6 @@ upgrade() {
   run grep -v '^#' lib/images/sources.txt
   assert_output "$BIG file:big.png
 $BIG file:small.png"
-}
-
-@test "the old source now finds the replacement" {
-  upgrade
   run sourceLookup file:small.png
   assert_output "$BIG"
 }
@@ -234,6 +230,50 @@ file:small.png"
   rmdir lib/ReplacedImages.tsv
   run libraryCheck
   assert_success
+}
+
+@test "a replacement that stops part way is STOREFAIL, pointing to CHECK" {
+  processURI small.png 2> /dev/null
+  # shellcheck disable=SC2317 # stand-in, called by replaceStored
+  indexRemove() { return 1; }
+  SIL_KEEPLARGER=1
+  run processURI big.png
+  assert_failure
+  assert_output --partial "[STOREFAIL] Replacing ${SMALL:0:12} with ${BIG:0:12} did not finish; see sil CHECK"
+  ## Nothing is lost: the old image is still there, and saved
+  assert_exists "$(storedImagePath "$SMALL" png)"
+  assert_files_equal "lib/replacedWithHigherRes/$SMALL.png" small.png
+}
+
+@test "a larger duplicate is shrunk before it replaces the stored image" {
+  processURI small.png 2> /dev/null
+  SIL_KEEPLARGER=1
+  SIL_SHRINK=51200
+  run processURI big.png
+  assert_success
+  assert_output --partial "[UPGRADED]"
+  assert_output --partial "(320x240 -> 640x480,"
+  run find lib/images -name '*.jpg'
+  assert_equal "${#lines[@]}" 1
+  assert_not_exists "$(storedImagePath "$SMALL" png)"
+  run libraryCheck
+  assert_success
+}
+
+@test "REFETCH of a known URL can upgrade its image" {
+  ## A stand-in download: the site now serves a larger copy
+  # shellcheck disable=SC2317 # stand-in, called by fetchURI
+  fetchURL() { cp big.png "$2"; }
+  processURI small.png 2> /dev/null
+  sourceAdd "$SMALL" https://example.com/pic
+  SIL_KEEPLARGER=1
+  run processURI https://example.com/pic
+  assert_output --partial "[DUPE] ${SMALL:0:12} - known source"
+  SIL_REFETCH=1
+  run processURI https://example.com/pic
+  assert_output --partial "[UPGRADED] ${BIG:0:12}"
+  run sourceLookup https://example.com/pic
+  assert_output "$BIG"
 }
 
 @test "new libraries already ignore the replaced folder" {

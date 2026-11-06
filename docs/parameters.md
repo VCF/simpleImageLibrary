@@ -198,7 +198,8 @@ effectively allow "alias tags" that will share a common folder of image symlinks
     - move images to '$TARGET' and replace with symlink? [Y/N]"
     * The question is asked at the terminal, and SIL waits for an answer, even
       within a manifest. With no terminal, SIL halts and nothing is changed
-    * If `N`, halt and inform user that no operation occurred
+    * If `N`, halt and inform user that no operation occurred. In a manifest,
+      the logs are written first, with the results so far (`REQ-08`)
     * If `Y`, relocate symlinks in SOURCE to TARGET, keeping subfolders (eg
       `Politics/Local` to `Meme/Politics/Local`), remove now-empty source
       folder, and create new symlink from SOURCE to TARGET

@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-## Tests for src/fetch.sh and src/ingest.sh. URLs are served by a local
-## Python web server, so no network access is needed
+## Tests for src/ingest.sh, through real downloads. URLs are served by a local
+## Python web server, so no network access is needed. See fetch.bats for what
+## is sent to curl and how its failures are reported
 
 # Each bats test runs in its own subshell, which is intended, and SIL_*
 # parameters are read by the sourced code
@@ -37,6 +38,7 @@ startServer() {
     [[ -n "$port" ]] && break
     sleep 0.1
   done
+  [[ -n "$port" ]] || { echo "The test web server did not start" >&2; return 1; }
   URL="http://127.0.0.1:$port"
 }
 
@@ -70,20 +72,10 @@ assert_no_temp_files() {
   assert_output --partial "[ADDED]"
   assert_output --partial "Tagged: Test"
   refute_output --partial "Tagged: Untagged"
+  assert_not_exists lib/tags/Untagged
   run find lib/tags/Test -type l
   assert_output --regexp '\.png$'
   assert_no_temp_files
-}
-
-@test "a new image given no tags reports the Untagged tag" {
-  run processURI "$DATA/plasma.png"
-  assert_success
-  assert_output --partial "Tagged: Untagged"
-}
-
-@test "a line number, when given, is shown before the URI" {
-  run processURI "$DATA/plasma.png" "" 7
-  assert_output --partial "[7] $DATA/plasma.png"
 }
 
 @test "a large image is shrunk (SHRINK)" {
@@ -94,6 +86,29 @@ assert_no_temp_files() {
   run find lib/images -name '*.jpg'
   assert_output --regexp '\.jpg$'
   assert_no_temp_files
+}
+
+@test "a shrunk image is a normal new image, known only by its stored file" {
+  _silToday=2026-10-31
+  SIL_SHRINK=51200
+  processURI "$DATA/plasma.png" 2> /dev/null
+  local hash="$_silLastHash"
+  ## Named by the hash of the stored JPEG, not of the original
+  assert_equal "$hash" "$(fileHash "$(findStoredImage "$hash")")"
+  assert_link_exists "lib/tags/Date/2026/2026-10-31/$hash.jpg"
+  assert_link_exists "lib/tags/Untagged/$hash.jpg"
+  srcLib "maintain"
+  run libraryCheck
+  assert_success
+  ## REQ-11: the original no longer identifies it, but the stored file does
+  cp "$(findStoredImage "$hash")" stored.jpg
+  SIL_REMOVE=1
+  run processURI "$DATA/plasma.png"
+  assert_failure
+  assert_output --partial "[NOTSTORED]"
+  run processURI stored.jpg
+  assert_success
+  assert_output --partial "[REMOVED]"
 }
 
 @test "a video URL is ADDED and stored with its own suffix" {
@@ -159,15 +174,19 @@ assert_no_temp_files() {
   assert_output --partial "[NOHASH]"
 }
 
-@test "local failures: NOFILE, UNREADABLE, NOTIMAGE, UNSUPPORTED, BADIMAGE" {
-  run processURI missing.jpg
-  assert_failure
-  assert_output --partial "[NOFILE]"
-
+@test "an unreadable local file is UNREADABLE" {
+  (( EUID != 0 )) || skip "root can read any file"
   cp "$DATA/plasma.png" locked.png
   chmod 000 locked.png
   run processURI locked.png
+  assert_failure
   assert_output --partial "[UNREADABLE]"
+}
+
+@test "local failures: NOFILE, NOTIMAGE, UNSUPPORTED, BADIMAGE" {
+  run processURI missing.jpg
+  assert_failure
+  assert_output --partial "[NOFILE]"
 
   run processURI "$DATA/not-an-image.jpg"
   assert_output --partial "[NOTIMAGE] Not an image (text/html)"
@@ -180,6 +199,49 @@ assert_no_temp_files() {
   head -c 3000 whole.jpg > cut.jpg
   run processURI cut.jpg
   assert_output --partial "[BADIMAGE]"
+  assert_no_temp_files
+}
+
+@test "an image that can't be fingerprinted is BADIMAGE, leaving nothing behind" {
+  # shellcheck disable=SC2317 # stand-in, called by ingestFile
+  imageFingerprint() { return 1; }
+  run processURI "$DATA/plasma.png"
+  assert_failure
+  assert_output --partial "[BADIMAGE] Could not be fingerprinted"
+  assert_no_temp_files
+  run grep -cv '^#' lib/images/fingerprints.txt
+  assert_output 0
+}
+
+@test "an image that can't be written is STOREFAIL" {
+  # shellcheck disable=SC2317 # stand-in, called by ingestFile
+  storeImage() { return 1; }
+  run processURI "$DATA/plasma.png"
+  assert_failure
+  assert_output --partial "[STOREFAIL] Could not write to the library"
+  assert_no_temp_files
+}
+
+@test "an image that can't be removed is STOREFAIL" {
+  # shellcheck disable=SC2317 # stand-in, called by updateStored
+  removeImage() { return 1; }
+  processURI "$DATA/plasma.png" 2> /dev/null
+  SIL_REMOVE=1
+  run processURI "$DATA/plasma.png"
+  assert_failure
+  assert_output --partial "[STOREFAIL] Could not remove"
+}
+
+@test "local files may have awkward names" {
+  local name
+  for name in "with space.png" "brackets[1].png" "percent%d.png" "-dash.png" "it's.png"; do
+    ## To STDOUT, as ImageMagick would expand a % in the file name
+    convert -size 64x64 -seed "${#name}" plasma:fractal png:- > "./$name"
+    run processURI "$name"
+    assert_success
+    assert_output --partial "[ADDED]"
+    grep -qF " file:$name" lib/images/sources.txt
+  done
   assert_no_temp_files
 }
 
@@ -212,7 +274,7 @@ assert_no_temp_files() {
   assert_output --partial "[NOTFOUND] HTTP 404"
   run processURI "$URL/login.jpg"
   assert_output --partial "[NOTIMAGE]"
-  run processURI "https://sil-test.invalid/a.jpg"
+  run processURI "http://127.0.0.1:1/a.jpg"
   assert_output --partial "[UNREACHABLE]"
   run processURI "ftp://example.com/a.jpg"
   assert_output --partial "[UNSUPPORTED]"
@@ -302,6 +364,22 @@ $hash file:pic.png"
   assert_output --partial "[NOTFOUND]"
 }
 
+@test "a URL with new content under REFETCH records both images" {
+  startServer
+  cp "$DATA/plasma.png" www/pic
+  processURI "$URL/pic" 2> /dev/null
+  local first="$_silLastHash"
+  convert -size 320x240 -seed 99 plasma:fractal png:www/pic
+  SIL_REFETCH=1
+  run processURI "$URL/pic"
+  assert_output --partial "[ADDED]"
+  local second
+  second="$(fileHash www/pic)"
+  run grep -v '^#' lib/images/sources.txt
+  assert_line "$first $URL/pic"
+  assert_line "$second $URL/pic"
+}
+
 @test "a recorded source whose image is gone is downloaded again" {
   startServer
   cp "$DATA/plasma.png" www/pic
@@ -321,7 +399,6 @@ $hash file:pic.png"
 
 # --- REMOVE and UNTAG --------------------------------------------------
 
-
 @test "REMOVE by hash removes the image: REMOVED" {
   processURI "$DATA/plasma.png" 2> /dev/null
   local hash="$_silLastHash"
@@ -334,6 +411,15 @@ $hash file:pic.png"
   run processURI "$hash"
   assert_failure
   assert_output --partial "[NOHASH]"
+}
+
+@test "REMOVE does not also apply TAG" {
+  processURI "$DATA/plasma.png" 2> /dev/null
+  SIL_REMOVE=1
+  SIL_TAG=New
+  run processURI "$_silLastHash"
+  assert_output --partial "[REMOVED]"
+  assert_not_exists lib/tags/New
 }
 
 @test "REMOVE by known URL never downloads; the URL can then be added again" {
@@ -380,7 +466,28 @@ $hash file:pic.png"
   assert_dir_exists lib/tags/New
 }
 
+@test "UNTAG finds images by hash and by known URL, never downloading" {
+  startServer
+  cp "$DATA/plasma.png" www/pic
+  SIL_TAG="One, Two"
+  processURI "$URL/pic" 2> /dev/null
+  local hash="$_silLastHash"
+  SIL_TAG=
+  SIL_UNTAG=One
+  run processURI "$hash"
+  assert_output --partial "[FOUND]"
+  assert_not_exists lib/tags/One
+  SIL_UNTAG=Two
+  run processURI "$URL/pic"
+  assert_output --partial "[FOUND] ${hash:0:12} - a known source"
+  assert_not_exists lib/tags/Two
+  run grep -c "GET /pic" server.log
+  assert_output 1
+}
+
 @test "a new image without tags is Untagged; tagging it later removes that" {
+  run processURI "$DATA/plasma.png"
+  assert_output --partial "Tagged: Untagged"
   processURI "$DATA/plasma.png" 2> /dev/null
   local hash="$_silLastHash"
   assert_link_exists "lib/tags/Untagged/$hash.png"
@@ -394,13 +501,6 @@ $hash file:pic.png"
   processURI "$DATA/plasma.png" 2> /dev/null
   assert_not_exists lib/tags/Untagged
   assert_link_exists "lib/tags/Dog/$hash.png"
-}
-
-@test "a new image with tags is not Untagged" {
-  SIL_TAG=Dog
-  processURI "$DATA/plasma.png" 2> /dev/null
-  assert_link_exists "lib/tags/Dog/$_silLastHash.png"
-  assert_not_exists lib/tags/Untagged
 }
 
 @test "TAG=New UNTAG=* replaces every tag" {

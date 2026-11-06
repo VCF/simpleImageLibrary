@@ -14,10 +14,13 @@ load "${BATS_SUPPORT_DIR}/load.bash"
 load "${BATS_ASSERT_DIR}/load.bash"
 load "${BATS_FILE_DIR}/load.bash"
 
-# Common Sandbox Hook: Isolate file generation side-effects
+# Common Sandbox Hook: Isolate file generation side-effects, and keep the real
+# ~/.sil.conf from affecting tests
 setup_sandbox() {
   TEST_SANDBOX="$(mktemp -d -t bats-sandbox.XXXXXX)"
   export TEST_SANDBOX
+  export HOME="$TEST_SANDBOX/home"
+  mkdir -p "$HOME"
   cd "$TEST_SANDBOX" || exit 1
 }
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 ## Tests for src/utils.sh
 
+bats_require_minimum_version 1.5.0
+
 load test_helper
 
 setup() {
@@ -38,6 +40,30 @@ setup() {
   run msgError "boom"
   assert_failure 1
   assert_output --partial "boom"
+}
+
+@test "messages have their colors, and go to STDERR only" {
+  local fn code
+  while read -r fn code; do
+    run --separate-stderr "$fn" "text"
+    assert_equal "$output" ""
+    [[ "$stderr" == *$'\033[1;'"$code"m* ]]
+    [[ "$stderr" == *text* ]]
+  done <<EOF
+msgInfo $FgBlue
+msgWarn $FgRed
+msgError $BgYellow;$FgRed
+msgDebug $BgCyan;$FgMagenta
+EOF
+}
+
+@test "msgError runs the halt hook once, with its message, before halting" {
+  # shellcheck disable=SC2317 # called by msgError
+  noteHalt() { echo "hook saw: $1 [${_silHaltHook}]"; }
+  _silHaltHook=noteHalt
+  run msgError "boom"
+  assert_failure 1
+  assert_output --partial "hook saw: boom []"
 }
 
 @test "requireTool passes for present tools, halts with install hint" {
