@@ -8,8 +8,15 @@ myDir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 # shellcheck source=src/utils.sh
 source "$myDir/src/utils.sh"
 
-if [[ $# -eq 0 ]]; then
-    ## No arguments passed, show help
+## Help if there are no arguments, or if asked for anywhere among them. This
+## comes first, so that eg 'sil LIBRARY=new --help' doesn't create a library.
+## A file really named -h can be given as ./-h
+wantHelp=0
+(( $# == 0 )) && wantHelp=1
+for arg in "$@"; do
+    [[ "$arg" == -h || "$arg" == --help ]] && wantHelp=1
+done
+if (( wantHelp )); then
     srcLib "help"
     showHelp
     exit 0

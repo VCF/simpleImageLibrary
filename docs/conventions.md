@@ -46,7 +46,8 @@ live in [requirements.md](./requirements.md); parameter specs in
 ## Messaging (UI-01, UI-02)
 
 Use the `msg*` functions in `src/utils.sh`, never bare `echo` for user
-messages. All messages go to STDERR.
+messages. All messages go to STDERR. The exception is `showHelp`, which writes
+plain text to STDOUT, as help is the requested result.
 
 | Function   | Use                                     |
 | ---------- | --------------------------------------- |
@@ -85,6 +86,8 @@ Every new parameter needs all of the following, in the same change:
      `src/params.sh` (`image`, `action` or `global`). SIL then warns and
      ignores it in conf files, and the template test skips it
 4. `test/params.bats`: tests for any new type, alias or default
+5. `src/help.sh` and the parameter table in `README.md`: a line and a row, with
+   any aliases. `test/help.bats` fails if either is missing
 
 ## Comments and licensing
 

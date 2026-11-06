@@ -347,7 +347,7 @@ function parseCliParams {
             _silCliParams+=("$arg")
         elif looksLikeParam "$arg" && [[ ! -e "$arg" ]]; then
             msgError "[!] Unrecognized parameter '${arg%%=*}'
-    See docs/parameters.md for recognized parameters.
+    Run 'sil --help' for recognized parameters.
     If this is a file name, prefix it with ./"
         else
             _silArgs+=("$arg")
