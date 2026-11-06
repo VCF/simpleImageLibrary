@@ -6,3 +6,4 @@
 # reports any problems; sil REBUILD fixes them
 images/fingerprints.txt merge=union
 images/sources.txt merge=union
+RemappedTags.txt merge=union

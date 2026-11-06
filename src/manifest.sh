@@ -15,9 +15,9 @@ declare -gA _silManifestBlocked=(
 # Process a manifest (REQ-06). Parameter lines change settings for the
 # URIs after them; every other line is a URI. Relative paths are
 # relative to the manifest's folder. LIBRARY may be set before the first
-# URI, and the library's settings are then loaded (REQ-02). LINK is
-# carried out at its line, waiting for the user if it must ask. STOPSIL
-# ends the manifest at its line, leaving the remaining lines unread. Each
+# URI, and the library's settings are then loaded (REQ-02). LINK and REMAP
+# are carried out at their line, LINK waiting for the user if it must ask.
+# STOPSIL ends the manifest at its line, leaving the remaining lines unread. Each
 # setting other than TAG and UNTAG is echoed with its previous value, so
 # overrides of the library's settings are visible. Settings,
 # including the library, are restored afterwards, so each manifest is
@@ -75,18 +75,23 @@ function parseManifest {
                 useLibrary "$lib"
                 reloadParamsForLibrary "$SIL_LIBRARY" "${tokens[@]}"
                 msgInfo "  Library: $SIL_LIBRARY (line $lineNum)"
+                syncRemaps || rv=1
                 continue
             fi
-            if [[ "$canon" == LINK ]]; then
+            if [[ "$canon" == LINK || "$canon" == REMAP ]]; then
                 if [[ -z "${SIL_LIBRARY:-}" ]]; then
-                    msgWarn "[!] LINK needs a library - ignored
+                    msgWarn "[!] $canon needs a library - ignored
     Found in: $path line $lineNum"
                     rv=1
                     continue
                 fi
                 setParamToken "$line" "$path line $lineNum"
-                msgInfo "  LINK (line $lineNum)"
-                linkTag "$SIL_LINK" || rv=1
+                msgInfo "  $canon (line $lineNum)"
+                if [[ "$canon" == LINK ]]; then
+                    linkTag "$SIL_LINK" || rv=1
+                else
+                    remapAdd "$SIL_REMAP" || rv=1
+                fi
                 continue
             fi
             if [[ "$canon" == STOPSIL ]]; then

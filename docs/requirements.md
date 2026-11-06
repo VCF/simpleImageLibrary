@@ -223,6 +223,8 @@ Each stored image has two identifiers with different jobs:
 * `LINK` is carried out at its line, once, rather than applying to later URIs.
   If it must ask the user (`REQ-11`), processing waits for the answer. It is
   not written to the error log, so a retry doesn't repeat it
+* `REMAP` is likewise carried out at its line, and not written to the error log.
+  It has no need to ask the user
 * A line shaped like `NAME=VALUE` with an unrecognized `NAME` is reported and
   ignored, rather than treated as a file
 * A failed URI is reported and processing continues with the next line
@@ -333,7 +335,7 @@ characters.
     * Written as failures happen, so it is useful even if a run is
       interrupted, then rewritten grouped by reason when the run finishes. A
       header explains how to retry
-    * All parameters in effect (except `LINK`, `CHECK` and `REBUILD`) are
+    * All parameters in effect (except `LINK`, `REMAP`, `CHECK` and `REBUILD`) are
       written before the first failed URI, `LIBRARY` first as an absolute
       path, and each one again
       whenever it differs before a later failed URI. A retry therefore uses
@@ -414,9 +416,9 @@ date with `git pull`, and can add images themselves and `git push`
   older ones) get these files from `templates/`:
   * `.gitignore` - excludes the `.tmp` folder and manifest log files
     (`*.txt.err`, `*.txt.md`, `REQ-08`)
-  * `.gitattributes` - merges `images/fingerprints.txt` and
-    `images/sources.txt` with git's built-in `union` driver, so images added
-    by two people are combined rather than reported as a conflict
+  * `.gitattributes` - merges `images/fingerprints.txt`, `images/sources.txt`
+    and `RemappedTags.txt` with git's built-in `union` driver, so images and
+    remaps added by two people are combined rather than reported as a conflict
 * Git does not keep empty folders, so `tags/.gitkeep` and the fingerprint
   index header keep `tags` and `images` in a fresh clone, which is then still
   recognized as a library
@@ -433,8 +435,8 @@ date with `git pull`, and can add images themselves and `git push`
 # REQ-11 Changing and removing images
 
 Tags can be removed from images (`UNTAG`), images removed from the library
-(`REMOVE`), and one tag made an alias of another (`LINK`). See
-[parameters.md](./parameters.md) for each
+(`REMOVE`), one tag made an alias of another (`LINK`), and one tag quietly
+replaced by another (`REMAP`). See [parameters.md](./parameters.md) for each
 
 * `REMOVE` and `UNTAG` act only on images already in the library. The URI
   must identify a stored image without downloading anything:
@@ -453,6 +455,9 @@ Tags can be removed from images (`UNTAG`), images removed from the library
 * `LINK` asks before moving images out of a source tag. The question is asked
   at the terminal, even within a manifest, and SIL waits for the answer. With
   no terminal at all, SIL halts without changing anything
+* `REMAP` moves files out of a source tag without asking, as removing that tag
+  is its purpose. Remaps are kept in `RemappedTags.txt` in the library, which can
+  be edited directly. Every run reads it and acts on any changes
 
 # TAG-01 Tagging
 
@@ -497,7 +502,7 @@ Every image can be found through `tags`, even one never given a tag
   * `UNTAG` removing an image's last tag, or `UNTAG=*` removing them all, tags
     it `Untagged`
   * Users can't apply or remove `Untagged` (`TAG=Untagged`, `UNTAG=Untagged`),
-    or use it in a `LINK`; it is ignored with a warning, and processing
+    or use it in a `LINK` or `REMAP`; it is ignored with a warning, and processing
     continues
   * `CHECK` reports images with no tags that aren't `Untagged` (eg added before
     `TAG-03`), and images that are `Untagged` with other tags too. `REBUILD`

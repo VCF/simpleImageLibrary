@@ -48,8 +48,9 @@ precedence). Blank lines and lines starting with `#` are ignored.
 Configuration files hold settings that apply broadly. Some parameters can't be
 set in them; SIL warns and ignores those lines:
 
-* `TAG`, `UNTAG`, `REMOVE`, `LINK` and `STOPSIL` - in neither file. They apply to
-  individual images or are one-time actions; use the command line or a manifest
+* `TAG`, `UNTAG`, `REMOVE`, `LINK`, `REMAP` and `STOPSIL` - in neither file. They
+  apply to individual images or are one-time actions; use the command line or a
+  manifest
 * `LIBRARY` - in `~/.sil.conf` only, as a default library
 
 | File                  | Hidden | Scope                                     |
@@ -206,6 +207,63 @@ effectively allow "alias tags" that will share a common folder of image symlinks
 * Refused, with a warning: a SOURCE inside its TARGET or the reverse (the link
   would loop), and a SOURCE or TARGET in the reserved `Date` or `Untagged`
   tags
+* A remapped TARGET (`REMAP`) is followed. A remapped SOURCE is refused, as the
+  next run would remove the link
+
+### REMAP
+
+Quietly changes one tag into another. Where `LINK` keeps the source tag as an
+alias, `REMAP` makes it disappear. Use it for common misspellings, or to enforce
+a controlled vocabulary
+
+* `REMAP='Dog -> Animal/Canine'` means any later `TAG=Dog` is applied as
+  `Animal/Canine`. Nothing is said about the change beyond the tag reported
+* The format of the value is `SOURCE -> TARGET`, one tag each, written as for
+  `TAG` (case-insensitive, `/` or `:` between levels)
+* Can't be set in configuration files: it is a one-time action, recorded in the
+  library's remap file. Carried out once: on the command line, before any URIs;
+  in a manifest, at its line (`REQ-06`). Only one `REMAP` can be given on a
+  command line; a manifest may have several
+* Giving a SOURCE that already has a remap replaces it
+* If a folder exists at SOURCE, it is removed:
+  * Its files are moved to TARGET, keeping subfolders (eg `Dog/Puppy` to
+    `Animal/Canine/Puppy`), and an info message gives the count of files moved
+  * If it is a `LINK` alias, only the link is removed: the images belong to the
+    tag it points to
+  * A `LINK` pointing to it is pointed at TARGET instead
+* A remap applies to:
+  * `TAG` and `UNTAG`, so `UNTAG=Dog` removes `Animal/Canine`
+  * Tags below SOURCE: `TAG=Dog/Puppy` is applied as `Animal/Canine/Puppy`. If
+    `Dog/Puppy` has its own remap, that one is used
+  * Remaps of the TARGET too: `A -> B` and `B -> C` make `A` into `C`
+* Refused, with a warning: a TARGET that is SOURCE or inside it, a remap that
+  would loop through others, and a SOURCE or TARGET in the reserved `Date` or
+  `Untagged` tags
+
+#### RemappedTags.txt
+
+Remaps are kept in `<LIBRARY>/RemappedTags.txt`, created by the first `REMAP`.
+It is meant to be edited directly, and has the same syntax as the parameter, one
+remap per line. Blank lines and lines starting with `#` are ignored:
+
+```text
+# Controlled vocabulary for animals
+Dog -> Animal/Canine
+Kitty -> Animal/Feline
+```
+
+SIL reads the file each time it runs, and treats it as the truth:
+
+* A line added by hand acts as a `REMAP` would: a folder at its SOURCE is cleared
+  out, and the count of files moved is reported
+* A line removed stops that remap. Files already moved stay where they are
+* A line with a problem, or a remap that loops, is warned about each run and
+  ignored. SIL doesn't change the line, so it can be corrected
+* If a SOURCE is listed twice with different targets, the last line wins, with a
+  warning. New libraries have git merge this file by keeping both sides' lines
+  (`REQ-10`), which can cause this
+* `REMAP` itself only appends or replaces its own line; comments and the rest of
+  the file are kept
 
 ## SHRINK
 

@@ -97,6 +97,28 @@ teardown() {
   assert_link_exists lib/tags/Politics
 }
 
+@test "sil REMAP works without any URIs, and applies before URIs given with it" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  run "$PROJECT_ROOT/sil" LIBRARY=lib 'REMAP=Dog -> Animal/Canine'
+  assert_success
+  assert_output --partial "Remapped: Dog -> Animal/Canine"
+  refute_output --partial "nothing more to do"
+  run "$PROJECT_ROOT/sil" LIBRARY=lib 'REMAP=Cat -> Animal/Feline' TAG=cat plasma.png
+  assert_success
+  assert_output --partial "Tagged: Animal/Feline"
+  assert_not_exists lib/tags/cat
+}
+
+@test "sil acts on a hand-edited remap file with nothing else to do" {
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" .
+  "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Dog plasma.png 2> /dev/null
+  echo 'Dog -> Canine' > lib/RemappedTags.txt
+  run "$PROJECT_ROOT/sil" LIBRARY=lib
+  assert_success
+  assert_output --partial "Moved 1 file from Dog to Canine"
+  assert_not_exists lib/tags/Dog
+}
+
 @test "sil REMOVE and UNTAG act on stored images" {
   cp "$PROJECT_ROOT/test/data/images/plasma.png" .
   "$PROJECT_ROOT/sil" LIBRARY=lib TAG=A,B plasma.png 2> /dev/null

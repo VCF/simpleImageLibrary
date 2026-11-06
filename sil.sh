@@ -27,7 +27,7 @@ loadParams "$@"
 ## With no library yet, manifests may name one (REQ-06); anything else
 ## needs one now
 needLibrary=0
-if flagIsSet CHECK || flagIsSet REBUILD || [[ -n "${SIL_LINK:-}" ]]; then
+if flagIsSet CHECK || flagIsSet REBUILD || [[ -n "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
     needLibrary=1
 fi
 for arg in "${_silArgs[@]}"; do
@@ -54,6 +54,9 @@ fi
 ## Exit status is 1 if anything failed, for use in scripts
 status=0
 
+## Act on any hand edits to the library's remapped tags (REMAP)
+syncRemaps || status=1
+
 ## REQ-09 maintenance actions; rebuild first so a check sees the result
 if flagIsSet REBUILD; then
     libraryRebuild || status=1
@@ -61,13 +64,18 @@ fi
 if flagIsSet CHECK; then
     libraryCheck || status=1
 fi
+## REMAP first, so a LINK given with it follows the new remap
+if [[ -n "${SIL_REMAP:-}" ]]; then
+    msgInfo "REMAP $SIL_REMAP"
+    remapAdd "$SIL_REMAP" || status=1
+fi
 if [[ -n "${SIL_LINK:-}" ]]; then
     msgInfo "LINK $SIL_LINK"
     linkTag "$SIL_LINK" || status=1
 fi
 
 if (( ${#_silArgs[@]} == 0 )); then
-    if ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}" ]]; then
+    if ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
         msgInfo "No images or manifests given, nothing more to do"
     fi
     exit "$status"

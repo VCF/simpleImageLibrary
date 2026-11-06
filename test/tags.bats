@@ -389,6 +389,308 @@ storeOn() {
   assert_output --partial "no terminal to ask at"
 }
 
+# --- REMAP -----------------------------------------------------------
+
+## Read the remap file again, as the next run of sil would
+nextRun() {
+  _silRemapsLibrary=""
+  syncRemaps
+}
+
+@test "REMAP quietly applies the target instead of the source" {
+  remapAdd "Dog -> Animal/Canine" 2> /dev/null
+  SIL_TAG="dog"
+  run applyTags "$hash"
+  assert_success
+  assert_output --partial "Tagged: Animal/Canine"
+  refute_output --partial "[!]"
+  refute_output --partial "dog"
+  assert_not_exists lib/tags/Dog
+  assert_not_exists lib/tags/dog
+  assert_link_exists "lib/tags/Animal/Canine/$hash.png"
+}
+
+@test "remapTag follows chains and leading levels, longest source first" {
+  _silRemaps=([dog]="Animal/Canine" [dog/puppy]="Young/Pup" [animal/canine/wolf]="Wild")
+  run remapTag "Dog/Beagle"
+  assert_output "Animal/Canine/Beagle"
+  run remapTag "DOG/puppy/Small"
+  assert_output "Young/Pup/Small"
+  run remapTag "Dog/Wolf"
+  assert_output "Wild"
+  ## A source only matches from the top of the path
+  run remapTag "Pets/Dog"
+  assert_output "Pets/Dog"
+}
+
+@test "remapTag returns the tag given if remaps loop, even as they grow" {
+  _silRemaps=([a]="B/x" [b]="A")
+  run remapTag "A"
+  assert_failure
+  assert_output "A"
+}
+
+@test "UNTAG follows remaps too" {
+  remapAdd "Dog -> Animal/Canine" 2> /dev/null
+  tagImage "$hash" Animal/Canine
+  SIL_UNTAG="Dog"
+  run applyUntags "$hash"
+  assert_success
+  assert_output --partial "Untagged: Animal/Canine"
+  assert_not_exists lib/tags/Animal/Canine
+}
+
+@test "a tag and its remapped form in one TAG are applied once" {
+  remapAdd "Dog -> Animal/Canine" 2> /dev/null
+  SIL_TAG="Dog,animal/canine"
+  run applyTags "$hash"
+  assert_success
+  refute_output --partial "(existed)"
+}
+
+@test "REMAP moves a source's files to the target, reporting the count" {
+  tagImage "$hash" Dog
+  tagImage "$hash" Dog/Puppy
+  run remapAdd "Dog -> Animal/Canine"
+  assert_success
+  assert_output --partial "Moved 2 files from Dog to Animal/Canine"
+  assert_not_exists lib/tags/Dog
+  assert_link_exists "lib/tags/Animal/Canine/$hash.png"
+  assert_link_exists "lib/tags/Animal/Canine/Puppy/$hash.png"
+  [[ -f "lib/tags/Animal/Canine/Puppy/$hash.png" ]]
+}
+
+@test "REMAP says nothing of moving when a source has no files, and prunes its parents" {
+  mkdir -p lib/tags/Pets/Dog/Sub
+  run remapAdd "Pets/Dog -> Animal"
+  assert_success
+  refute_output --partial "Moved"
+  assert_not_exists lib/tags/Pets
+  assert_not_exists lib/tags/Animal
+}
+
+@test "REMAP merges into a target that already has the image" {
+  tagImage "$hash" Dog
+  tagImage "$hash" Canine
+  run remapAdd "Dog -> Canine"
+  assert_success
+  assert_output --partial "Moved 1 file from Dog to Canine"
+  assert_not_exists lib/tags/Dog
+  assert_link_exists "lib/tags/Canine/$hash.png"
+}
+
+@test "REMAP of a LINK alias removes only the link" {
+  tagImage "$hash" Pets/Dog
+  ln -s Pets/Dog lib/tags/Dog
+  run remapAdd "Dog -> Animal/Canine"
+  assert_success
+  assert_output --partial "Removed link Dog"
+  [[ ! -e lib/tags/Dog && ! -L lib/tags/Dog ]]
+  assert_link_exists "lib/tags/Pets/Dog/$hash.png"
+  assert_not_exists lib/tags/Animal
+}
+
+@test "REMAP points a LINK to the source at the target" {
+  tagImage "$hash" Dog
+  ln -s Dog lib/tags/Hound
+  run remapAdd "Dog -> Animal/Canine"
+  assert_success
+  assert_output --partial "Link Hound now points to Animal/Canine"
+  assert_not_exists lib/tags/Dog
+  assert_equal "$(readlink lib/tags/Hound)" "Animal/Canine"
+  [[ -f "lib/tags/Hound/$hash.png" ]]
+}
+
+@test "REMAP moves a LINK inside the source so that it still works" {
+  tagImage "$hash" Other
+  mkdir -p lib/tags/Dog
+  ln -s ../Other lib/tags/Dog/Alias
+  run remapAdd "Dog -> Animal/Canine"
+  assert_success
+  [[ -f "lib/tags/Animal/Canine/Alias/$hash.png" ]]
+}
+
+@test "REMAP refuses bad values, loops and reserved tags" {
+  local bad
+  for bad in "Dog" "A,B -> C" "-> C" "A -> B -> C" "A -> Date/2020" "Date -> A" \
+    "untagged -> A" "A -> Untagged" "Dog -> Dog" "Dog -> dog/Sub"; do
+    run remapAdd "$bad"
+    assert_failure
+    assert_output --partial "[!]"
+  done
+  assert_not_exists lib/RemappedTags.txt
+}
+
+@test "REMAP refuses a loop through other remaps, keeping the file as it was" {
+  remapAdd "A -> B" 2> /dev/null
+  remapAdd "B -> C" 2> /dev/null
+  run remapAdd "C -> A"
+  assert_failure
+  assert_output --partial "would loop"
+  run grep -c '^C ->' lib/RemappedTags.txt
+  assert_output 0
+  run remapTag A
+  assert_output C
+}
+
+@test "REMAP to a remapped target moves files to the final target" {
+  remapAdd "B -> C" 2> /dev/null
+  tagImage "$hash" A
+  run remapAdd "A -> B"
+  assert_success
+  assert_output --partial "Moved 1 file from A to C"
+  assert_not_exists lib/tags/B
+  assert_link_exists "lib/tags/C/$hash.png"
+}
+
+@test "REMAP keeps the file's other lines, and replaces a source's line" {
+  cat > lib/RemappedTags.txt <<'EOF'
+# My vocabulary
+Kitty -> Feline
+
+not a remap
+dog -> Old
+EOF
+  run remapAdd "Dog -> Canine"
+  assert_success
+  assert_output --partial "Remapped: Dog -> Canine, was Old"
+  run cat lib/RemappedTags.txt
+  assert_output "# My vocabulary
+Kitty -> Feline
+
+not a remap
+Dog -> Canine"
+  run remapAdd "DOG -> canine"
+  assert_success
+  assert_output --partial "Already remapped"
+}
+
+@test "the first REMAP makes a file explaining itself" {
+  remapAdd "Dog -> Canine" 2> /dev/null
+  assert_file_contains lib/RemappedTags.txt "^# One remap per line"
+  assert_file_contains lib/RemappedTags.txt "^Dog -> Canine$"
+}
+
+@test "a remap file edited by hand is acted on at the next run" {
+  tagImage "$hash" Dog
+  syncRemaps
+  ## CRLF line endings and no final newline, as an editor might leave
+  printf '# Notes\r\n\r\n  dog:puppy -> Young \r\nDog->Animal/Canine' > lib/RemappedTags.txt
+  tagImage "$hash" Dog/Puppy
+  run nextRun
+  assert_success
+  assert_output --partial "Moved 1 file from dog/puppy to Young"
+  assert_output --partial "Moved 1 file from Dog to Animal/Canine"
+  refute_output --partial "[!]"
+  assert_not_exists lib/tags/Dog
+  assert_link_exists "lib/tags/Animal/Canine/$hash.png"
+  assert_link_exists "lib/tags/Young/$hash.png"
+}
+
+@test "a line removed by hand stops the remap at the next run" {
+  remapAdd "Dog -> Canine" 2> /dev/null
+  : > lib/RemappedTags.txt
+  nextRun
+  run remapTag Dog
+  assert_output Dog
+}
+
+@test "a missing or empty remap file is fine, and a deleted one stops remaps" {
+  run nextRun
+  assert_success
+  assert_output ""
+  : > lib/RemappedTags.txt
+  run nextRun
+  assert_success
+  assert_output ""
+  remapAdd "Dog -> Canine" 2> /dev/null
+  rm lib/RemappedTags.txt
+  nextRun
+  run remapTag Dog
+  assert_output Dog
+}
+
+@test "problem lines in a remap file are warned about, ignored and kept" {
+  cat > lib/RemappedTags.txt <<'EOF'
+no arrow here
+A,B -> C
+Date -> D
+E -> E/Sub
+Good -> Fine
+EOF
+  cp lib/RemappedTags.txt expected
+  run nextRun
+  assert_success
+  assert_output --partial "RemappedTags.txt line 1"
+  assert_output --partial "RemappedTags.txt line 2"
+  assert_output --partial "RemappedTags.txt line 3"
+  assert_output --partial "RemappedTags.txt line 4"
+  refute_output --partial "line 5"
+  assert_files_equal lib/RemappedTags.txt expected
+  nextRun 2> /dev/null
+  assert_equal "${#_silRemaps[@]}" 1
+  assert_equal "${_silRemaps[good]}" Fine
+}
+
+@test "a remap file with a loop or repeated source is handled" {
+  tagImage "$hash" Solo
+  cat > lib/RemappedTags.txt <<'EOF'
+A -> B
+B -> A
+Twice -> First
+twice -> Second
+Solo -> Kept
+EOF
+  run nextRun
+  assert_success
+  assert_output --partial "REMAP loops, ignored: A -> B"
+  assert_output --partial "'twice' is listed more than once; using 'Second'"
+  assert_output --partial "Moved 1 file from Solo to Kept"
+  nextRun 2> /dev/null
+  run remapTag Twice
+  assert_output Second
+  ## Dropping one remap of the loop leaves the other, which no longer loops
+  run remapTag B
+  assert_success
+  assert_output A
+}
+
+@test "a source that is a physical parent of its target stays, with a warning" {
+  tagImage "$hash" Dog
+  ln -s Dog lib/tags/Hound
+  printf 'Dog -> Hound/Sub\n' > lib/RemappedTags.txt
+  run nextRun
+  assert_failure
+  assert_output --partial "left in place"
+  assert_link_exists "lib/tags/Dog/$hash.png"
+  assert_not_exists lib/tags/Dog/Sub
+}
+
+@test "remaps are read for each library used" {
+  remapAdd "Dog -> Canine" 2> /dev/null
+  SIL_LIBRARY="$TEST_SANDBOX/lib2"
+  initLibrary "$SIL_LIBRARY" 2> /dev/null
+  syncRemaps
+  run remapTag Dog
+  assert_output Dog
+  SIL_LIBRARY="$TEST_SANDBOX/lib"
+  syncRemaps
+  run remapTag Dog
+  assert_output Canine
+}
+
+@test "LINK follows a remapped target and refuses a remapped source" {
+  remapAdd "Dog -> Animal/Canine" 2> /dev/null
+  run linkTag "Dog -> Other"
+  assert_failure
+  assert_output --partial "is remapped to 'Animal/Canine'"
+  assert_not_exists lib/tags/Dog
+  run linkTag "Hound -> Dog"
+  assert_success
+  assert_output --partial "Linked: Hound -> Animal/Canine"
+  assert_equal "$(readlink lib/tags/Hound)" "Animal/Canine"
+}
+
 # --- REMOVE ----------------------------------------------------------
 
 @test "removeImage removes the file, its tags, index and sources lines" {

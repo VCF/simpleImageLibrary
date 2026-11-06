@@ -1,4 +1,4 @@
-## Tagging - see TAG, UNTAG and LINK in docs/parameters.md
+## Tagging - see TAG, UNTAG, LINK and REMAP in docs/parameters.md
 
 srcLib "index"
 
@@ -15,6 +15,15 @@ declare -g _silTagLatin1='ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛ
 
 ## Set by applyTags: how many tags the image got or already had
 declare -g _silTagsApplied=0
+
+## File of tag remaps in a library (REMAP), kept for hand editing
+declare -g _silRemapFile="RemappedTags.txt"
+
+## Remaps in force, keyed by lowercase source tag: the target tag, and the
+## source as written. _silRemapsLibrary is the library they were read from
+declare -gA _silRemaps=()
+declare -gA _silRemapSource=()
+declare -g _silRemapsLibrary=""
 
 #######################################
 # Split a TAG value into tag paths. Tags are separated by commas; levels
@@ -305,11 +314,12 @@ function reservedTag {
 }
 
 #######################################
-# Split a TAG or UNTAG value into tag paths (parseTags), leaving out
-# any the user may not use: the reserved date and Untagged tags
-# (reservedTag), and tags parseTags leaves out.
+# Split a TAG or UNTAG value into tag paths (parseTags), each changed to
+# what it is remapped to (REMAP) and listed once, leaving out any the user
+# may not use: the reserved date and Untagged tags (reservedTag), and tags
+# parseTags leaves out.
 # Globals:
-#   _silDateTag
+#   _silDateTag, _silRemaps
 # Arguments:
 #   $1 - TAG or UNTAG value
 #   $2 - 'TAG' (default) or 'UNTAG', for the warnings given
@@ -319,10 +329,15 @@ function reservedTag {
 #   0 if every tag was usable, 1 if any was left out
 #######################################
 function parseUserTags {
+    local LC_ALL=C.UTF-8
     local tags tag reserved rv=0
+    local -A seen=()
     tags="$(parseTags "$1")" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
+        tag="$(remapTag "$tag")" || msgWarn "[!] Remaps of tag '$tag' loop; not remapped"
+        [[ -n "${seen[${tag,,}]:-}" ]] && continue
+        seen[${tag,,}]=1
         if reserved="$(reservedTag "$tag")"; then
             if [[ "$reserved" == "$_silDateTag" ]]; then
                 msgWarn "[!] '$_silDateTag' is reserved for automatic date tags - ignored: $tag"
@@ -356,6 +371,7 @@ function applyTags {
     local tags tag link existed rv=0 applied=""
     _silTagsApplied=0
     [[ -n "${SIL_TAG:-}" ]] || return 0
+    syncRemaps || rv=1
     tags="$(parseUserTags "$SIL_TAG" TAG)" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
@@ -557,6 +573,7 @@ function applyUntags {
         return "$rv"
     fi
 
+    syncRemaps || rv=1
     tags="$(parseUserTags "$SIL_UNTAG" UNTAG)" || rv=1
     while IFS= read -r tag; do
         [[ -n "$tag" ]] || continue
@@ -601,8 +618,9 @@ function askYesNo {
 
 #######################################
 # Move the contents of a tag folder into another, keeping subfolders
-# (matched case-insensitively, as tags are). Links to images are made
-# again, to point correctly from their new place; other files are moved.
+# (matched case-insensitively, as tags are). Links to images and folders
+# are made again, to point correctly from their new place; other files
+# are moved.
 # Arguments:
 #   $1 - Folder to empty (physical path)
 #   $2 - Tag path to move into, eg Meme/Politics
@@ -620,8 +638,7 @@ function moveTagContents {
         else
             dest="$(tagFolder "$to")" || { rv=1; continue; }
         fi
-        if [[ -L "$item" ]] && image="$(realpath -e -- "$item" 2> /dev/null)" \
-            && [[ -f "$image" ]]; then
+        if [[ -L "$item" ]] && image="$(realpath -e -- "$item" 2> /dev/null)"; then
             [[ -L "$dest/${item##*/}" ]] \
                 || ln -s -- "$(relativePath "$dest" "$image")" "$dest/${item##*/}" \
                 || { rv=1; continue; }
@@ -635,13 +652,51 @@ function moveTagContents {
 }
 
 #######################################
+# Split a 'SOURCE -> TARGET' value (LINK, REMAP) into two tag paths. Neither
+# may be a reserved tag (reservedTag).
+# Arguments:
+#   $1 - Parameter name, for messages
+#   $2 - Value, eg 'Politics -> Meme/Politics'
+#   $3 - Name of the variable to set to the source tag path
+#   $4 - Name of the variable to set to the target tag path
+#   $5 - Optional location of the value, for messages
+# Outputs:
+#   Problems to STDERR
+# Returns:
+#   0 on success, 1 if the value is invalid
+#######################################
+function parseTagPair {
+    local _param="$1" _value="$2" _src _target _reserved
+    local _where="${5:+$'\n'    Found in: $5}"
+    if [[ "$_value" != *"->"* || "$_value" == *"->"*"->"* ]]; then
+        msgWarn "[!] $_param needs a source and target, eg: $_param='Source -> Target'
+    Got: $_value$_where"
+        return 1
+    fi
+    _src="$(parseTags "${_value%%->*}")"
+    _target="$(parseTags "${_value#*->}")"
+    if [[ -z "$_src" || -z "$_target" || "$_src" == *$'\n'* || "$_target" == *$'\n'* ]]; then
+        msgWarn "[!] $_param needs exactly one source and one target tag: $_value$_where"
+        return 1
+    fi
+    if _reserved="$(reservedTag "$_src")" || _reserved="$(reservedTag "$_target")"; then
+        msgWarn "[!] '$_reserved' is a reserved tag; it can't be used in a $_param: $_value$_where"
+        return 1
+    fi
+    printf -v "$3" '%s' "$_src"
+    printf -v "$4" '%s' "$_target"
+}
+
+#######################################
 # Make one tag an alias of another (LINK): replace the source tag with a
 # link to the target tag's folder. The target is created if needed. A
 # source holding images is merged into the target, only if the user
 # agrees (askYesNo); a source that is already a link is pointed at the
-# new target. Reserved tags (reservedTag) can't be used on either side.
+# new target. Reserved tags (reservedTag) can't be used on either side. A
+# remapped target (REMAP) is followed; a remapped source is refused, as the
+# link would be removed by the next run.
 # Globals:
-#   SIL_LIBRARY
+#   SIL_LIBRARY, _silRemaps
 # Arguments:
 #   $1 - LINK value: 'SOURCE -> TARGET', eg 'Politics -> Meme/Politics'
 # Outputs:
@@ -652,22 +707,15 @@ function moveTagContents {
 #######################################
 function linkTag {
     local value="$1" src target parent name entry entryDir targetDir parentDir
-    local count was reserved
-    if [[ "$value" != *"->"* ]]; then
-        msgWarn "[!] LINK needs a source and target, eg: LINK='Politics -> Meme/Politics'
-    Got: $value"
+    local count was
+    parseTagPair LINK "$value" src target || return 1
+    syncRemaps || :
+    if [[ "$(remapTag "$src")" != "$src" ]]; then
+        msgWarn "[!] LINK source '$src' is remapped to '$(remapTag "$src")', so can't be a link
+    To use it, remove its line from $_silRemapFile: $value"
         return 1
     fi
-    src="$(parseTags "${value%%->*}")"
-    target="$(parseTags "${value#*->}")"
-    if [[ -z "$src" || -z "$target" || "$src" == *$'\n'* || "$target" == *$'\n'* ]]; then
-        msgWarn "[!] LINK needs exactly one source and one target tag: $value"
-        return 1
-    fi
-    if reserved="$(reservedTag "$src")" || reserved="$(reservedTag "$target")"; then
-        msgWarn "[!] '$reserved' is a reserved tag; it can't be used in a LINK: $value"
-        return 1
-    fi
+    target="$(remapTag "$target")" || :
 
     name="${src##*/}"
     parent=""
@@ -721,6 +769,306 @@ function linkTag {
 
     ln -s -- "$(relativePath "$parentDir" "$targetDir")" "$parentDir/$name" || return 1
     msgInfo "  Linked: ${parent:+$parent/}$name -> $target"
+}
+
+#######################################
+# The tag a tag path ends up as after remaps (REMAP). The longest source
+# matching the path or its leading levels applies, case-insensitively, so
+# with 'Dog -> Animal/Canine', Dog/Puppy becomes Animal/Canine/Puppy. Remaps
+# are followed until none applies: A -> B and B -> C make A into C.
+# Globals:
+#   _silRemaps
+# Arguments:
+#   $1 - Tag path, eg Dog/Puppy
+# Outputs:
+#   The final tag path to STDOUT, or the path given if remaps loop
+# Returns:
+#   0 on success, 1 if remaps loop
+#######################################
+function remapTag {
+    local LC_ALL=C.UTF-8
+    local path="$1" head rest hops=0
+    ## A chain that doesn't loop uses each remap at most once
+    while (( hops <= ${#_silRemaps[@]} )); do
+        head="$path"
+        rest=""
+        while [[ -z "${_silRemaps[${head,,}]:-}" ]]; do
+            if [[ "$head" != */* ]]; then
+                printf '%s\n' "$path"
+                return 0
+            fi
+            rest="/${head##*/}$rest"
+            head="${head%/*}"
+        done
+        path="${_silRemaps[${head,,}]}$rest"
+        hops=$(( hops + 1 ))
+    done
+    printf '%s\n' "$1"
+    return 1
+}
+
+#######################################
+# Read the library's remap file (REMAP) into memory. The file is only
+# read here, never corrected: a problem line is warned about and ignored,
+# as are remaps that loop. If a source is listed twice, the last line wins.
+# Globals:
+#   SIL_LIBRARY, _silRemapFile; sets _silRemaps, _silRemapSource
+# Outputs:
+#   Problems to STDERR
+#######################################
+function loadRemaps {
+    local LC_ALL=C.UTF-8
+    local file="$SIL_LIBRARY/$_silRemapFile"
+    local line lineNum=0 src target key
+    local -a keys
+    _silRemaps=()
+    _silRemapSource=()
+    [[ -f "$file" ]] || return 0
+    if [[ ! -r "$file" ]]; then
+        msgWarn "[!] Can't read $file; tags won't be remapped"
+        return 0
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lineNum=$(( lineNum + 1 ))
+        line="$(trim "$line")"
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        parseTagPair REMAP "$line" src target "$file line $lineNum" || continue
+        key="${src,,}"
+        if [[ "${target,,}" == "$key" || "${target,,}" == "$key"/* ]]; then
+            msgWarn "[!] REMAP target can't be its source or inside it: $line
+    Found in: $file line $lineNum"
+            continue
+        fi
+        if [[ -n "${_silRemaps[$key]:-}" && "${_silRemaps[$key],,}" != "${target,,}" ]]; then
+            msgWarn "[!] REMAP source '$src' is listed more than once; using '$target'
+    Found in: $file line $lineNum"
+        fi
+        _silRemaps[$key]="$target"
+        _silRemapSource[$key]="$src"
+    done < "$file"
+
+    (( ${#_silRemaps[@]} )) || return 0
+    mapfile -t keys < <(printf '%s\n' "${!_silRemaps[@]}" | LC_ALL=C sort)
+    for key in "${keys[@]}"; do
+        if ! remapTag "${_silRemapSource[$key]}" > /dev/null; then
+            msgWarn "[!] REMAP loops, ignored: ${_silRemapSource[$key]} -> ${_silRemaps[$key]}
+    Found in: $file"
+            unset '_silRemaps[$key]' '_silRemapSource[$key]'
+        fi
+    done
+}
+
+#######################################
+# Point every LINK alias of a folder, or of a folder below it, at the same
+# place under a tag, so the folder can go.
+# Globals:
+#   SIL_LIBRARY, _silDateTag
+# Arguments:
+#   $1 - Folder (physical path)
+#   $2 - Tag path taking its place
+# Outputs:
+#   Links changed, to STDERR
+# Returns:
+#   0 on success, 1 if a link can't be remade
+#######################################
+function repointTagLinks {
+    local from="$1" to="$2" root link dest dir rv=0
+    local -a links
+    root="$(realpath -- "$SIL_LIBRARY/tags")"
+    mapfile -t links < <(find "$root" -type l -xtype d ! -path "$root/$_silDateTag/*")
+    for link in "${links[@]}"; do
+        dest="$(realpath -- "$link")"
+        [[ "$dest" == "$from" || "$dest" == "$from"/* ]] || continue
+        dir="$(tagFolder "$to${dest#"$from"}")" || { rv=1; continue; }
+        rm -f -- "$link"
+        ln -s -- "$(relativePath "$(dirname -- "$link")" "$dir")" "$link" || { rv=1; continue; }
+        msgInfo "  Link ${link#"$root"/} now points to $to${dest#"$from"}"
+    done
+    return "$rv"
+}
+
+#######################################
+# Clear a remapped tag out of the tag folders: its contents are moved to
+# the target, keeping subfolders, and the source folder removed. A source
+# that is a LINK alias is only removed, as its images belong to the tag it
+# points to. Links to the source are pointed at the target.
+# Arguments:
+#   $1 - Source tag path, eg Dog
+#   $2 - Target tag path, fully remapped, eg Animal/Canine
+# Outputs:
+#   What was done, including the count of files moved, and problems, to
+#   STDERR
+# Returns:
+#   0 on success or if the source doesn't exist, 1 if it can't be cleared
+#######################################
+function clearRemappedTag {
+    local src="$1" target="$2" parentDir entry entryDir targetDir count files
+    if [[ "$src" == */* ]]; then
+        parentDir="$(tagFolder "${src%/*}" find)" || return 0
+    else
+        parentDir="$(realpath -- "$SIL_LIBRARY/tags")"
+    fi
+    entry="$(tagEntry "$parentDir" "${src##*/}")" || return 0
+    if [[ -L "$entry" ]]; then
+        rm -f -- "$entry"
+        msgInfo "  Removed link $src, as it is remapped to $target"
+        pruneTagFolder "$parentDir"
+        return 0
+    fi
+
+    entryDir="$(realpath -- "$entry")"
+    if ! targetDir="$(tagFolder "$target")"; then
+        msgWarn "[!] Could not create tag folder for $target; $src left in place"
+        return 1
+    fi
+    if [[ "$targetDir" == "$entryDir" || "$targetDir" == "$entryDir"/* ]]; then
+        msgWarn "[!] REMAP target '$target' is inside source '$src' (through a LINK); $src left in place"
+        pruneTagFolder "$targetDir"
+        return 1
+    fi
+    if ! repointTagLinks "$entryDir" "$target"; then
+        msgWarn "[!] Some links to $src could not be changed; $src left in place"
+        return 1
+    fi
+    count="$(find "$entryDir" -mindepth 1 ! -type d | wc -l)"
+    if (( count )); then
+        if ! moveTagContents "$entryDir" "$target"; then
+            msgWarn "[!] Some of $src could not be moved to $target; left in place"
+            return 1
+        fi
+        files="files"
+        (( count == 1 )) && files="file"
+        msgInfo "  Moved $count $files from $src to $target"
+    fi
+    find "$entryDir" -mindepth 1 -depth -type d -empty -delete
+    pruneTagFolder "$entryDir"
+    pruneTagFolder "$targetDir"
+}
+
+#######################################
+# Bring the library in line with its remap file, once per run for each
+# library used: read the file (loadRemaps), which may have been edited by
+# hand, and clear out any source tag that has a folder (clearRemappedTag).
+# Sources below others go first, so each moves to its own target.
+# Globals:
+#   SIL_LIBRARY, _silRemaps, _silRemapSource; sets _silRemapsLibrary
+# Outputs:
+#   What was done, and problems, to STDERR
+# Returns:
+#   0 on success or with no library yet, 1 if a tag can't be cleared
+#######################################
+function syncRemaps {
+    local key rv=0
+    local -a keys
+    [[ -n "${SIL_LIBRARY:-}" && "$_silRemapsLibrary" != "$SIL_LIBRARY" ]] || return 0
+    _silRemapsLibrary="$SIL_LIBRARY"
+    loadRemaps
+    (( ${#_silRemaps[@]} )) || return 0
+    mapfile -t keys < <(printf '%s\n' "${!_silRemaps[@]}" | LC_ALL=C sort -r)
+    for key in "${keys[@]}"; do
+        clearRemappedTag "${_silRemapSource[$key]}" \
+            "$(remapTag "${_silRemapSource[$key]}")" || rv=1
+    done
+    return "$rv"
+}
+
+#######################################
+# Write a remap to the library's remap file, created with a header if
+# needed. Any line for the same source is replaced; all others, including
+# comments and lines with problems, are kept as they are.
+# Globals:
+#   SIL_LIBRARY, _silRemapFile
+# Arguments:
+#   $1 - Source tag path
+#   $2 - Target tag path
+# Returns:
+#   0 on success, 1 if the file can't be written
+#######################################
+function writeRemap {
+    local LC_ALL=C.UTF-8
+    local file="$SIL_LIBRARY/$_silRemapFile" new="$1 -> $2" key="${1,,}"
+    local line trimmed src out="" placed=0
+    if [[ -f "$file" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            trimmed="$(trim "$line")"
+            if [[ "$trimmed" != \#* && "$trimmed" == *"->"* ]]; then
+                src="$(parseTags "${trimmed%%->*}" 2> /dev/null)"
+                if [[ "${src,,}" == "$key" ]]; then
+                    (( placed )) || out+="$new"$'\n'
+                    placed=1
+                    continue
+                fi
+            fi
+            out+="$line"$'\n'
+        done < "$file"
+    else
+        out+="# Remapped tags - see REMAP in SIL's docs/parameters.md
+#
+# One remap per line, as: Source -> Target
+# A tag given as Source is applied as Target instead. Case doesn't matter, and
+# tags below Source follow it, so with 'Dog -> Animal/Canine', Dog/Puppy becomes
+# Animal/Canine/Puppy.
+#
+# This file can be edited directly. SIL acts on changes the next time it runs,
+# moving any files found in a Source tag to its Target. To stop remapping a tag,
+# delete its line. Blank lines and lines starting with # are ignored.
+"
+    fi
+    (( placed )) || out+="$new"$'\n'
+    printf '%s' "$out" > "$file"
+}
+
+#######################################
+# Remap one tag to another (REMAP): from now on, the source is quietly
+# applied as the target (see remapTag and parseUserTags). The remap is
+# saved in the library's remap file, and the source folder, if any, cleared
+# out (clearRemappedTag). Reserved tags (reservedTag) can't be used.
+# Globals:
+#   SIL_LIBRARY, _silRemapFile; updates _silRemaps, _silRemapSource
+# Arguments:
+#   $1 - REMAP value: 'SOURCE -> TARGET', eg 'Dog -> Animal/Canine'
+# Outputs:
+#   What was done, and problems, to STDERR
+# Returns:
+#   0 on success, 1 if the value is invalid, the remap would loop, or the
+#   source can't be cleared
+#######################################
+function remapAdd {
+    local LC_ALL=C.UTF-8
+    local value="$1" src target key was wasSource
+    parseTagPair REMAP "$value" src target || return 1
+    key="${src,,}"
+    if [[ "${target,,}" == "$key" || "${target,,}" == "$key"/* ]]; then
+        msgWarn "[!] REMAP target can't be its source or inside it: $value"
+        return 1
+    fi
+    syncRemaps || :
+    was="${_silRemaps[$key]:-}"
+    wasSource="${_silRemapSource[$key]:-}"
+    if [[ "${was,,}" == "${target,,}" ]]; then
+        msgInfo "  Already remapped: $src -> $was"
+        return 0
+    fi
+
+    _silRemaps[$key]="$target"
+    _silRemapSource[$key]="$src"
+    if ! remapTag "$src" > /dev/null; then
+        msgWarn "[!] REMAP would loop with another remap, ignored: $value
+    To change it, edit: $SIL_LIBRARY/$_silRemapFile"
+        if [[ -n "$was" ]]; then
+            _silRemaps[$key]="$was"
+            _silRemapSource[$key]="$wasSource"
+        else
+            unset '_silRemaps[$key]' '_silRemapSource[$key]'
+        fi
+        return 1
+    fi
+    if ! writeRemap "$src" "$target"; then
+        msgWarn "[!] Could not save the remap to: $SIL_LIBRARY/$_silRemapFile"
+        return 1
+    fi
+    msgInfo "  Remapped: $src -> $target${was:+, was $was}"
+    clearRemappedTag "$src" "$(remapTag "$src")"
 }
 
 #######################################

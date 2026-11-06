@@ -354,3 +354,25 @@ EOF2
   assert_output --partial "REMOVE=on"
   assert_output --partial "# NOTSTORED"
 }
+
+@test "REMAP runs at its line in a manifest, and isn't logged for retry" {
+  cp "$PROJECT_ROOT/test/data/images/transparent.png" work/
+  cat > work/m.txt <<'EOF2'
+TAG=Dog
+plasma.png
+REMAP=Dog -> Animal/Canine
+TAG=Dog
+transparent.png
+REMOVE
+missing.png
+EOF2
+  run parseManifest work/m.txt
+  assert_failure
+  assert_output --partial "Moved 1 file from Dog to Animal/Canine"
+  assert_not_exists lib/tags/Dog
+  run find lib/tags/Animal/Canine -type l
+  assert_equal "${#lines[@]}" 2
+  assert_file_contains lib/RemappedTags.txt '^Dog -> Animal/Canine$'
+  run cat work/m.txt.err
+  refute_output --partial "REMAP"
+}
