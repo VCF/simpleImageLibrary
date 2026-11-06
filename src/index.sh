@@ -222,9 +222,23 @@ EOF
 }
 
 #######################################
-# Record where an image came from, unless already recorded. Local files
-# are recorded as file:<name>, without their folders, as the library
-# may be shared.
+# The form in which a source is recorded: URLs as given, local files as
+# file:<name>, without their folders, as the library may be shared.
+# Arguments:
+#   $1 - Source: a URL, or a local path
+# Outputs:
+#   The recorded form to STDOUT
+#######################################
+function sourceName {
+    if [[ "$1" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]; then
+        printf '%s\n' "$1"
+    else
+        printf 'file:%s\n' "$(basename -- "$1")"
+    fi
+}
+
+#######################################
+# Record where an image came from, unless already recorded.
 # Arguments:
 #   $1 - Image hash
 #   $2 - Source: a URL, or a local path
@@ -234,8 +248,7 @@ EOF
 function sourceAdd {
     local file source tmp
     file="$(sourcesFile)"
-    source="$2"
-    [[ "$source" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] || source="file:$(basename -- "$source")"
+    source="$(sourceName "$2")"
     grep -qxF -- "$1 $source" "$file" 2> /dev/null && return 0
     tmp="$(silMktemp)" || return 1
     { [[ -f "$file" ]] && cat -- "$file"; printf '%s %s\n' "$1" "$source"; } \
@@ -264,6 +277,20 @@ function sourceLookup {
         fi
     done < <(SIL_SOURCE="$1" awk '!/^#/ && substr($0, 42) == ENVIRON["SIL_SOURCE"] { print $1 }' "$file")
     return 1
+}
+
+#######################################
+# List the recorded sources of an image.
+# Arguments:
+#   $1 - Image hash
+# Outputs:
+#   One source per line to STDOUT
+#######################################
+function sourcesOf {
+    local file
+    file="$(sourcesFile)"
+    [[ -f "$file" ]] || return 0
+    awk -v h="$1" '$1 == h { print substr($0, 42) }' "$file"
 }
 
 #######################################

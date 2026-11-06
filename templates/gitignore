@@ -7,3 +7,6 @@
 # Logs written beside manifests (REQ-08)
 *.txt.err
 *.txt.md
+
+# Images replaced by larger copies (KEEPLARGER)
+replacedWithHigherRes/

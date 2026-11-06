@@ -273,7 +273,7 @@ function shrinkImage {
     requireTool findimagedupes findimagedupes \
         "check shrunk images still match their originals"
 
-    if isVideoFormat "$(imageFormat "$_src")" || (( $(imageFrames "$_src") > 1 )); then
+    if isAnimated "$_src"; then
         shrinkAnimation "$_src" "$_resultVar"
         return
     fi

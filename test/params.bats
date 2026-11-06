@@ -211,6 +211,13 @@ teardown() {
   assert_output --partial "HIGH, MEDIUM, LOW"
 }
 
+@test "KEEPLARGER defaults to off, and is a flag" {
+  run flagIsSet KEEPLARGER
+  assert_failure
+  setParamToken KEEPLARGER=on
+  flagIsSet KEEPLARGER
+}
+
 @test "SHRINKVID defaults to OFF" {
   assert_equal "$SIL_SHRINKVID" OFF
 }

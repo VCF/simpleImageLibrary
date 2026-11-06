@@ -3,9 +3,10 @@
 srcLib "fetch"
 srcLib "shrink"
 srcLib "tags"
+srcLib "replace"
 
 ## Successful outcome tags, in reporting order; anything else is a failure
-declare -ga _silSuccessTags=(ADDED SHRINK DUPE FOUND REMOVED)
+declare -ga _silSuccessTags=(ADDED SHRINK UPGRADED DUPE FOUND REMOVED)
 
 ## Outcome tag -> count, for the run summary
 declare -gA _silOutcomes=()
@@ -73,17 +74,19 @@ function setOutcome {
 #######################################
 # Add a recovered file to the library (REQ-05, REQ-07): check it is a
 # supported image, shrink it, then store it, or match it to a similar
-# stored image. Temporary files made here are removed; the input file
-# is left for the caller.
+# stored image, which KEEPLARGER may replace with it. Temporary files made
+# here are removed; the input file is left for the caller.
 # Globals:
-#   SIL_THRESHOLD; sets _silOutcome, _silOutcomeDetail, _silOutcomeHash
+#   SIL_THRESHOLD, SIL_KEEPLARGER; sets _silOutcome, _silOutcomeDetail,
+#   _silOutcomeHash
 # Arguments:
 #   $1 - Recovered file (in the library's temp folder, no suffix)
+#   $2 - The URI it came from, for the record of any replacement
 # Returns:
 #   0 if added or matched, 1 on failure
 #######################################
 function ingestFile {
-    local file="$1"
+    local file="$1" source="$2"
     local format rc kept fp match hash mime
     _silOutcomeHash=""
 
@@ -117,6 +120,9 @@ function ingestFile {
     if [[ -n "$match" ]]; then
         _silOutcomeHash="${match#* }"
         setOutcome DUPE "${_silOutcomeHash:0:12} - already in library (${match%% *} of 256 bits differ)"
+        if flagIsSet KEEPLARGER; then
+            keepLarger "$kept" "$fp" "${match%% *}" "$source"
+        fi
     elif storeImage "$kept" hash "$fp"; then
         _silOutcomeHash="$hash"
         if [[ "$kept" != "$file" ]]; then
@@ -198,12 +204,14 @@ function updateStored {
 # URL or local path is recovered and added. The URI is recorded as a source of
 # the resulting image (REQ-05), a newly stored image gets today's date
 # tag (TAG-02), and tags in SIL_TAG are applied; a newly stored image
-# given none is tagged Untagged (TAG-03). The outcome is reported and
+# given none is tagged Untagged (TAG-03). A DUPE or its replacement
+# (KEEPLARGER) keeps the tags already there. The outcome is reported and
 # counted.
 # With REMOVE or UNTAG, the URI must identify an image already stored
 # (knownImage), which is then removed or untagged; nothing is downloaded.
 # Globals:
-#   SIL_TAG, SIL_UNTAG, SIL_REMOVE, SIL_THRESHOLD, SIL_REFETCH
+#   SIL_TAG, SIL_UNTAG, SIL_REMOVE, SIL_THRESHOLD, SIL_REFETCH,
+#   SIL_KEEPLARGER
 # Arguments:
 #   $1 - URI
 #   $2 - Folder that relative paths are relative to (default: current
@@ -217,7 +225,7 @@ function updateStored {
 #######################################
 function processURI {
     local uri="$1" base="${2:-}" lineNum="${3:-}"
-    local kind path tmp hash rv
+    local kind path tmp hash rv isNew=0
     msgInfo "${lineNum:+[$lineNum] }$uri"
     requireTool identify imagemagick "inspect images"
     requireTool findimagedupes findimagedupes "fingerprint images"
@@ -260,7 +268,7 @@ function processURI {
         return 1
     fi
 
-    ingestFile "$tmp"
+    ingestFile "$tmp" "$uri"
     rv=$?
     rm -f -- "$tmp"
     reportOutcome "$_silOutcome" "$_silOutcomeDetail" "$_silOutcomeHash"
@@ -269,11 +277,12 @@ function processURI {
     sourceAdd "$_silOutcomeHash" "$uri" \
         || msgWarn "[!] Could not record the source in $(sourcesFile)"
     rv=0
-    if [[ "$_silOutcome" != DUPE ]]; then
+    [[ "$_silOutcome" == ADDED || "$_silOutcome" == SHRINK ]] && isNew=1
+    if (( isNew )); then
         dateTagImage "$_silOutcomeHash" || { msgWarn "[!] Could not apply the date tag"; rv=1; }
     fi
     applyTags "$_silOutcomeHash" || rv=1
-    if [[ "$_silOutcome" != DUPE ]] && (( _silTagsApplied == 0 )); then
+    if (( isNew && _silTagsApplied == 0 )); then
         if markUntagged "$_silOutcomeHash"; then
             msgInfo "  Tagged: $_silUntaggedTag"
         else

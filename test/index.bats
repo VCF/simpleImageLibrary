@@ -122,3 +122,14 @@ teardown() {
   assert_line --index 1 "12 $(printf 'a%.0s' {1..40})"
   refute_output --partial bbbb
 }
+
+@test "sourcesOf lists only that image's sources" {
+  local a=0123456789abcdef0123456789abcdef01234567
+  local b=1123456789abcdef0123456789abcdef01234567
+  sourceAdd "$a" "https://example.com/a b"
+  sourceAdd "$a" some/dir/local.png
+  sourceAdd "$b" https://example.com/other
+  run sourcesOf "$a"
+  assert_output "file:local.png
+https://example.com/a b"
+}

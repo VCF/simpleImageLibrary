@@ -18,7 +18,8 @@ of standard open source tools, and aims to stay simple.
 * **Batch loading** with manifest files, which also write a report and a
   ready-to-retry list of failures
 * **Duplicate detection** by visual fingerprint, so a rescaled or converted copy
-  of an image isn't stored twice, with a separate record of every source
+  of an image isn't stored twice, with a separate record of every source. A
+  larger copy can optionally replace the stored image (`KEEPLARGER`)
 * **Tags** as nested folders you can browse, with aliases (`LINK`) and
   controlled vocabularies (`REMAP`)
 * **Automatic date tags**, linked from day to day, and an `Untagged` tag, so
@@ -142,6 +143,7 @@ types are:
 | `FLATTEN` | Flag | Off | G L C M | Allow `SHRINK` to shrink images with transparency, by placing them on white |
 | `THRESHOLD` | Percent | `90%` | G L C M | How similar two images must be to count as duplicates. Use a high value, eg `98%`, to keep near-identical images apart |
 | `REFETCH` | Flag | Off | G L C M | Download a URL even if it is already recorded as a source of a stored image |
+| `KEEPLARGER` | Flag | Off | G L C M | When a duplicate has more pixels than the stored image, replace the stored image, keeping its tags, sources and date. Logged in `ReplacedImages.tsv`, with the old file kept in `replacedWithHigherRes/` |
 | `TOR`, `USETOR` | Flag | Off | G L C M | Download through `torsocks`. Onion addresses always are |
 | `CHECK` | Flag | Off | C | Report problems in the library, changing nothing. Exits with status 1 if any are found |
 | `REBUILD` | Flag | Off | C | Repair the library from its stored images, keeping tags. Runs before `CHECK` if both are given |

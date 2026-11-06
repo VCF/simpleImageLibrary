@@ -4,6 +4,7 @@
 declare -gA _silOutcomeMeaning=(
     [ADDED]="Recovered and added to the library"
     [SHRINK]="Recovered, shrunk and added"
+    [UPGRADED]="Replaced a smaller copy in the library, keeping its tags (KEEPLARGER)"
     [DUPE]="Already in the library; the hash is of the existing image"
     [FOUND]="Hash or known source matched a stored image"
     [REMOVED]="Removed from the library (REMOVE)"

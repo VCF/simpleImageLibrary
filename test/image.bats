@@ -292,3 +292,30 @@ makeVideo() {
   run hasAudio silent.mp4
   assert_failure
 }
+
+# --- size and animation (KEEPLARGER) ---------------------------------
+
+@test "imageDimensions reads stills, GIFs and videos" {
+  run imageDimensions "$PROJECT_ROOT/test/data/images/plasma.png"
+  assert_output 320x240
+  run imageDimensions "$PROJECT_ROOT/test/data/images/animated.gif"
+  assert_output 120x120
+  ffmpeg -v error -i "$PROJECT_ROOT/test/data/images/animated.gif" -pix_fmt yuv420p clip.mp4 < /dev/null
+  run imageDimensions clip.mp4
+  assert_output 120x120
+}
+
+@test "imageDimensions fails for something unreadable" {
+  run imageDimensions "$PROJECT_ROOT/test/data/images/not-an-image.jpg"
+  assert_failure
+}
+
+@test "isAnimated tells stills from animations and videos" {
+  run isAnimated "$PROJECT_ROOT/test/data/images/plasma.png"
+  assert_failure
+  run isAnimated "$PROJECT_ROOT/test/data/images/animated.gif"
+  assert_success
+  ffmpeg -v error -i "$PROJECT_ROOT/test/data/images/animated.gif" -pix_fmt yuv420p clip.mp4 < /dev/null
+  run isAnimated clip.mp4
+  assert_success
+}

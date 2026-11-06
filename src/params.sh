@@ -26,6 +26,7 @@ declare -gA _silParamType=(
     [SHRINKVID]=level
     [FLATTEN]=flag
     [REFETCH]=flag
+    [KEEPLARGER]=flag
     [THRESHOLD]=percent
     [CHECK]=flag
     [REBUILD]=flag
@@ -49,6 +50,7 @@ declare -gA _silParamDefault=(
     [FLATTEN]=0
     [REMOVE]=0
     [REFETCH]=0
+    [KEEPLARGER]=0
     [THRESHOLD]=90
     [TOR]=0
 )

@@ -146,6 +146,43 @@ function imageFrames {
 }
 
 #######################################
+# Test whether a file moves: a video, or an image of several frames.
+# Arguments:
+#   $1 - Image path
+# Returns:
+#   0 if animated, 1 if a still image
+#######################################
+function isAnimated {
+    local frames
+    isVideoFormat "$(imageFormat "$1")" && return 0
+    frames="$(imageFrames "$1")"
+    (( ${frames:-0} > 1 ))
+}
+
+#######################################
+# Find an image's size in pixels. ffprobe reads videos, which ImageMagick
+# can't, and a GIF's canvas, which its first frame may not fill.
+# Arguments:
+#   $1 - Image path
+# Outputs:
+#   Size to STDOUT as WIDTHxHEIGHT, eg 640x480
+# Returns:
+#   0 on success, 1 if the size can't be read
+#######################################
+function imageDimensions {
+    local format dims
+    format="$(imageFormat "$1")"
+    if [[ "$format" == GIF ]] || isVideoFormat "$format"; then
+        dims="$(ffprobe -v error -select_streams V:0 -show_entries stream=width,height \
+            -of csv=p=0:s=x "file:$1" < /dev/null 2> /dev/null)"
+    else
+        dims="$(identify -format '%wx%h' "$1[0]" 2> /dev/null)"
+    fi
+    [[ "$dims" =~ ^[0-9]+x[0-9]+$ ]] || return 1
+    printf '%s\n' "$dims"
+}
+
+#######################################
 # Pick the frame on screen halfway through an animation. Animations
 # often open on a blank or title frame, so this represents them better
 # than the first frame. If no frame has a duration, the middle frame by

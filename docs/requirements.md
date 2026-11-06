@@ -167,8 +167,24 @@ Each stored image has two identifiers with different jobs:
   * No match: the image is new, and is stored and added to the index
   * One or more matches: the image is a `DUPE` (`REQ-08`) of the closest match
     (fewest differing bits). The existing image is kept, the new one discarded,
-    and remaining operations (eg tagging) apply to the existing image
+    and remaining operations (eg tagging) apply to the existing image, unless
+    `KEEPLARGER` replaces it (below)
 * The index can be regenerated from the stored images at any time (`REQ-09`)
+
+## Replacing an image with a larger duplicate
+
+With `KEEPLARGER` (see [parameters.md](./parameters.md)), a duplicate replaces
+the closest match if it has a larger pixel area, as it would be stored (after
+`REQ-07`), and both are still or both animated. Otherwise it is a `DUPE`
+
+* The replacement is stored under its own hash, and takes over every tag link
+  and source of the old image, whose index entry is removed. Later operations
+  (eg tagging) apply to the replacement
+* No date tag is added: the replacement keeps the old image's date (`TAG-02`)
+* The old file moves to `replacedWithHigherRes/` in the library, and the change
+  is logged in `ReplacedImages.tsv`, both before anything else changes
+* If the same file as the duplicate is already stored under another entry, it is
+  a `DUPE` of that one, and nothing is replaced
 
 ## Sources
 
@@ -188,7 +204,8 @@ Each stored image has two identifiers with different jobs:
   always fingerprinted, as `file:<name>` doesn't identify a file uniquely
 * Unlike the fingerprint index, sources can't be regenerated, so lines are
   only removed with their image (`REMOVE`, `REQ-11`). `REBUILD` changes hashes
-  in it when it renames an image (`REQ-09`), and never removes a line
+  in it when it renames an image (`REQ-09`), and `KEEPLARGER` when it replaces
+  one; neither removes a line
 * Lines are kept sorted (C locale) for git (`REQ-10`)
 
 # REQ-06 Manifest files
@@ -295,6 +312,7 @@ Successful outcomes, with their status tag:
 | ------- | ----------------------------------------------------------- |
 | ADDED   | Recovered and added to the library                          |
 | SHRINK  | Recovered, shrunk (`REQ-07`) and added                      |
+| UPGRADED | Recovered and replaced a smaller duplicate (`KEEPLARGER`, `REQ-05`). Reported with the new hash and the old one |
 | DUPE    | Already in the library: recovered and matched by fingerprint (reported with how many bits differ), or a URL already recorded as a source and not downloaded (`REFETCH`). Reported with the existing image's hash; remaining operations (eg tagging) apply to the existing image |
 | FOUND   | A hash URI (`REQ-03`) matched a stored image, or with `UNTAG` a known source or identical file did (`REQ-11`); remaining operations apply to it |
 | REMOVED | The image was removed from the library (`REMOVE`, `REQ-11`) |
@@ -414,11 +432,15 @@ date with `git pull`, and can add images themselves and `git push`
 
 * A library is git-ready from creation. New libraries (and `REBUILD`, for
   older ones) get these files from `templates/`:
-  * `.gitignore` - excludes the `.tmp` folder and manifest log files
-    (`*.txt.err`, `*.txt.md`, `REQ-08`)
-  * `.gitattributes` - merges `images/fingerprints.txt`, `images/sources.txt`
-    and `RemappedTags.txt` with git's built-in `union` driver, so images and
-    remaps added by two people are combined rather than reported as a conflict
+  * `.gitignore` - excludes the `.tmp` folder, manifest log files
+    (`*.txt.err`, `*.txt.md`, `REQ-08`) and images replaced by `KEEPLARGER`
+    (`replacedWithHigherRes/`)
+  * `.gitattributes` - merges `images/fingerprints.txt`, `images/sources.txt`,
+    `RemappedTags.txt` and `ReplacedImages.tsv` with git's built-in `union`
+    driver, so images and remaps added by two people are combined rather than
+    reported as a conflict
+* Libraries older than `KEEPLARGER` get its `.gitignore` and `.gitattributes`
+  lines added at their first replacement
 * Git does not keep empty folders, so `tags/.gitkeep` and the fingerprint
   index header keep `tags` and `images` in a fresh clone, which is then still
   recognized as a library

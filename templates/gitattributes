@@ -7,3 +7,4 @@
 images/fingerprints.txt merge=union
 images/sources.txt merge=union
 RemappedTags.txt merge=union
+ReplacedImages.tsv merge=union

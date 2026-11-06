@@ -370,6 +370,45 @@ Download URLs again even when they are already recorded as a source
 * Local files are always checked by fingerprint: they are recorded by name
   only, so two different files with the same name would be confused
 
+## KEEPLARGER
+
+* Default: off
+* Flag parameter
+
+When a duplicate has higher resolution than the stored image it matches, replace
+the stored image with it
+
+* Off: a duplicate is discarded, and the stored image kept (`DUPE`)
+* On: a duplicate with a larger pixel area (width x height) replaces the stored
+  image, reported as `UPGRADED`. See `REQ-05` for the details
+* Only pixels count. A larger file with the same or fewer pixels stays a `DUPE`
+* The duplicate is measured as it would be stored, after any `SHRINK`
+* Still images only replace still images, and animations (including videos) only
+  replace animations. Fingerprints come from one frame, so a still can match an
+  animation; such a match stays a `DUPE`
+* A URL already recorded as a source is still not downloaded, so nothing is
+  compared, unless `REFETCH` is also set
+* The replacement has a new hash, as a hash identifies one file. Tags (including
+  the date tag) and sources move to it, and the old hash no longer works as a URI
+* A different image can match by fingerprint, eg a meme from the same template,
+  and would then replace the stored image. A high `THRESHOLD` makes this less
+  likely. There is no undo command, but what's needed to undo one is kept:
+  * `replacedWithHigherRes/<oldHash>.<suffix>` is the replaced file. This folder
+    is not shared through git, and can be deleted at any time
+  * `ReplacedImages.tsv` in the library records each replacement, as tab-separated
+    columns below a header line. An image with several sources has one line for
+    each. Sources are written as in `images/sources.txt`, so a local file is
+    `file:<name>`
+
+| Column | Content |
+| ------ | ------- |
+| `date` | The day of the replacement, as `YYYY-MM-DD` |
+| `oldHash`, `newHash` | Full hashes of the replaced image and its replacement |
+| `oldWxH`, `newWxH` | Their sizes in pixels, eg `640x480` |
+| `bitsDiffering` | How many of the 256 fingerprint bits differ. A high number is worth a look |
+| `lowResURL` | A source of the replaced image, or `-` if it has none |
+| `highResURL` | The source of the replacement |
+
 ## THRESHOLD
 
 * Default: `90%`

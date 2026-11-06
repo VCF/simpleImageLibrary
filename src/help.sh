@@ -52,6 +52,7 @@ Shrinking:
 Downloads and duplicates:
   THRESHOLD=PCT        Similarity at which images are duplicates (default 90%)
   REFETCH              Download URLs even if already recorded as a source
+  KEEPLARGER           Replace a stored image if a duplicate has more pixels
   TOR                  Download through torsocks (alias USETOR)
 
 Maintenance:
