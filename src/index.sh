@@ -181,13 +181,22 @@ function indexMatch {
 #######################################
 function storeImage {
     local _src="$1" _resultVar="$2" _fp="${3:-}"
-    local _format _hash _dest
+    local _format _hash _dest _tmp
     _format="$(imageFormat "$_src")" || return 1
     _hash="$(fileHash "$_src")" || return 1
     [[ -n "$_fp" ]] || _fp="$(imageFingerprint "$_src")" || return 1
     _dest="$(storedImagePath "$_hash" "${_silImageSuffix[$_format]}")"
     if [[ ! -f "$_dest" ]]; then
-        mkdir -p -- "$(dirname -- "$_dest")" && cp -- "$_src" "$_dest" || return 1
+        ## Copied in full, then moved into place, so an interrupted run can't
+        ## leave part of an image under the name that marks it as stored.
+        ## Not silMktemp: cp to a new name gives the image $_src's permissions,
+        ## as before, rather than those of a file silMktemp has already made
+        _tmp="$(silTempDir)/sil.store.$_hash" || return 1
+        if ! { mkdir -p -- "$(dirname -- "$_dest")" \
+            && cp -- "$_src" "$_tmp" && mv -- "$_tmp" "$_dest"; }; then
+            rm -f -- "$_tmp"
+            return 1
+        fi
     fi
     indexAdd "$_hash" "$_fp" || return 1
     printf -v "$_resultVar" '%s' "$_hash"

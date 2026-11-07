@@ -33,6 +33,9 @@ of standard open source tools, and aims to stay simple.
   cleanly
 * **Clear reporting**: each image gets a status or a specific reason for failure,
   and the exit status tells scripts if anything failed
+* **One run at a time**: a library is locked while SIL uses it, so a second run
+  stops with an error naming the first. The lock frees itself if SIL is killed
+  or the power fails. It works across machines on NFS mounts that support locks
 
 # Parameters
 

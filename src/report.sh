@@ -32,6 +32,9 @@ declare -g _silSep=$'\x1f'
 ## State for the manifest being logged
 declare -g _silErrLog="" _silMdLog="" _silLogName=""
 
+## Whether this manifest's error log has replaced any from an earlier run
+declare -g _silErrBegun=0
+
 ## Why the run halted part way, if it did (logHalted)
 declare -g _silLogHaltNote=""
 declare -gA _silErrWritten=()
@@ -80,12 +83,12 @@ EOF
 }
 
 #######################################
-# Start the logs for a manifest, overwriting any from an earlier run.
-# The error log is written as failures happen, so it survives an
-# interrupted run; logFinish then rewrites it grouped by reason.
+# Prepare the logs for a manifest, checking they can be written. Any from
+# an earlier run are kept until logErrBegin, as this run may yet be refused
+# by a library's lock, and those logs may belong to the run holding it.
 # Globals:
-#   Sets _silErrLog, _silMdLog, _silLogName, _silErrWritten, _silLogRows,
-#   _silErrRows, _silErrSettings, _silLogHaltNote
+#   Sets _silErrLog, _silMdLog, _silLogName, _silErrBegun, _silErrWritten,
+#   _silLogRows, _silErrRows, _silErrSettings, _silLogHaltNote
 # Arguments:
 #   $1 - Manifest path
 # Returns:
@@ -95,18 +98,32 @@ function logStart {
     _silLogName="$(basename -- "$1")"
     _silErrLog="$1.err"
     _silMdLog="$1.md"
+    _silErrBegun=0
     _silErrWritten=()
     _silLogRows=()
     _silErrRows=()
     _silErrSettings=()
     _silLogHaltNote=""
     ## Braces, so that the error from the redirection itself is hidden too
-    if ! { logErrHeader > "$_silErrLog"; } 2> /dev/null; then
+    if ! { : >> "$_silErrLog"; } 2> /dev/null; then
         msgWarn "[!] Can't write logs beside the manifest: $_silErrLog"
         _silErrLog=""
         _silMdLog=""
         return 1
     fi
+}
+
+#######################################
+# Replace any earlier error log with this run's header, once per manifest.
+# The log is then written as failures happen, so it survives an interrupted
+# run; logFinish rewrites it grouped by reason.
+# Globals:
+#   _silErrLog; updates _silErrBegun
+#######################################
+function logErrBegin {
+    [[ -n "$_silErrLog" ]] && (( ! _silErrBegun )) || return 0
+    _silErrBegun=1
+    logErrHeader > "$_silErrLog"
 }
 
 #######################################
@@ -143,6 +160,7 @@ function logSettings {
 function logOutcome {
     [[ -n "$_silErrLog" ]] || return 0
     local uri="$1" settings comment
+    logErrBegin
     _silLogRows+=("$_silLastOutcome$_silSep${_silLastHash:0:12}$_silSep$uri")
     isSuccessTag "$_silLastOutcome" && return 0
 
@@ -322,6 +340,7 @@ function logHalted {
 function logFinish {
     [[ -n "$_silMdLog" ]] || return 0
     local row tag hash uri comment nFailed=0
+    logErrBegin
     for row in "${_silLogRows[@]}"; do
         isSuccessTag "${row%%"$_silSep"*}" || nFailed=$(( nFailed + 1 ))
     done

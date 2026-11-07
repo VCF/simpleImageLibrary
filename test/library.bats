@@ -151,3 +151,127 @@ gitq() {
   assert_failure
   assert_output --partial "not a folder"
 }
+
+# --- locking (REQ-12) ---------------------------------------------------
+
+## Hold a library's lock from this shell's own open file, as another process
+## would. The next sil, having its own open file, is refused
+holdLock() {
+  mkdir -p "$1/.tmp"
+  exec {heldFd}>> "$1/.tmp/$_silLockFile"
+  flock -n "$heldFd"
+}
+
+## Write what a lock holder records about itself
+writeOwner() {
+  printf '%s\n%s\n%s\n%s\n' "$2" "$3" "2026-01-02 03:04:05" "sil big.txt" \
+    > "$1/.tmp/$_silLockOwnerFile"
+}
+
+@test "useLibrary locks the library and notes who holds it" {
+  mkdir -p lib/images lib/tags
+  _silCommandLine="sil some.txt"
+  useLibrary lib
+  run flock -n lib/.tmp/library.lock true
+  assert_failure
+  run cat lib/.tmp/library.owner
+  assert_line --index 0 "$$"
+  assert_line --index 1 "$(uname -n)"
+  assert_line --index 3 "sil some.txt"
+}
+
+@test "a library locked elsewhere is refused, naming the holder" {
+  mkdir -p lib/images lib/tags
+  holdLock lib
+  writeOwner lib "$$" "$(uname -n)"
+  run useLibrary lib
+  assert_failure
+  assert_output --partial "Library is in use by another sil: $TEST_SANDBOX/lib"
+  assert_output --partial "Held by PID $$ on $(uname -n) since 2026-01-02 03:04:05: sil big.txt"
+  assert_output --partial "Let it finish or stop it"
+  refute_output --partial "rm '"
+}
+
+@test "a holder recorded as ended on this machine is explained" {
+  mkdir -p lib/images lib/tags
+  holdLock lib
+  ## Over the kernel's largest possible PID, so never running
+  writeOwner lib 99999999 "$(uname -n)"
+  run useLibrary lib
+  assert_failure
+  assert_output --partial "That process has ended"
+  assert_output --partial "rm '$TEST_SANDBOX/lib/.tmp/library.lock'"
+}
+
+@test "a holder on another machine can't be checked, and says so" {
+  mkdir -p lib/images lib/tags
+  holdLock lib
+  writeOwner lib 123 another-machine
+  run useLibrary lib
+  assert_failure
+  assert_output --partial "on another-machine since"
+  assert_output --partial "cannot tell from here"
+  assert_output --partial "rm '$TEST_SANDBOX/lib/.tmp/library.lock'"
+}
+
+@test "a refusal still makes sense with no record of the holder" {
+  mkdir -p lib/images lib/tags
+  holdLock lib
+  run useLibrary lib
+  assert_failure
+  assert_output --partial "Wait for the other sil to finish"
+}
+
+@test "a leftover lock file from a dead process does not block" {
+  mkdir -p lib/images lib/tags lib/.tmp
+  touch lib/.tmp/library.lock
+  writeOwner lib 99999999 "$(uname -n)"
+  useLibrary lib
+  assert_equal "$SIL_LIBRARY" "$TEST_SANDBOX/lib"
+}
+
+@test "locking the same library again is not a conflict" {
+  mkdir -p lib/images lib/tags
+  useLibrary lib
+  useLibrary "$TEST_SANDBOX/lib"
+  assert_equal "${#_silLibraryLocks[@]}" 1
+}
+
+@test "moving to another library keeps the first one locked" {
+  mkdir -p lib/images lib/tags other/images other/tags
+  useLibrary lib
+  useLibrary other
+  run flock -n lib/.tmp/library.lock true
+  assert_failure
+  run flock -n other/.tmp/library.lock true
+  assert_failure
+}
+
+@test "a library that can't hold a lock file is refused" {
+  mkdir -p lib/images lib/tags
+  ## Blocks the lock file whatever the user's permissions, even as root
+  mkdir -p lib/.tmp/library.lock
+  run useLibrary lib
+  assert_failure
+  assert_output --partial "Could not open the library's lock file"
+}
+
+@test "locking clears a killed run's temp files, and nothing else" {
+  mkdir -p lib/images lib/tags lib/.tmp/sil.frames
+  touch lib/.tmp/sil.abc lib/.tmp/sil.frames/1.png lib/.tmp/keep.me
+  run useLibrary lib
+  assert_success
+  assert_output --partial "Removed 2 temporary file(s)"
+  assert_file_not_exists lib/.tmp/sil.abc
+  assert_dir_not_exists lib/.tmp/sil.frames
+  assert_file_exists lib/.tmp/keep.me
+}
+
+@test "a refused run leaves the holder's temp files alone" {
+  mkdir -p lib/images lib/tags lib/.tmp
+  touch lib/.tmp/sil.inuse
+  holdLock lib
+  run useLibrary lib
+  assert_failure
+  assert_file_exists lib/.tmp/sil.inuse
+}

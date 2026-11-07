@@ -30,6 +30,85 @@ teardown() {
   assert_dir_exists newlib/images
 }
 
+## Run a real process holding a library's lock, leaving its PID in holderPid.
+## fd 3 is closed so that bats doesn't wait for it
+startHolder() {
+  bash -c '
+    myDir="$PROJECT_ROOT"
+    source "$PROJECT_ROOT/src/utils.sh"
+    srcLib params
+    srcLib library
+    useLibrary "$1" 2> /dev/null
+    : > ready
+    while :; do sleep 0.1; done
+  ' holder "$1" 3>&- &
+  holderPid=$!
+  timeout 10 bash -c 'until [[ -e ready ]]; do sleep 0.1; done'
+}
+
+@test "a second sil is refused while one runs, and works once it is killed" {
+  mkdir -p lib/images lib/tags
+  startHolder lib
+  run "$PROJECT_ROOT/sil" LIBRARY=lib CHECK
+  kill -9 "$holderPid" 2> /dev/null || :
+  assert_failure
+  assert_output --partial "Library is in use by another sil"
+  assert_output --partial "Held by PID $holderPid"
+  refute_output --partial "Checking library"
+
+  ## The holder's last 'sleep' has the lock open until it ends
+  sleep 0.5
+  run "$PROJECT_ROOT/sil" LIBRARY=lib
+  assert_success
+  assert_output --partial "nothing more to do"
+}
+
+@test "sil notes its command line for any run it refuses" {
+  mkdir -p lib/images lib/tags
+  run "$PROJECT_ROOT/sil" LIBRARY=lib
+  assert_success
+  run cat lib/.tmp/library.owner
+  assert_line --index 3 "sil LIBRARY=lib"
+}
+
+@test "help needs no lock" {
+  mkdir -p lib/images lib/tags
+  startHolder lib
+  run "$PROJECT_ROOT/sil" LIBRARY=lib --help
+  kill -9 "$holderPid" 2> /dev/null || :
+  assert_success
+}
+
+@test "running the same manifest twice leaves the first run's logs alone" {
+  mkdir -p lib/images lib/tags work
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" work/
+  printf 'LIBRARY=%s\nplasma.png\n' "$TEST_SANDBOX/lib" > work/m.txt
+  printf 'from the first run\n' | tee work/m.txt.err > work/m.txt.md
+  startHolder lib
+  run "$PROJECT_ROOT/sil" work/m.txt
+  kill -9 "$holderPid" 2> /dev/null || :
+  assert_failure
+  assert_output --partial "Library is in use by another sil"
+  run cat work/m.txt.err
+  assert_output "from the first run"
+  run cat work/m.txt.md
+  assert_output "from the first run"
+}
+
+@test "a manifest inside a locked library leaves its logs alone" {
+  mkdir -p lib/images lib/tags
+  cp "$PROJECT_ROOT/test/data/images/plasma.png" lib/
+  printf 'plasma.png\n' > lib/m.txt
+  printf 'from the first run\n' | tee lib/m.txt.err > lib/m.txt.md
+  startHolder lib
+  run "$PROJECT_ROOT/sil" lib/m.txt
+  kill -9 "$holderPid" 2> /dev/null || :
+  assert_failure
+  assert_output --partial "Library is in use by another sil"
+  run cat lib/m.txt.err
+  assert_output "from the first run"
+}
+
 @test "sil halts with instructions when no library is known" {
   run "$PROJECT_ROOT/sil" https://example.com/a.jpg
   assert_failure

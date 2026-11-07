@@ -89,7 +89,8 @@ SIL will locate images through the following URIs:
 * All temporary files SIL makes, for any operation, are kept in the library's
   own `.tmp` folder, never the system temp folder. This keeps them on the same
   disk as the library, so moving finished files into place is instant, and
-  leftovers are easy to find. `.tmp` is excluded from git (`REQ-10`)
+  leftovers are easy to find. `.tmp` is excluded from git (`REQ-10`). Leftovers
+  from a run that was killed are removed by the next run (`REQ-12`)
 * Image hashes simply identify an already-ingested file for further operations
 
 # REQ-05 Image hashing, fingerprints and storage
@@ -491,6 +492,37 @@ replaced by another (`REMAP`). See [parameters.md](./parameters.md) for each
 * `REMAP` moves files out of a source tag without asking, as removing that tag
   is its purpose. Remaps are kept in `RemappedTags.txt` in the library, which can
   be edited directly. Every run reads it and acts on any changes
+
+# REQ-12 One run at a time
+
+Library files are updated by reading them, changing a copy and replacing the
+original, so two runs at once would silently undo each other's changes
+
+* A run locks each library it uses, from when it chooses the library until it
+  exits. This covers every action, including `CHECK`, whose results would
+  otherwise include false alarms. `--help` needs no library, so no lock
+* A run that finds its library locked halts at once rather than waiting, with
+  an error naming the process holding the lock: its PID, machine, start time and
+  command line
+  * A refused manifest leaves any existing logs beside it untouched (`REQ-08`),
+    as they may belong to the run holding the lock
+  * If a manifest moves to a locked library, the run halts there, with any
+    earlier manifests on its command line already finished
+* The lock is held by the operating system (`flock`), and ends with the process
+  however it stops, including `kill -9` or a power failure. A leftover lock file
+  means nothing, so there are no stale locks to detect
+  * A killed run's child programs (eg `ffmpeg`) hold the lock until they exit
+  * On NFS, the lock also keeps out other machines if the mount supports locks.
+    If a machine holding one never returns, the server may keep it. The error
+    then shows how to delete the lock file, which is safe only once nothing is
+    using the library
+* The lock file, `.tmp/library.lock`, and the note of who holds it,
+  `.tmp/library.owner`, are excluded from git with the rest of `.tmp` (`REQ-10`).
+  Each clone of a library has its own lock
+* The first run to lock a library removes temporary files (`sil.*`) in its `.tmp`
+  folder, as holding the lock proves no other run is using them
+* Stored images are copied to `.tmp` in full, then moved into place, so an
+  interrupted run can't leave part of an image under its final name
 
 # TAG-01 Tagging
 

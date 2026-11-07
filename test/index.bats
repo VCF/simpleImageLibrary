@@ -46,6 +46,33 @@ teardown() {
   assert_output 1
 }
 
+@test "a copy that fails part way leaves nothing under the stored name" {
+  # shellcheck disable=SC2317,SC2329  # Called by storeImage
+  cp() { head -c 10 "$2" > "$3"; return 1; }
+  run storeImage "$DATA/plasma.png" hash
+  assert_failure
+  run find lib/images lib/.tmp -type f ! -name fingerprints.txt ! -name sources.txt
+  assert_output ""
+}
+
+@test "an image is only in place once complete, with normal permissions" {
+  ## The stored name must not exist until the copy has finished
+  local real
+  real="$(command -v cp)"
+  # shellcheck disable=SC2329  # Called by storeImage
+  cp() {
+    "$real" "$@"
+    run find lib/images -name '*.png'
+    assert_output ""
+  }
+  umask 022
+  command cp "$DATA/plasma.png" plain.png
+  chmod 644 plain.png
+  storeImage plain.png hash
+  run stat -c %a "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+  assert_output 644
+}
+
 @test "storeImage refuses non-images" {
   run storeImage "$DATA/not-an-image.jpg" hash
   assert_failure

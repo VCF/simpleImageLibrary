@@ -26,7 +26,8 @@ declare -gA _silManifestBlocked=(
 # self-contained. Outcomes are logged beside the
 # manifest in <manifest>.err (failures, as a manifest) and <manifest>.md
 # (report), overwriting earlier logs (REQ-08); if SIL halts part way, eg
-# when the user declines a LINK, they are finished first (logHalted).
+# when the user declines a LINK, they are finished first (logHalted). A
+# library locked by another run halts with the logs untouched (REQ-12).
 # A manifest can't name another manifest: only the command line runs
 # them, so a .txt line here is a URI like any other (NOTIMAGE).
 # Globals:
@@ -55,6 +56,7 @@ function parseManifest {
 
     if ! cliHasParam LIBRARY && home="$(findLibrary "$base")" \
         && [[ "$home" != "${SIL_LIBRARY:-}" ]]; then
+        useLibrary "$home"
         reloadParamsForLibrary "$home"
         msgInfo "  Library: $home (contains this manifest)"
         syncRemaps || rv=1
@@ -98,6 +100,7 @@ function parseManifest {
                     rv=1
                     continue
                 fi
+                logErrBegin
                 setParamToken "$line" "$path line $lineNum"
                 msgInfo "  $canon (line $lineNum)"
                 if [[ "$canon" == LINK ]]; then
@@ -141,6 +144,7 @@ function parseManifest {
                 break
             fi
             urisSeen=1
+            logErrBegin
             processURI "$line" "$base" "$lineNum" || rv=1
             logOutcome "$line"
         fi

@@ -22,6 +22,10 @@ if (( wantHelp )); then
     exit 0
 fi
 
+## Shown to any other sil refused by this run's lock on a library (REQ-12)
+_silCommandLine="sil $*"
+_silCommandLine="${_silCommandLine//$'\n'/ }"
+
 srcLib "params"
 srcLib "library"
 srcLib "manifest"

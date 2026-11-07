@@ -89,6 +89,21 @@ Every new parameter needs all of the following, in the same change:
 5. `src/help.sh` and the parameter table in `README.md`: a line and a row, with
    any aliases. `test/help.bats` fails if either is missing
 
+## Writing to a library
+
+* Files appearing under a final name must be complete: write in `.tmp`, then
+  `mv` into place (see `indexAdd`, `storeImage`). `.tmp` is on the same disk,
+  so the move is atomic
+* Name temporary files `sil.*`, so `clearLeftoverTemp` removes them after a crash
+* `silMktemp` files are private (mode 600), and `mv` keeps that, as `cp` to a new
+  name does. Library files made this way, including images fetched through a
+  temp file, end up private too
+* Use `useLibrary` to change library. It takes the lock (REQ-12); setting
+  `SIL_LIBRARY` directly is only for tests
+* Don't reopen `.tmp/library.lock` while holding it. Closing any descriptor on a
+  locked file can release NFS locks; the holder's details have their own file
+* A halting `msgError` on lock refusal must not write logs. See `lockLibrary`
+
 ## Comments and licensing
 
 * Use `#` comments only, including for multi-line blocks (no heredoc or
