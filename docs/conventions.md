@@ -92,12 +92,12 @@ Every new parameter needs all of the following, in the same change:
 ## Writing to a library
 
 * Files appearing under a final name must be complete: write in `.tmp`, then
-  `mv` into place (see `indexAdd`, `storeImage`). `.tmp` is on the same disk,
+  move into place with `placeLibraryFile` (see `indexAdd`, `storeImage`). `.tmp` is on the same disk,
   so the move is atomic
 * Name temporary files `sil.*`, so `clearLeftoverTemp` removes them after a crash
-* `silMktemp` files are private (mode 600), and `mv` keeps that, as `cp` to a new
-  name does. Library files made this way, including images fetched through a
-  temp file, end up private too
+* Use `placeLibraryFile` to move a temp file into place. `silMktemp` files are
+  always mode 600, and a plain `mv` would keep that whatever `SHARED` says
+  (REQ-13). Other new files and folders follow the umask from `applyFilePrivacy`
 * Use `useLibrary` to change library. It takes the lock (REQ-12); setting
   `SIL_LIBRARY` directly is only for tests
 * Don't reopen `.tmp/library.lock` while holding it. Closing any descriptor on a

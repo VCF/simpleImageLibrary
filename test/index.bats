@@ -55,7 +55,7 @@ teardown() {
   assert_output ""
 }
 
-@test "an image is only in place once complete, with normal permissions" {
+@test "an image is only in place once complete" {
   ## The stored name must not exist until the copy has finished
   local real
   real="$(command -v cp)"
@@ -65,12 +65,43 @@ teardown() {
     run find lib/images -name '*.png'
     assert_output ""
   }
-  umask 022
-  command cp "$DATA/plasma.png" plain.png
-  chmod 644 plain.png
-  storeImage plain.png hash
-  run stat -c %a "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
-  assert_output 644
+  storeImage "$DATA/plasma.png" hash
+  assert_file_exists "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+}
+
+@test "SHARED sets a stored image's permissions, whatever its source's" {
+  local mode
+  for mode in 600 644 777; do
+    rm -rf lib/images/??
+    command cp "$DATA/plasma.png" source.png
+    chmod "$mode" source.png
+    SIL_SHARED=0
+    storeImage source.png hash
+    run stat -c %a "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+    assert_output 600
+
+    rm -rf lib/images/??
+    SIL_SHARED=1
+    storeImage source.png hash
+    run stat -c %a "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+    assert_output 644
+    rm -f source.png
+  done
+}
+
+@test "SHARED sets the index and sources file permissions" {
+  SIL_SHARED=1
+  indexAdd "$(printf 'a%.0s' {1..40})" "$(imageFingerprint "$DATA/plasma.png")"
+  sourceAdd "$(printf 'a%.0s' {1..40})" https://example.com/a.png
+  run stat -c %a lib/images/fingerprints.txt lib/images/sources.txt
+  assert_output "644
+644"
+  SIL_SHARED=0
+  indexRemove "$(printf 'a%.0s' {1..40})"
+  sourcesRemove "$(printf 'a%.0s' {1..40})"
+  run stat -c %a lib/images/fingerprints.txt lib/images/sources.txt
+  assert_output "600
+600"
 }
 
 @test "storeImage refuses non-images" {

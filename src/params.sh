@@ -27,6 +27,7 @@ declare -gA _silParamType=(
     [FLATTEN]=flag
     [REFETCH]=flag
     [KEEPLARGER]=flag
+    [SHARED]=flag
     [THRESHOLD]=percent
     [CHECK]=flag
     [REBUILD]=flag
@@ -51,6 +52,7 @@ declare -gA _silParamDefault=(
     [REMOVE]=0
     [REFETCH]=0
     [KEEPLARGER]=0
+    [SHARED]=0
     [THRESHOLD]=90
     [TOR]=0
 )
@@ -472,6 +474,22 @@ function loadParams {
     ## Problems in conf files are reported as warnings, not fatal
     parseParamFile "$HOME/.sil.conf" global || :
     applyCliParams
+    applyFilePrivacy
+}
+
+#######################################
+# Set the permissions of files and folders SIL creates from here on, from
+# SHARED: readable by the owner only (600/700), or by everyone (644/755).
+# Temp files made by mktemp ignore this; see placeLibraryFile.
+# Globals:
+#   SIL_SHARED
+#######################################
+function applyFilePrivacy {
+    if flagIsSet SHARED; then
+        umask 022
+    else
+        umask 077
+    fi
 }
 
 #######################################
@@ -486,6 +504,7 @@ function loadLibraryParams {
     parseParamFile "$lib/sil.conf" library || :
     applyCliParams
     SIL_LIBRARY="$lib"
+    applyFilePrivacy
 }
 
 ## Saved by saveParams: name -> value, or unset marker
@@ -524,6 +543,7 @@ function restoreParams {
             printf -v "SIL_$canon" '%s' "${saved#=}"
         fi
     done
+    applyFilePrivacy
 }
 
 #######################################

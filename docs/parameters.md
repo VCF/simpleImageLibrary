@@ -373,6 +373,23 @@ Download URLs again even when they are already recorded as a source
 * Local files are always checked by fingerprint: they are recorded by name
   only, so two different files with the same name would be confused
 
+## SHARED
+
+* Default: off
+* Flag parameter
+* Can't be set in a manifest, as it applies to the whole library
+
+Who can read the library's files and folders
+
+* Off: only the owner (files `600`, folders `700`)
+* On: everyone (files `644`, folders `755`). Only the owner can change them
+* Applies to files and folders SIL creates. To apply a change to everything
+  already in the library, including its `.git` folder, run `sil REBUILD`
+* Other users also need access to the folders above the library
+* Reading is all this grants: only a user who can write to the library can run
+  `sil` on it, as each run must lock it (`REQ-12`)
+* Git doesn't record these permissions, so each clone sets its own. See `REQ-13`
+
 ## KEEPLARGER
 
 * Default: off

@@ -9,6 +9,7 @@ srcLib "library"
 declare -gA _silManifestBlocked=(
     [CHECK]="it is an action on the whole library; run sil CHECK"
     [REBUILD]="it is an action on the whole library; run sil REBUILD"
+    [SHARED]="it applies to the whole library; set it in sil.conf"
 )
 
 #######################################

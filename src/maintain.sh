@@ -190,7 +190,7 @@ function indexRebuild {
 
     indexWriteSorted "$new" < "$entries"
     rm -f -- "$entries"
-    mv -- "$new" "$(indexFile)"
+    placeLibraryFile "$new" "$(indexFile)"
     msgInfo "Fingerprint index rebuilt: $count images"
     (( failed == 0 ))
 }
@@ -217,10 +217,34 @@ function retargetSources {
 }
 
 #######################################
+# Give everything in the library the permissions SHARED calls for, including
+# files made earlier or by git. Symbolic modes keep the owner's own access and
+# any execute bits, as on git hooks. chmod -R doesn't follow the tag links.
+# Globals:
+#   SIL_LIBRARY, SIL_SHARED
+# Outputs:
+#   Progress and problems to STDERR
+# Returns:
+#   0 on success, 1 if anything could not be changed
+#######################################
+function repairPermissions {
+    local mode="go-rwx" text="owner only"
+    if flagIsSet SHARED; then
+        mode="go+rX"
+        text="everyone"
+    fi
+    msgInfo "Making library readable by $text"
+    if ! chmod -R "$mode" -- "$SIL_LIBRARY"; then
+        msgWarn "[!] Could not set permissions on everything in the library"
+        return 1
+    fi
+}
+
+#######################################
 # REBUILD (REQ-09): restore missing library files, repair stored image
 # names and places while keeping their tags and sources, correct the
-# Untagged tag (TAG-03), relink the date tag's days, then regenerate the
-# fingerprint index.
+# Untagged tag (TAG-03), relink the date tag's days, regenerate the
+# fingerprint index, then apply SHARED to the permissions of everything.
 # Globals:
 #   SIL_LIBRARY
 # Outputs:
@@ -242,6 +266,7 @@ function libraryRebuild {
     repairUntagged || rv=1
     relinkDays
     indexRebuild || rv=1
+    repairPermissions || rv=1
     return "$rv"
 }
 

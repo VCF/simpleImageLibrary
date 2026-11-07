@@ -1,9 +1,28 @@
 ## Stored images and the fingerprint index - see REQ-05
 
+srcLib "params"
 srcLib "image"
 
 ## A stored image's file name: <hash>.<suffix>
 declare -g _silStoredNameRe='^([0-9a-f]{40})\.[a-z0-9]+$'
+
+#######################################
+# Move a finished temp file to its final place in the library, with the
+# permissions SHARED calls for. mktemp's private mode ignores the umask, and
+# a move would otherwise keep it.
+# Globals:
+#   SIL_SHARED
+# Arguments:
+#   $1 - Finished temp file
+#   $2 - Final path
+# Returns:
+#   0 on success, 1 otherwise
+#######################################
+function placeLibraryFile {
+    local mode=600
+    flagIsSet SHARED && mode=644
+    chmod "$mode" -- "$1" && mv -- "$1" "$2"
+}
 
 #######################################
 # Path of the library's fingerprint index.
@@ -109,7 +128,7 @@ function indexAdd {
     tmp="$(silMktemp)" || return 1
     { [[ -f "$index" ]] && cat -- "$index"; printf '%s %s\n' "$1" "$hex"; } \
         | indexWriteSorted "$tmp"
-    mv -- "$tmp" "$index"
+    placeLibraryFile "$tmp" "$index"
 }
 
 #######################################
@@ -126,7 +145,7 @@ function indexRemove {
     indexHas "$1" || return 0
     tmp="$(silMktemp)" || return 1
     grep -v "^$1 " -- "$index" | indexWriteSorted "$tmp"
-    mv -- "$tmp" "$index"
+    placeLibraryFile "$tmp" "$index"
 }
 
 #######################################
@@ -188,12 +207,10 @@ function storeImage {
     _dest="$(storedImagePath "$_hash" "${_silImageSuffix[$_format]}")"
     if [[ ! -f "$_dest" ]]; then
         ## Copied in full, then moved into place, so an interrupted run can't
-        ## leave part of an image under the name that marks it as stored.
-        ## Not silMktemp: cp to a new name gives the image $_src's permissions,
-        ## as before, rather than those of a file silMktemp has already made
-        _tmp="$(silTempDir)/sil.store.$_hash" || return 1
+        ## leave part of an image under the name that marks it as stored
+        _tmp="$(silMktemp)" || return 1
         if ! { mkdir -p -- "$(dirname -- "$_dest")" \
-            && cp -- "$_src" "$_tmp" && mv -- "$_tmp" "$_dest"; }; then
+            && cp -- "$_src" "$_tmp" && placeLibraryFile "$_tmp" "$_dest"; }; then
             rm -f -- "$_tmp"
             return 1
         fi
@@ -262,7 +279,7 @@ function sourceAdd {
     tmp="$(silMktemp)" || return 1
     { [[ -f "$file" ]] && cat -- "$file"; printf '%s %s\n' "$1" "$source"; } \
         | sourcesWriteSorted "$tmp"
-    mv -- "$tmp" "$file"
+    placeLibraryFile "$tmp" "$file"
 }
 
 #######################################
@@ -315,7 +332,7 @@ function sourcesRemove {
     grep -q "^$1 " -- "$file" 2> /dev/null || return 0
     tmp="$(silMktemp)" || return 1
     grep -v "^$1 " -- "$file" | sourcesWriteSorted "$tmp"
-    mv -- "$tmp" "$file"
+    placeLibraryFile "$tmp" "$file"
 }
 
 #######################################
@@ -334,5 +351,5 @@ function sourcesRehash {
          /^#/ { next }
          { h = $1; if (h in map) h = map[h]; print h substr($0, length($1) + 1) }' \
         "$1" "$file" | sourcesWriteSorted "$tmp"
-    mv -- "$tmp" "$file"
+    placeLibraryFile "$tmp" "$file"
 }

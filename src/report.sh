@@ -128,11 +128,11 @@ function logErrBegin {
 
 #######################################
 # The settings in effect that a retry needs: every set parameter except
-# one-time actions (eg LINK). LIBRARY comes first, as a manifest needs it
+# one-time actions (eg LINK) and those a manifest can't set. LIBRARY comes first, as a manifest needs it
 # before any other setting or URI; it is already an absolute path, so a
 # moved retry file still finds the library.
 # Globals:
-#   _silParamType, _silParamScope, SIL_<NAME>
+#   _silParamType, _silParamScope, _silManifestBlocked, SIL_<NAME>
 # Outputs:
 #   CANON=value lines to STDOUT, LIBRARY then the rest sorted by name
 #######################################
@@ -141,6 +141,7 @@ function logSettings {
     [[ -n "${SIL_LIBRARY:-}" ]] && printf 'LIBRARY=%s\n' "$SIL_LIBRARY"
     for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
         [[ "${_silParamScope[$canon]:-}" == action || "$canon" == LIBRARY ]] && continue
+        [[ -n "${_silManifestBlocked[$canon]:-}" ]] && continue
         value="$(paramFileValue "$canon")"
         [[ -n "$value" ]] && printf '%s=%s\n' "$canon" "$value"
     done

@@ -343,3 +343,44 @@ makeStoredFormat() {
   run libraryCheck
   assert_success
 }
+
+# --- SHARED (REQ-13) ----------------------------------------------------
+
+@test "REBUILD makes everything match SHARED, keeping execute bits and links" {
+  mkdir -p lib/.git/hooks
+  printf '#!/bin/sh\n' > lib/.git/hooks/pre-commit
+  chmod 755 lib/.git/hooks/pre-commit
+  touch outside
+  chmod 640 outside
+  ln -s "$TEST_SANDBOX/outside" lib/tags/link
+  chmod 644 lib/sil.conf
+
+  SIL_SHARED=0
+  libraryRebuild 2> /dev/null
+  run stat -c %a lib lib/images lib/sil.conf lib/images/fingerprints.txt "$(findStoredImage "$plasma")" lib/.git/hooks/pre-commit outside
+  assert_output "700
+700
+600
+600
+600
+700
+640"
+
+  SIL_SHARED=1
+  libraryRebuild 2> /dev/null
+  run stat -c %a lib lib/images lib/sil.conf lib/images/fingerprints.txt "$(findStoredImage "$plasma")" lib/.git/hooks/pre-commit outside
+  assert_output "755
+755
+644
+644
+644
+755
+640"
+}
+
+@test "REBUILD reports permissions it can't change" {
+  chmod() { return 1; }
+  run repairPermissions
+  assert_failure
+  assert_output --partial "Could not set permissions"
+}

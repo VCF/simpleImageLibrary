@@ -109,6 +109,50 @@ startHolder() {
   assert_output "from the first run"
 }
 
+## Modes of everything real in a library, one distinct "<type> <mode>" per line.
+## Only what SHARED governs: .tmp's temp files are SIL's own business
+libModes() {
+  find "$1" -path "$1/.tmp" -prune -o \( -type f -o -type d \) -printf '%y %m\n' | sort -u
+}
+
+@test "a library is readable only by its owner by default" {
+  run "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Dog "$PROJECT_ROOT/test/data/images/plasma.png"
+  assert_success
+  run libModes lib
+  assert_output "d 700
+f 600"
+}
+
+@test "SHARED makes a new library readable by everyone" {
+  run "$PROJECT_ROOT/sil" LIBRARY=lib SHARED TAG=Dog "$PROJECT_ROOT/test/data/images/plasma.png"
+  assert_success
+  run libModes lib
+  assert_output "d 755
+f 644"
+}
+
+@test "SHARED in a library's sil.conf applies to images added later" {
+  run "$PROJECT_ROOT/sil" LIBRARY=lib
+  chmod -R go+rX lib
+  echo "SHARED=on" >> lib/sil.conf
+  run "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Dog "$PROJECT_ROOT/test/data/images/plasma.png"
+  assert_success
+  run libModes lib
+  assert_output "d 755
+f 644"
+}
+
+@test "a manifest can't set SHARED, or write it to a retry file" {
+  mkdir -p lib/images lib/tags
+  printf 'SHARED=on\nno-such-file.png\n' > lib/m.txt
+  run "$PROJECT_ROOT/sil" lib/m.txt
+  assert_failure
+  assert_output --partial "SHARED can't be set in a manifest"
+  assert_file_exists lib/m.txt.err
+  run grep -c SHARED lib/m.txt.err
+  assert_output 0
+}
+
 @test "sil halts with instructions when no library is known" {
   run "$PROJECT_ROOT/sil" https://example.com/a.jpg
   assert_failure

@@ -56,6 +56,10 @@ Downloads and duplicates:
   KEEPLARGER           Replace a stored image if a duplicate has more pixels
   TOR                  Download through torsocks (alias USETOR)
 
+Permissions:
+  SHARED               Let everyone read the library (default: owner only). Use
+                       REBUILD to apply a change to existing files
+
 Maintenance:
   CHECK                Report problems in the library, changing nothing
   REBUILD              Repair the library from its stored images

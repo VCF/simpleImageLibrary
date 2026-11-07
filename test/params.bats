@@ -204,6 +204,52 @@ teardown() {
   assert_output --partial "HIGH, MEDIUM, LOW"
 }
 
+@test "SHARED defaults to off; only false-like values keep it off" {
+  run flagIsSet SHARED
+  assert_failure
+  local value
+  for value in 0 no false off; do
+    setParamToken "SHARED=$value"
+    run flagIsSet SHARED
+    assert_failure
+  done
+  for value in on 1 yes; do
+    setParamToken "SHARED=$value"
+    flagIsSet SHARED
+  done
+  setParamToken SHARED
+  flagIsSet SHARED
+}
+
+@test "the umask follows SHARED through each stage of loading settings" {
+  loadParams
+  assert_equal "$(umask)" 0077
+  loadParams SHARED
+  assert_equal "$(umask)" 0022
+
+  mkdir lib
+  echo "SHARED=on" > lib/sil.conf
+  loadParams
+  assert_equal "$(umask)" 0077
+  SIL_LIBRARY="$TEST_SANDBOX/lib"
+  saveParams
+  loadLibraryParams
+  assert_equal "$(umask)" 0022
+  restoreParams
+  assert_equal "$(umask)" 0077
+  reloadParamsForLibrary "$TEST_SANDBOX/lib"
+  assert_equal "$(umask)" 0022
+}
+
+@test "the command line overrides SHARED from a library's sil.conf" {
+  mkdir lib
+  echo "SHARED=on" > lib/sil.conf
+  loadParams SHARED=off
+  SIL_LIBRARY="$TEST_SANDBOX/lib"
+  loadLibraryParams
+  assert_equal "$(umask)" 0077
+}
+
 @test "KEEPLARGER defaults to off, and is a flag" {
   run flagIsSet KEEPLARGER
   assert_failure

@@ -524,6 +524,21 @@ original, so two runs at once would silently undo each other's changes
 * Stored images are copied to `.tmp` in full, then moved into place, so an
   interrupted run can't leave part of an image under its final name
 
+# REQ-13 File permissions
+
+* The `SHARED` parameter decides who can read what SIL creates in a library:
+  * Off, the default: the owner only (files `600`, folders `700`)
+  * On: everyone (files `644`, folders `755`)
+* The setting comes from `~/.sil.conf`, the library's `sil.conf` or the command
+  line. Manifests can't set it (ignored with a warning), or leave it in their
+  failure logs (`REQ-08`), as it applies to a whole library
+* Stored images and library records get these permissions whatever those of
+  the file they came from
+* Manifest logs follow the setting too, wherever the manifest is
+* `REBUILD` applies the setting to everything already in the library, including
+  `.git`, keeping execute permission where it exists (eg git hooks). `CHECK` does
+  not report differences, as a library works whichever is set
+
 # TAG-01 Tagging
 
 Tags are the core of SIL. Core image storage is not conducive for browsing, as
