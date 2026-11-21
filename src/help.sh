@@ -41,6 +41,7 @@ Tags and images:
   REMOVE               Remove images from the library
   LINK='SRC -> DEST'   Make tag SRC an alias of tag DEST
   REMAP='SRC -> DEST'  Quietly replace tag SRC with tag DEST, now and later
+                       (alias MAPTAG, TAGMAP, MAP)
 
 Shrinking:
   SHRINK=SIZE          Target size for still images, eg 500kb (default 0, off)

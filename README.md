@@ -141,7 +141,7 @@ types are:
 | `UNTAG`, `UNTAGS` | Tags | None | C M | Tags to remove from images already in the library. `*` removes all but the date tag |
 | `REMOVE` | Flag | Off | C M | Remove images from the library, with their tags and records |
 | `LINK` | `SOURCE -> TARGET` | None | C M | Make tag `SOURCE` a symlink to tag `TARGET`, as an alias. Asks before moving any images already in `SOURCE` |
-| `REMAP` | `SOURCE -> TARGET` | None | C M | Quietly replace tag `SOURCE` with `TARGET`, for existing images and from now on. Kept in `RemappedTags.txt` in the library, which can be edited by hand |
+| `REMAP`, `MAPTAG`, `TAGMAP`, `MAP` | `SOURCE -> TARGET` | None | C M | Quietly replace tag `SOURCE` with `TARGET`, for existing images and from now on. Kept in `RemappedTags.txt` in the library, which can be edited by hand |
 | `SHRINK` | Size | `0` (off) | G L C M | Target size for still images, which are re-encoded as JPEG |
 | `SHRINKTRIGGER` | Number | `2` | G L C M | Only shrink still images at least this many times `SHRINK` |
 | `SHRINKMINSAVE` | Percent | `25%` | G L C M | Keep the original unless shrinking saves at least this much. Also applies to `SHRINKVID` |

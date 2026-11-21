@@ -215,6 +215,8 @@ effectively allow "alias tags" that will share a common folder of image symlinks
 
 ### REMAP
 
+* ALIAS: `MAPTAG`, `TAGMAP`, `MAP`
+
 Quietly changes one tag into another. Where `LINK` keeps the source tag as an
 alias, `REMAP` makes it disappear. Use it for common misspellings, or to enforce
 a controlled vocabulary

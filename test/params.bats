@@ -43,6 +43,12 @@ teardown() {
   assert_output "TAG"
   run paramCanonical usetor
   assert_output "TOR"
+  run paramCanonical maptag
+  assert_output "REMAP"
+  run paramCanonical TagMap
+  assert_output "REMAP"
+  run paramCanonical map
+  assert_output "REMAP"
 }
 
 @test "paramCanonical fails on unknown or empty names" {

@@ -40,6 +40,9 @@ declare -gA _silParamAlias=(
     [TAGS]=TAG
     [UNTAGS]=UNTAG
     [USETOR]=TOR
+    [MAPTAG]=REMAP
+    [TAGMAP]=REMAP
+    [MAP]=REMAP
 )
 
 ## Values applied by resetParams before any source is read
