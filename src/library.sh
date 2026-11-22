@@ -247,7 +247,8 @@ function noLibraryError {
 
 #######################################
 # Use a library, creating it if it doesn't exist or is an empty folder,
-# lock it for this run, and set SIL_LIBRARY to its absolute path. A leading
+# lock it for this run, and set SIL_LIBRARY to its absolute path. A library
+# with a web page has its stamp updated (webStamp). A leading
 # '~' is expanded, as conf files and manifests are not shell-expanded.
 # Globals:
 #   HOME; sets SIL_LIBRARY
@@ -278,6 +279,11 @@ function useLibrary {
     fi
     lockLibrary "$lib"
     printf -v SIL_LIBRARY '%s' "$lib"
+    ## Tell an open web page its data may be out of date (BUILDWEB)
+    if [[ -d "$lib/web" ]]; then
+        srcLib "web"
+        runOnlyReads || webStamp || msgWarn "[!] Could not update $lib/web/silStamp.js"
+    fi
 }
 
 #######################################

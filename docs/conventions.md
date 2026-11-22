@@ -13,6 +13,7 @@ live in [requirements.md](./requirements.md); parameter specs in
 | `test/<name>.bats`   | Tests for `src/<name>.sh`. `report.sh` is tested in `manifest.bats`, as it only serves manifests; `fetch.bats` covers what `ingest.bats` can't test with real downloads |
 | `test/test_helper.bash` | Shared test setup (`load test_helper`)           |
 | `templates/`         | Files copied when creating a new library            |
+| `templates/web/`     | The WebSIL page, copied into a library by `BUILDWEB`. Plain JavaScript (JSDoc) and CSS, no libraries, as it must run from `file://` with nothing outside the library |
 | `.shellcheckrc`      | Lint settings for `make lint`                       |
 
 ## Naming

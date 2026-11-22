@@ -591,3 +591,29 @@ Every image can be found through `tags`, even one never given a tag
   ASCII plus the accented letters of Latin-1; other Unicode is not supported
   for now. Other characters are removed with a warning. See `TAG` in
   [parameters.md](parameters.md)
+
+# WEB-01 WebSIL web page
+
+Each library can have a web page, WebSIL, for browsing it and queueing tag
+changes in a web browser. `BUILDWEB` builds it (see
+[parameters.md](parameters.md))
+
+* Entirely local: `WebSIL.html` at the top of the library, with everything it
+  uses in `web/`. No server, network, or files outside the library. Plain
+  JavaScript, with no libraries to vendor
+* The page loads its data with `<script src>`, as browsers refuse `fetch()` of
+  `file://` URLs:
+  * `web/imageData.js` - every image's hash, suffix, size, date added and tag
+    numbers, plus the tag folders and `LINK` aliases. Rebuilt only by
+    `BUILDWEB`, as a large library takes a while
+  * `web/silStamp.js` - when a run last used the library, its command line, and
+    when the data was built. Written by every run using a library that has a
+    `web` folder, except `CHECK` alone. The page rereads it when its window
+    regains focus, and says if its data is out of date, or newer data is ready
+* A page can't write files, so tag changes are queued and given to the user as
+  a manifest, by download or the clipboard, naming images by hash and giving
+  `LIBRARY`, so it can be run from any folder. Queued changes are kept in the
+  browser until the data shows them done
+* Tag filters match a tag and every tag below it. All required tags must
+  match, and no excluded (`!`) one
+* `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`)

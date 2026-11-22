@@ -31,6 +31,7 @@ declare -gA _silParamType=(
     [THRESHOLD]=percent
     [CHECK]=flag
     [REBUILD]=flag
+    [BUILDWEB]=flag
     [TOR]=flag
     [STOPSIL]=flag
 )
@@ -79,6 +80,7 @@ declare -gA _silParamScope=(
     [REMAP]=action
     [CHECK]=action
     [REBUILD]=action
+    [BUILDWEB]=action
     [STOPSIL]=action
     [LIBRARY]=global
 )

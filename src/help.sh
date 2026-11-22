@@ -65,6 +65,10 @@ Maintenance:
   CHECK                Report problems in the library, changing nothing
   REBUILD              Repair the library from its stored images
 
+Web page:
+  BUILDWEB             Build WebSIL.html in the library, for browsing it and
+                       queueing tag changes in a web browser
+
 Manifests only:
   STOPSIL              Stop reading the manifest at this line
 

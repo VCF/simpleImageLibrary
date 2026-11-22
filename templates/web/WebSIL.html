@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- WebSIL: browse this SIL library in a web browser. Built by `sil BUILDWEB`;
+     a fresh copy is written on each build, so edits here are lost. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebSIL</title>
+<link rel="stylesheet" href="web/websil.css">
+</head>
+<body>
+<header id="bar">
+  <div class="row">
+    <strong class="brand" id="brand">WebSIL</strong>
+    <div class="chipbox grow" id="filterBox">
+      <span id="filterChips"></span>
+      <input id="filterInput" autocomplete="off" spellcheck="false"
+             placeholder="Filter by tag, ! to exclude  ( / )">
+    </div>
+    <button type="button" id="treeBtn" aria-expanded="false">Tag tree</button>
+    <button type="button" id="selectBtn" aria-pressed="false">Select</button>
+    <button type="button" id="pendingBtn">Changes <span class="badge" id="pendingCount">0</span></button>
+    <button type="button" id="infoBtn">Library</button>
+  </div>
+  <div class="row small">
+    <label>Added <input type="date" id="dateFrom"></label>
+    <label>to <input type="date" id="dateTo"></label>
+    <label>Size <input id="sizeMin" class="size" placeholder="min" title="eg 200kb, 1.5mb; a bare number is KB"></label>
+    <label>to <input id="sizeMax" class="size" placeholder="max" title="eg 200kb, 1.5mb; a bare number is KB"></label>
+    <label>Type <select id="typeSel"><option value="">All</option></select></label>
+    <label>Sort <select id="sortSel">
+      <option value="date-desc">Newest</option>
+      <option value="date-asc">Oldest</option>
+      <option value="size-desc">Largest</option>
+      <option value="size-asc">Smallest</option>
+      <option value="random">Random</option>
+    </select></label>
+    <button type="button" id="shuffleBtn" hidden>Shuffle</button>
+    <button type="button" id="resetBtn" class="quiet">Reset filters</button>
+    <span class="grow"></span>
+    <span id="count" aria-live="polite"></span>
+  </div>
+  <div class="row small selbar" id="selBar" hidden>
+    <strong id="selCount">0 selected</strong>
+    <div class="chipbox grow" id="tagBox">
+      <span id="tagChips"></span>
+      <input id="tagInput" autocomplete="off" spellcheck="false" placeholder="Tags to add or remove">
+    </div>
+    <button type="button" id="addTagsBtn" class="primary">Add tags</button>
+    <button type="button" id="untagBtn">Remove tags</button>
+    <button type="button" id="selAllBtn">Select all shown</button>
+    <button type="button" id="selNoneBtn">Clear selection</button>
+  </div>
+  <div id="notice" class="notice" hidden></div>
+</header>
+
+<div id="layout">
+  <aside id="tree" hidden aria-label="Tag tree">
+    <p class="hint">Click a tag to require it, Shift+click to exclude it.</p>
+    <div id="treeBody"></div>
+  </aside>
+  <main>
+    <div id="grid"></div>
+    <div id="sentinel"></div>
+    <div id="empty" hidden></div>
+  </main>
+</div>
+
+<div id="lightbox" hidden>
+  <div id="lbMedia"></div>
+  <div id="lbCaption"></div>
+  <button type="button" id="lbClose" class="lbbtn" title="Close (Esc)">✕</button>
+</div>
+
+<dialog id="infoDlg">
+  <form method="dialog" class="dlghead"><h2>Library</h2><button>Close</button></form>
+  <div id="infoBody"></div>
+</dialog>
+
+<dialog id="pendingDlg">
+  <form method="dialog" class="dlghead"><h2>Queued changes</h2><button>Close</button></form>
+  <div id="pendingBody"></div>
+</dialog>
+
+<div id="tooltip" role="tooltip" hidden></div>
+<div id="toast" role="status" hidden></div>
+<div id="complete" role="listbox" hidden></div>
+
+<script src="web/imageData.js"></script>
+<script src="web/silStamp.js"></script>
+<script src="web/websil.js"></script>
+</body>
+</html>

@@ -10,3 +10,7 @@
 
 # Images replaced by larger copies (KEEPLARGER)
 replacedWithHigherRes/
+
+# The web page and its data, built by each copy of the library (BUILDWEB)
+/web/
+/WebSIL.html

@@ -30,6 +30,7 @@ srcLib "params"
 srcLib "library"
 srcLib "manifest"
 srcLib "maintain"
+srcLib "web"
 
 ## REQ-02 precedence: defaults < ~/.sil.conf < library sil.conf < command
 ## line < manifest
@@ -38,7 +39,7 @@ loadParams "$@"
 ## With no library yet, manifests may name one (REQ-06); anything else
 ## needs one now
 needLibrary=0
-if flagIsSet CHECK || flagIsSet REBUILD || [[ -n "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
+if flagIsSet CHECK || flagIsSet REBUILD || flagIsSet BUILDWEB || [[ -n "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
     needLibrary=1
 fi
 for arg in "${_silArgs[@]}"; do
@@ -86,7 +87,9 @@ if [[ -n "${SIL_LINK:-}" ]]; then
 fi
 
 if (( ${#_silArgs[@]} == 0 )); then
-    if ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
+    if flagIsSet BUILDWEB; then
+        buildWeb || status=1
+    elif ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
         msgInfo "No images or manifests given, nothing more to do"
     fi
     exit "$status"
@@ -104,4 +107,9 @@ for arg in "${_silArgs[@]}"; do
     fi
 done
 outcomeSummary
+## Last, so the page shows everything this run did. Manifests restore the
+## library they started from, so this is the command line's library
+if flagIsSet BUILDWEB; then
+    buildWeb || status=1
+fi
 exit "$status"

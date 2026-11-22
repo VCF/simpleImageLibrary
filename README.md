@@ -33,6 +33,8 @@ of standard open source tools, and aims to stay simple.
   cleanly
 * **Clear reporting**: each image gets a status or a specific reason for failure,
   and the exit status tells scripts if anything failed
+* **WebSIL**, a web page in each library for browsing it by tag, date and size,
+  and queueing tag changes (`BUILDWEB`)
 * **One run at a time**: a library is locked while SIL uses it, so a second run
   stops with an error naming the first. The lock frees itself if SIL is killed
   or the power fails. It works across machines on NFS mounts that support locks
@@ -154,7 +156,37 @@ types are:
 | `TOR`, `USETOR` | Flag | Off | G L C M | Download through `torsocks`. Onion addresses always are |
 | `CHECK` | Flag | Off | C | Report problems in the library, changing nothing. Exits with status 1 if any are found |
 | `REBUILD` | Flag | Off | C | Repair the library from its stored images, keeping tags. Runs before `CHECK` if both are given |
+| `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
 | `STOPSIL` | Flag | Off | M | Stop reading the manifest at this line |
+
+# WebSIL
+
+`sil BUILDWEB` writes `WebSIL.html` into the library, with its support files and
+data in `web/`. Open it in any web browser; it needs nothing outside the library,
+not even a network connection.
+
+* **Browse** a grid of images. Click one to fill the window, then move with the
+  arrow keys, Page Up/Down or Space, and leave with Escape
+* **Filter** by tags, typed with autocomplete or picked from the tag tree. All
+  tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
+  tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images
+  can also be filtered by the date added, size and type, and sorted by date,
+  size or at random
+* **Change tags**: select images (Select, or Ctrl+click, Shift+click for a
+  range), type tags, and Add or Remove them. A web page can't change files, so
+  changes are queued and saved as a manifest naming each image by its hash.
+  Download it, or copy it into a `.txt` file, then run it as the page shows:
+
+  ```bash
+  sil LIBRARY=~/Pictures/sil BUILDWEB ~/Downloads/WebSIL_Manifest_2026-11-21_1042.txt
+  ```
+
+* **Summary**: counts and sizes of images by type, and a histogram of sizes
+
+The page's data isn't updated by every run, which would be slow for a large
+library. Instead, each run notes the time in `web/silStamp.js`, and the page
+says when its data is out of date and how to rebuild it. `web/` and
+`WebSIL.html` are kept out of git; each copy of a library builds its own.
 
 # Installation
 

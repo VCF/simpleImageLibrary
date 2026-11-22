@@ -468,6 +468,29 @@ fingerprint index (`images/fingerprints.txt`)
 * Fingerprints every stored image, so takes a while on a large library
 * If combined with `CHECK`, the rebuild runs first
 
+## BUILDWEB
+
+* Flag parameter; an action, so can't be set in configuration files or
+  manifests
+
+Builds the library's web page, WebSIL: `WebSIL.html` at the top of the library,
+with its scripts, styles and data in `web/`. The page runs from the library
+folder in any web browser, with no server or network. See WebSIL in the README
+
+* `web/imageData.js` holds every image's hash, suffix, size, date added and
+  tags, and the tag folders and `LINK` aliases. It is JavaScript rather than
+  JSON as browsers won't let a page read a local JSON file, but will run a
+  local script
+* The page files are copied from SIL's `templates/web` on each build, so a
+  library picks up changes to the page from SIL updates
+* Runs after everything else on the command line, so the page shows its
+  results: `sil BUILDWEB manifest.txt` processes the manifest, then builds
+* Every run using a library that has a web page, except `CHECK` alone, writes
+  the time and its command line to `web/silStamp.js`. The page compares this
+  with its data's build time to say when it is out of date
+* `web/` and `WebSIL.html` are added to the library's `.gitignore`: they are
+  derived from the library, and would conflict when merged
+
 ## TOR
 
 * ALIAS: `USETOR`
