@@ -83,7 +83,9 @@ function runOnlyReads {
 #   A <alias path> <target path>  - LINK aliases
 #   L <folder> <image file name>  - every tag link, date tag included
 #   I <image file name> <bytes>   - every stored image
-# Tag folders reached only through an alias are not listed twice.
+# Tag folders reached only through an alias are not listed twice. Tag
+# paths are escaped for JSON strings: SIL allows neither '"' nor '\' in
+# tags, but folders made by hand or by older versions may have them.
 # Globals:
 #   SIL_LIBRARY, _silDateTag
 # Outputs:
@@ -101,7 +103,7 @@ function webFacts {
                 printf 'A\t%s\t%s\n' "$alias" "$target"
             done
         find . -type l -xtype f -printf 'L\t%h\t%f\n' | LC_ALL=C sort
-    )
+    ) | sed 's/\\/\\\\/g; s/"/\\"/g'
     find "$SIL_LIBRARY/images" -mindepth 3 -maxdepth 3 -type f -printf 'I\t%f\t%s\n' \
         | LC_ALL=C sort
 }
@@ -124,8 +126,10 @@ function webDataJs {
     ## backslashes in it as escapes. jsonEscape has already escaped it
     WEBSIL_LIBRARY="$(jsonEscape "$SIL_LIBRARY")" awk -F'\t' -v built="$1" \
         -v builtText="$(date -d "@$1" '+%Y-%m-%d %H:%M:%S')" -v dateTag="$_silDateTag" '
-        ## Tag names, suffixes and dates hold no characters needing escapes
+        ## webFacts has escaped tag paths; suffixes and dates need none
         function q(s) { return "\"" s "\"" }
+        ## Counters start as "", not 0: the first tag would be numbered ""
+        BEGIN { nTags = 0 }
         $1 == "D" { tagNum[$2] = nTags; tagList = tagList (nTags++ ? "," : "") q($2); next }
         $1 == "A" { aliasList = aliasList (nAlias++ ? "," : "") "[" q($2) "," q($3) "]"; next }
         $1 == "L" {

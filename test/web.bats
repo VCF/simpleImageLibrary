@@ -62,6 +62,13 @@ function imageRow {
   assert_output --regexp ",null,\[3\]\]"
 }
 
+@test "buildWeb numbers the first tag 0, not blank" {
+  tagImage "$anim" Animal
+  buildWeb 2> /dev/null
+  run imageRow "$anim"
+  assert_output --regexp ",null,\[0,3\]\]"
+}
+
 @test "buildWeb records LINK aliases once, not their contents again" {
   linkTag 'Funny -> Meme' 2> /dev/null
   buildWeb 2> /dev/null
@@ -142,4 +149,18 @@ function imageRow {
   assert_success
   assert_output --partial "BUILDWEB can't be set in a manifest"
   assert_not_exists "$SIL_LIBRARY/web"
+}
+
+@test "buildWeb data is valid JavaScript for tag folders SIL wouldn't make" {
+  command -v node > /dev/null || skip "node is not installed"
+  mkdir -p "$SIL_LIBRARY/tags/Say \"Hi\"" "$SIL_LIBRARY/tags/Back\\slash"
+  tagImage "$plasma" 'Say "Hi"'
+  buildWeb 2> /dev/null
+  run node -e 'global.window = {}; require(process.argv[1]);
+    const d = window.SIL_DATA, im = d.images.find((i) => i[0] === process.argv[2]);
+    console.log(d.tags.filter((t) => /["\\]/.test(t)).join("|"));
+    console.log(im[4].map((n) => d.tags[n]).join("|"))' "$SIL_LIBRARY/web/imageData.js" "$plasma"
+  assert_success
+  assert_line --index 0 'Back\slash|Say "Hi"'
+  assert_line --index 1 --partial 'Say "Hi"'
 }

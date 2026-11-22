@@ -165,15 +165,18 @@ types are:
 data in `web/`. Open it in any web browser; it needs nothing outside the library,
 not even a network connection.
 
-* **Browse** a grid of images. Click one to fill the window, then move with the
-  arrow keys, Page Up/Down or Space, and leave with Escape
+* **Browse** a grid of images, each either fitted whole into its tile or
+  cropped to fill it (Tiles: Fit or Fill). Click one to fill the window, then
+  move with the arrow keys, Page Up/Down or Space, and leave with Escape. Its
+  tags are shown there; click a tag's × to queue removing it
 * **Filter** by tags, typed with autocomplete or picked from the tag tree. All
   tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
   tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images
   can also be filtered by the date added, size and type, and sorted by date,
   size or at random
 * **Change tags**: select images (Select, or Ctrl+click, Shift+click for a
-  range), type tags, and Add or Remove them. A web page can't change files, so
+  range), type tags, and Add or Remove them. Show only selected narrows the
+  grid to the selection to check it first. A web page can't change files, so
   changes are queued and saved as a manifest naming each image by its hash.
   Download it, or copy it into a `.txt` file, then run it as the page shows:
 

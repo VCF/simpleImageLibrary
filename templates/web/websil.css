@@ -54,6 +54,7 @@ button, input, select {
 }
 button { cursor: pointer; white-space: nowrap; }
 button:hover { border-color: var(--ink2); }
+button:disabled, input:disabled, select:disabled { opacity: 0.45; cursor: not-allowed; }
 button.primary { background: var(--accent); color: var(--accentInk); border-color: var(--accent); }
 button.quiet { background: none; border-color: transparent; color: var(--ink2); }
 button[aria-pressed="true"], button[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
@@ -122,6 +123,8 @@ input.size { width: 6.5em; }
   background: var(--panel); border-right: 1px solid var(--line); font-size: 13px;
 }
 #tree .hint { color: var(--ink2); margin: 0 0 8px; }
+.treetools { display: flex; gap: 6px; margin-bottom: 6px; }
+button.mini { font-size: 12px; padding: 1px 7px; }
 #tree ul { list-style: none; margin: 0; padding-left: 14px; }
 #treeBody > ul { padding-left: 0; }
 #tree li > div { display: flex; align-items: center; gap: 4px; padding: 1px 0; }
@@ -142,7 +145,8 @@ main { flex: 1; overflow: auto; padding: 10px 12px 40px; }
   position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 4px;
   background: var(--raise); cursor: zoom-in;
 }
-.tile img, .tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tile img, .tile video { width: 100%; height: 100%; object-fit: contain; display: block; }
+body.fill .tile img, body.fill .tile video { object-fit: cover; }
 .tile .check {
   position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; border-radius: 50%;
   border: 2px solid #fff; background: rgb(0 0 0 / 0.35); opacity: 0; cursor: pointer;
@@ -161,7 +165,7 @@ body.selecting .tile { cursor: pointer; }
   border-radius: 50%; background: var(--pending); box-shadow: 0 0 0 2px #000;
 }
 #empty { color: var(--ink2); text-align: center; padding: 60px 20px; }
-#empty code { background: var(--raise); padding: 2px 6px; border-radius: 4px; user-select: all; }
+#empty code { background: var(--raise); padding: 2px 6px; border-radius: 4px; user-select: all; white-space: pre-wrap; text-align: left; display: inline-block; max-width: 100%; }
 
 #lightbox {
   position: fixed; inset: 0; z-index: 30; background: #000;
@@ -174,8 +178,19 @@ body.selecting .tile { cursor: pointer; }
   position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 14px;
   background: linear-gradient(transparent, rgb(0 0 0 / 0.8) 40%); color: #eee; font-size: 13px;
 }
-#lbCaption .tags { color: #9cc3ff; }
 #lbCaption .sel { color: var(--select); font-weight: 600; }
+#lbCaption .lbtags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+#lbCaption .muted { color: #999; }
+.lbtag {
+  display: inline-flex; align-items: center; gap: 2px; border-radius: 10px;
+  padding: 0 2px 0 8px; font-size: 12px; background: rgb(91 156 245 / 0.25); color: #cfe0ff;
+}
+.lbtag button {
+  background: none; border: 0; color: inherit; padding: 0 5px; font-size: 13px; line-height: 1.3;
+}
+.lbtag button:hover { color: #fff; }
+.lbtag.gone { background: rgb(231 113 107 / 0.25); color: #f3b5b1; text-decoration: line-through; }
+.lbtag.gone button { text-decoration: none; }
 .lbbtn {
   position: absolute; top: 10px; right: 12px; background: rgb(0 0 0 / 0.5);
   color: #fff; border-color: #555; font-size: 16px;

@@ -41,6 +41,7 @@
    * @property {Set<string>} anc - Lowercased tags and all their ancestors, for filtering
    * @property {string} src   - Path from the page to the file
    * @property {boolean} video
+   * @property {number} rand  - Position in the random order; see shuffle
    */
   /** @type {Img[]} */
   let images = [];
@@ -56,8 +57,10 @@
 
   const state = {
     include: [], exclude: [], dateFrom: '', dateTo: '',
-    sizeMin: null, sizeMax: null, type: '', sort: 'date-desc', seed: 1,
+    sizeMin: null, sizeMax: null, type: '', sort: 'date-desc', onlySelected: false,
   };
+  /** Where per-browser display settings are kept, for every library. */
+  const PREFS_KEY = 'websil:prefs';
   /** @type {Set<string>} Selected image hashes. */
   const selected = new Set();
   let selecting = false;
@@ -93,8 +96,10 @@
         hash, ext, bytes, date, tags, anc,
         src: `images/${hash.slice(0, 2)}/${hash.slice(2, 4)}/${hash}.${ext}`,
         video: VIDEO_EXT.has(ext),
+        rand: 0,
       };
     });
+    shuffle();
     vocab = names.map((t) => ({ label: t, target: t, count: tagCount.get(t.toLowerCase()) || 0 }));
     for (const [alias, target] of data.aliases) {
       vocab.push({ label: alias, target, alias: true, count: tagCount.get(target.toLowerCase()) || 0 });
@@ -149,16 +154,12 @@
   }
 
   /**
-   * A 32 bit hash of a string with a seed, for a repeatable random order.
-   * @param {string} s
-   * @param {number} seed
-   * @returns {number}
+   * Deal every image a new place in the random order. The order is kept
+   * while filters change, so narrowing a filter doesn't reshuffle.
+   * @returns {void}
    */
-  function seededRank(s, seed) {
-    let h = seed >>> 0;
-    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 2654435761);
-    h ^= h >>> 15;
-    return Math.imul(h, 2246822519) >>> 0;
+  function shuffle() {
+    for (const im of images) im.rand = Math.random();
   }
 
   // ------------------------------------------------------------ filtering
@@ -176,7 +177,8 @@
       (!s.dateTo || (im.date && im.date <= s.dateTo)) &&
       (s.sizeMin === null || im.bytes >= s.sizeMin) &&
       (s.sizeMax === null || im.bytes <= s.sizeMax) &&
-      (!s.type || im.ext === s.type));
+      (!s.type || im.ext === s.type) &&
+      (!s.onlySelected || selected.has(im.hash)));
     const byHash = (a, b) => (a.hash < b.hash ? -1 : 1);
     const byDate = (a, b) => (a.date || '').localeCompare(b.date || '') || byHash(a, b);
     switch (s.sort) {
@@ -184,10 +186,7 @@
       case 'date-desc': view.sort((a, b) => byDate(b, a)); break;
       case 'size-asc': view.sort((a, b) => a.bytes - b.bytes || byHash(a, b)); break;
       case 'size-desc': view.sort((a, b) => b.bytes - a.bytes || byHash(a, b)); break;
-      default: {
-        const rank = new Map(view.map((im) => [im, seededRank(im.hash, s.seed)]));
-        view.sort((a, b) => rank.get(a) - rank.get(b));
-      }
+      default: view.sort((a, b) => a.rand - b.rand);
     }
     $('count').textContent = view.length === images.length
       ? `${images.length.toLocaleString()} images`
@@ -210,6 +209,23 @@
     state.exclude = state.exclude.filter((x) => x !== t);
     (negate ? state.exclude : state.include).push(t);
     applyFilters();
+  }
+
+  /**
+   * Tag tree click: remove a tag already in the filter, or add it. A
+   * Shift+click on a required tag switches it to excluded.
+   * @param {string} tag - Tag path, any case
+   * @param {boolean} negate - Shift was held
+   * @returns {void}
+   */
+  function toggleFilter(tag, negate) {
+    const t = tag.toLowerCase();
+    const isIn = state.include.includes(t), isOut = state.exclude.includes(t);
+    if (isOut || (isIn && !negate)) {
+      state.include = state.include.filter((x) => x !== t);
+      state.exclude = state.exclude.filter((x) => x !== t);
+      applyFilters();
+    } else addFilter(t, negate);
   }
 
   /**
@@ -447,8 +463,22 @@
     $('selBar').hidden = !selecting && selected.size === 0;
     $('selCount').textContent = `${selected.size.toLocaleString()} selected`;
     $('selAllBtn').textContent = `Select all shown (${view.length.toLocaleString()})`;
+    $('onlySelBtn').setAttribute('aria-pressed', state.onlySelected);
     document.body.classList.toggle('selecting', selecting);
     $('selectBtn').setAttribute('aria-pressed', selecting);
+  }
+
+  /**
+   * Show only the selected images, or go back to the filters alone.
+   * Unselecting an image while on leaves it shown until the view refreshes.
+   * @param {boolean} on
+   * @returns {void}
+   */
+  function showOnlySelected(on) {
+    if (state.onlySelected === on) return;
+    state.onlySelected = on;
+    applyFilters();
+    updateSelBar();
   }
 
   // -------------------------------------------------------------- lightbox
@@ -488,12 +518,80 @@
       if (cls) s.className = cls;
       cap.append(s);
     };
-    add(`${lbIndex + 1} / ${view.length} · ${im.date || 'no date'} · ${humanSize(im.bytes)} · ${im.ext} · `);
-    add(im.tags.length ? im.tags.join(', ') : 'no tags', 'tags');
+    add(`${lbIndex + 1} / ${view.length} · ${im.date || 'no date'} · ${humanSize(im.bytes)} · ${im.ext}`);
     if (selected.has(im.hash)) add(' · selected', 'sel');
     add(` · ${im.hash}  —  ← → move · Space next · X select · I hide this · Esc close`, 'muted');
+    const tags = document.createElement('div');
+    tags.className = 'lbtags';
+    if (!im.tags.length) {
+      tags.textContent = 'no tags';
+      tags.classList.add('muted');
+    }
+    for (const t of im.tags) tags.append(lightboxTag(im, t));
+    cap.append(tags);
     const next = view[lbIndex + 1];
     if (next && !next.video) new Image().src = next.src;
+  }
+
+  /**
+   * One of the lightbox image's tags, with a button to queue its removal,
+   * or to undo that.
+   * @param {Img} im
+   * @param {string} tag
+   * @returns {HTMLElement}
+   */
+  function lightboxTag(im, tag) {
+    const queued = untagEntry(im.hash, tag);
+    const el = document.createElement('span');
+    el.className = 'lbtag' + (queued ? ' gone' : '');
+    el.textContent = tag;
+    // Removals queued with other tags, from the selection bar, can't be
+    // undone one tag at a time
+    if (queued && queued.tags.length > 1) return el;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = queued ? '↺' : '×';
+    b.title = queued ? 'Keep this tag' : 'Remove this tag';
+    // Keep focus off the button, so Space still moves to the next image
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => {
+      if (queued) {
+        queued.hashes = queued.hashes.filter((h) => h !== im.hash);
+        pending = pending.filter((p) => p.hashes.length);
+      } else queueUntag(im.hash, tag);
+      savePending();
+      refreshTiles();
+      showLightbox();
+    });
+    el.append(b);
+    return el;
+  }
+
+  /**
+   * Find a queued removal of a tag from an image.
+   * @param {string} hash
+   * @param {string} tag
+   * @returns {?{op: string, tags: string[], hashes: string[]}} The queue entry
+   */
+  function untagEntry(hash, tag) {
+    const t = tag.toLowerCase();
+    return pending.find((p) => p.op === 'UNTAG' && p.hashes.includes(hash) &&
+      p.tags.some((x) => x.toLowerCase() === t)) || null;
+  }
+
+  /**
+   * Queue the removal of one tag from one image. Joins the last queue
+   * entry if it removes just that tag, so stepping through images removing
+   * the same tag makes one manifest block.
+   * @param {string} hash
+   * @param {string} tag
+   * @returns {void}
+   */
+  function queueUntag(hash, tag) {
+    const last = pending[pending.length - 1];
+    if (last && last.op === 'UNTAG' && last.tags.length === 1 && last.tags[0] === tag) {
+      last.hashes.push(hash);
+    } else pending.push({ op: 'UNTAG', tags: [tag], hashes: [hash] });
   }
 
   /**
@@ -567,12 +665,27 @@
             tw.textContent = sub.hidden ? '▸' : '▾';
           });
         }
-        name.addEventListener('click', (e) => addFilter(name.dataset.tag, e.shiftKey));
+        name.addEventListener('click', (e) => toggleFilter(name.dataset.tag, e.shiftKey));
         ul.append(li);
       }
       return ul;
     };
     $('treeBody').replaceChildren(list(root, 0));
+  }
+
+  /**
+   * Open or close every branch of the tag tree. Closed leaves only the top
+   * level showing.
+   * @param {boolean} open
+   * @returns {void}
+   */
+  function setTreeOpen(open) {
+    for (const li of document.querySelectorAll('#treeBody li')) {
+      const sub = li.querySelector(':scope > ul');
+      if (!sub) continue;
+      sub.hidden = !open;
+      li.querySelector('.tw').textContent = open ? '▾' : '▸';
+    }
   }
 
   /**
@@ -638,6 +751,7 @@
     selected.clear();
     renderEditChips();
     savePending();
+    showOnlySelected(false);
     refreshTiles();
   }
 
@@ -945,9 +1059,27 @@
     $('filterBox').addEventListener('click', () => $('filterInput').focus());
     $('tagBox').addEventListener('click', () => $('tagInput').focus());
 
-    for (const id of ['dateFrom', 'dateTo', 'typeSel', 'sortSel']) $(id).addEventListener('change', readFilterInputs);
-    for (const id of ['sizeMin', 'sizeMax']) $(id).addEventListener('change', readFilterInputs);
-    $('shuffleBtn').addEventListener('click', () => { state.seed = (Math.random() * 2 ** 32) >>> 0; applyFilters(); });
+    for (const id of ['dateFrom', 'dateTo', 'typeSel', 'sizeMin', 'sizeMax']) $(id).addEventListener('change', readFilterInputs);
+    // A select sends no event when its current choice is picked again, so
+    // Shuffle is there for a new order while Random stays chosen
+    $('sortSel').addEventListener('change', () => {
+      if ($('sortSel').value === 'random') shuffle();
+      readFilterInputs();
+    });
+    $('shuffleBtn').addEventListener('click', () => { shuffle(); applyFilters(); });
+
+    let prefs = {};
+    try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch (e) { /* private mode */ }
+    const setFit = (fit) => {
+      $('fitSel').value = fit === 'fill' ? 'fill' : 'fit';
+      document.body.classList.toggle('fill', fit === 'fill');
+    };
+    setFit(prefs.fit);
+    $('fitSel').addEventListener('change', () => {
+      setFit($('fitSel').value);
+      prefs.fit = $('fitSel').value;
+      try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* private mode */ }
+    });
     $('resetBtn').addEventListener('click', () => {
       for (const id of ['dateFrom', 'dateTo', 'sizeMin', 'sizeMax', 'typeSel']) $(id).value = '';
       state.include = []; state.exclude = [];
@@ -964,7 +1096,15 @@
     });
     $('selectBtn').addEventListener('click', () => { selecting = !selecting; updateSelBar(); });
     $('selAllBtn').addEventListener('click', () => { view.forEach((im) => selected.add(im.hash)); refreshTiles(); });
-    $('selNoneBtn').addEventListener('click', () => { selected.clear(); selecting = false; refreshTiles(); });
+    $('selNoneBtn').addEventListener('click', () => {
+      selected.clear();
+      selecting = false;
+      showOnlySelected(false);
+      refreshTiles();
+    });
+    $('onlySelBtn').addEventListener('click', () => showOnlySelected(!state.onlySelected));
+    $('expandBtn').addEventListener('click', () => setTreeOpen(true));
+    $('collapseBtn').addEventListener('click', () => setTreeOpen(false));
     $('addTagsBtn').addEventListener('click', () => queueChange('TAG'));
     $('untagBtn').addEventListener('click', () => queueChange('UNTAG'));
     $('pendingBtn').addEventListener('click', showPending);
@@ -991,13 +1131,17 @@
 
     document.addEventListener('keydown', (e) => {
       if (!$('lightbox').hidden) {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        // Claim every character key, or Firefox's find as you type takes
+        // the ones the lightbox doesn't use, and X and I with them
+        if (e.key.length === 1) e.preventDefault();
         const keys = {
           ArrowRight: 1, ArrowDown: 1, PageDown: 1, ' ': 1,
           ArrowLeft: -1, ArrowUp: -1, PageUp: -1,
         };
         if (e.key in keys) { lightboxStep(keys[e.key]); e.preventDefault(); }
-        else if (e.key === 'Home') { lbIndex = 0; showLightbox(); }
-        else if (e.key === 'End') { lbIndex = view.length - 1; showLightbox(); }
+        else if (e.key === 'Home') { lbIndex = 0; showLightbox(); e.preventDefault(); }
+        else if (e.key === 'End') { lbIndex = view.length - 1; showLightbox(); e.preventDefault(); }
         else if (e.key === 'Escape') closeLightbox();
         else if (e.key.toLowerCase() === 'x') { toggleSelect(lbIndex, false); showLightbox(); }
         else if (e.key.toLowerCase() === 'i') $('lbCaption').hidden = !$('lbCaption').hidden;
@@ -1012,18 +1156,53 @@
   }
 
   /**
-   * Start the page, or explain how to build its data.
+   * Replace the grid with a message, and disable the controls.
+   * @param {string} html - Message, with an optional empty <code> for the command
+   * @param {string} [code] - Text for the <code>
+   * @returns {void}
+   */
+  function halt(html, code) {
+    const empty = $('empty');
+    empty.hidden = false;
+    empty.innerHTML = html;
+    if (code !== undefined) empty.querySelector('code:not([class])').textContent = code;
+    document.querySelectorAll('#bar button, #bar input, #bar select').forEach((el) => { el.disabled = true; });
+  }
+
+  /**
+   * Start the page, or explain what stops it: data not built, or an error.
    * @returns {void}
    */
   function start() {
+    const errors = window.SIL_ERRORS || [];
+    const rebuild = `sil LIBRARY=${shellQuote(libraryPath)} BUILDWEB`;
     if (!data) {
-      const empty = $('empty');
-      empty.hidden = false;
-      empty.innerHTML = 'This library\'s web page data has not been built yet. Run:<br><br><code></code><br><br>then reload this page.';
-      empty.querySelector('code').textContent = `sil LIBRARY=${shellQuote(libraryPath)} BUILDWEB`;
-      document.querySelectorAll('#bar button, #bar input, #bar select').forEach((el) => { el.disabled = true; });
+      if (errors.length) {
+        // Browsers hide the details of errors in local files, as "Script error."
+        halt('This library\'s web page data, <code class="f"></code>, could not be read. The browser says:' +
+          '<br><br><code></code><br><br>Please report this. Rebuilding with <code class="rb"></code> may help.',
+          errors.join('\n'));
+        document.querySelector('#empty .f').textContent = 'web/imageData.js';
+        document.querySelector('#empty .rb').textContent = rebuild;
+      } else {
+        halt('This library\'s web page data has not been built yet. Run:<br><br><code></code><br><br>then reload this page.', rebuild);
+      }
       return;
     }
+    try {
+      run();
+    } catch (e) {
+      halt('The page failed to start:<br><br><code></code><br><br>Please report this message.',
+        `${e.message}\n${e.stack || ''}`);
+      throw e;
+    }
+  }
+
+  /**
+   * Load the data and connect the page.
+   * @returns {void}
+   */
+  function run() {
     $('brand').textContent = 'WebSIL · ' + (libraryPath.split('/').pop() || 'library');
     document.title = $('brand').textContent;
     loadData();

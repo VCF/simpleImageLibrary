@@ -7,6 +7,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WebSIL</title>
 <link rel="stylesheet" href="web/websil.css">
+<script>
+  // Keep errors from the data files, which load before websil.js, so the
+  // page can show them rather than failing silently
+  window.SIL_ERRORS = [];
+  window.addEventListener('error', function (e) {
+    window.SIL_ERRORS.push(e.message + (e.filename ? ' (' + e.filename.replace(/^.*\//, '') + ' line ' + e.lineno + ')' : ''));
+  });
+</script>
 </head>
 <body>
 <header id="bar">
@@ -35,7 +43,11 @@
       <option value="size-asc">Smallest</option>
       <option value="random">Random</option>
     </select></label>
-    <button type="button" id="shuffleBtn" hidden>Shuffle</button>
+    <button type="button" id="shuffleBtn" hidden title="A new random order">Shuffle</button>
+    <label title="Fit: the whole image in its tile. Fill: the tile filled, cropping the image">Tiles <select id="fitSel">
+      <option value="fit">Fit</option>
+      <option value="fill">Fill</option>
+    </select></label>
     <button type="button" id="resetBtn" class="quiet">Reset filters</button>
     <span class="grow"></span>
     <span id="count" aria-live="polite"></span>
@@ -49,6 +61,7 @@
     <button type="button" id="addTagsBtn" class="primary">Add tags</button>
     <button type="button" id="untagBtn">Remove tags</button>
     <button type="button" id="selAllBtn">Select all shown</button>
+    <button type="button" id="onlySelBtn" aria-pressed="false">Show only selected</button>
     <button type="button" id="selNoneBtn">Clear selection</button>
   </div>
   <div id="notice" class="notice" hidden></div>
@@ -56,7 +69,11 @@
 
 <div id="layout">
   <aside id="tree" hidden aria-label="Tag tree">
-    <p class="hint">Click a tag to require it, Shift+click to exclude it.</p>
+    <div class="treetools">
+      <button type="button" id="expandBtn" class="mini">Expand all</button>
+      <button type="button" id="collapseBtn" class="mini">Collapse all</button>
+    </div>
+    <p class="hint">Click a tag to require it, Shift+click to exclude it. Click it again to remove it.</p>
     <div id="treeBody"></div>
   </aside>
   <main>
