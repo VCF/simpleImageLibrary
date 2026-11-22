@@ -8,6 +8,8 @@ declare -gA _silOutcomeMeaning=(
     [DUPE]="Already in the library; the hash is of the existing image"
     [FOUND]="Hash or known source matched a stored image"
     [REMOVED]="Removed from the library (REMOVE)"
+    [COPIED]="Copied to another library (COPY); the hash is of the copy"
+    [MOVED]="Moved to another library (MOVE); the hash is of the copy"
     [UNREACHABLE]="Could not connect to the website"
     [TIMEOUT]="Website did not respond in time"
     [NOTFOUND]="Website available, but the URL was not found"
@@ -23,6 +25,8 @@ declare -gA _silOutcomeMeaning=(
     [NOTSTORED]="Not a stored image; REMOVE and UNTAG never download"
     [STOREFAIL]="Could not write to the library"
     [SHRINKFAIL]="Shrunk copy failed its check; retry with another SHRINK"
+    [NOLIBRARY]="COPY or MOVE source or target is not a usable library"
+    [NOTMOVED]="Copied, but kept in the source library; retry to finish the MOVE"
 )
 
 ## Separates fields in _silLogRows. Not a tab: read merges consecutive
@@ -130,7 +134,8 @@ function logErrBegin {
 # The settings in effect that a retry needs: every set parameter except
 # one-time actions (eg LINK) and those a manifest can't set. LIBRARY comes first, as a manifest needs it
 # before any other setting or URI; it is already an absolute path, so a
-# moved retry file still finds the library.
+# moved retry file still finds the library. COPY and MOVE come last, as
+# any other line after them would end their block before its hashes.
 # Globals:
 #   _silParamType, _silParamScope, _silManifestBlocked, SIL_<NAME>
 # Outputs:
@@ -139,7 +144,7 @@ function logErrBegin {
 function logSettings {
     local canon value
     [[ -n "${SIL_LIBRARY:-}" ]] && printf 'LIBRARY=%s\n' "$SIL_LIBRARY"
-    for canon in $(printf '%s\n' "${!_silParamType[@]}" | sort); do
+    for canon in $(printf '%s\n' "${!_silParamType[@]}" | grep -vx 'COPY\|MOVE' | sort) COPY MOVE; do
         [[ "${_silParamScope[$canon]:-}" == action || "$canon" == LIBRARY ]] && continue
         [[ -n "${_silManifestBlocked[$canon]:-}" ]] && continue
         value="$(paramFileValue "$canon")"
@@ -179,6 +184,8 @@ function logOutcome {
 # Write the settings of a failure that differ from those already written
 # to the error log, and note them as written. A clearable setting already
 # written but no longer set is written with no value, clearing it on retry.
+# Any other line ends a COPY or MOVE block, so its line (last in the
+# settings) is written again after any other.
 # Globals:
 #   _silParamClearable; updates _silErrWritten
 # Arguments:
@@ -187,17 +194,25 @@ function logOutcome {
 #   CANON=value lines to STDOUT
 #######################################
 function logSettingsChanged {
-    local line canon
+    local line canon written=0
     for canon in $(printf '%s\n' "${!_silParamClearable[@]}" | sort); do
         [[ -n "${_silErrWritten[$canon]:-}" ]] || continue
         grep -q "^$canon=" <<< "$1" && continue
         printf '%s=\n' "$canon"
         unset "_silErrWritten[$canon]"
+        written=1
     done
     while IFS= read -r line; do
-        [[ -n "$line" && "${_silErrWritten[${line%%=*}]:-}" != "${line#*=}" ]] || continue
+        [[ -n "$line" ]] || continue
+        canon="${line%%=*}"
+        if [[ "${_silErrWritten[$canon]:-}" == "${line#*=}" ]]; then
+            if [[ "$canon" != COPY && "$canon" != MOVE ]] || (( ! written )); then
+                continue
+            fi
+        fi
         printf '%s\n' "$line"
-        _silErrWritten[${line%%=*}]="${line#*=}"
+        _silErrWritten[$canon]="${line#*=}"
+        written=1
     done <<< "$1"
 }
 

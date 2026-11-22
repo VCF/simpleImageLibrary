@@ -48,9 +48,9 @@ precedence). Blank lines and lines starting with `#` are ignored.
 Configuration files hold settings that apply broadly. Some parameters can't be
 set in them; SIL warns and ignores those lines:
 
-* `TAG`, `UNTAG`, `REMOVE`, `LINK`, `REMAP` and `STOPSIL` - in neither file. They
-  apply to individual images or are one-time actions; use the command line or a
-  manifest
+* `TAG`, `UNTAG`, `REMOVE`, `LINK`, `REMAP`, `STOPSIL`, `COPY`, `MOVE`,
+  `STOPCOPY` and `STOPMOVE` - in neither file. They apply to individual images
+  or are one-time actions; use the command line or a manifest
 * `LIBRARY` - in `~/.sil.conf` only, as a default library
 
 | File                  | Hidden | Scope                                     |
@@ -123,6 +123,9 @@ The tag parameter defines one or more tags within the library
   * `Untagged`, for images with no other tags (`TAG-03`). `TAG=Untagged` warns
     that to remove all tags from an image, use `UNTAG=*`. Other tags in the same
     value are still applied
+  * `SILCOPY` and `SILMOVE`, which WebSIL offers as tags to queue copying or
+    moving images to another library (`COPY`, `MOVE`). The warning says how to
+    copy instead. Below another tag they are ordinary tags, eg `Misc/SilCopy`
 * A new image given no tags is tagged `Untagged`; giving an image any tag
   removes its `Untagged` tag (`TAG-03`)
 * `TAG=` (empty) clears an earlier `TAG` setting, eg partway through a
@@ -544,3 +547,91 @@ debug how its first URIs behave, without editing out the rest
 * `STOPSIL=off` (or `0`, `no`, `false`) does nothing, so a stop can be
   disabled in place
 * Ignored, with a warning, on the command line, and in configuration files
+
+## COPY
+
+* ALIAS: `CP`, `SILCOPY`
+* Only in a manifest (`REQ-14`). On the command line it halts, as the hashes
+  given with it would otherwise be treated as plain hash URIs
+
+Copies images from one library to another. The line starts a block, and the
+hashes on the lines after it are the images to copy:
+
+```text
+COPY ~/Pictures/sil -> ~/Pictures/work
+0123456789abcdef0123456789abcdef01234567
+89abcdef0123456789abcdef0123456789abcdef
+STOPCOPY
+```
+
+* The value is `SOURCE -> TARGET`. `>` also serves as the arrow, and `=` may
+  follow `COPY` as for any parameter (`COPY=a -> b`). The arrow needs a space
+  on each side; paths may contain spaces and need no quotes
+* `SOURCE ->` may be left out (`COPY ~/Pictures/work`): the source is then the
+  library in use for the manifest. That is the library containing the current
+  folder unless the command line, the manifest's location or a `LIBRARY` line
+  chooses another (see `LIBRARY`)
+* Relative paths are relative to the manifest's folder, and `~` is expanded
+* Both must already be libraries, and not the same one. Unlike `LIBRARY`, a
+  missing library is never created, so a mistyped target can't quietly gather
+  images. If either can't be used, a warning says why and every hash in the
+  block fails as `NOLIBRARY`, so the error log (`REQ-08`) has the block ready
+  to retry once the line is corrected
+* The block ends at the next line that isn't a hash, a comment or blank. That
+  line is then read as usual. `STOPCOPY` (or `STOPMOVE`) does nothing else, and
+  can mark the end clearly
+* Each image is added to the target as a new image would be, with the target's
+  settings: its `sil.conf`, then the command line and the manifest's settings
+  so far, as when a manifest sets `LIBRARY`. So the target's `SHRINK`,
+  `SHRINKVID`, `THRESHOLD` and `KEEPLARGER` apply
+  * An image the target already has (by fingerprint, `THRESHOLD`) isn't stored
+    again. The one already there gains the copy's tags and sources, and keeps
+    its date
+  * Shrinking is not repeated without cause: a still image already shrunk to
+    the target's `SHRINK` is under `SHRINKTRIGGER` times it, an AVIF is never
+    re-encoded, and a shrunk copy must save `SHRINKMINSAVE` and still match.
+    A second lossy encoding only happens where the target asks for a smaller
+    `SHRINK` than the image was shrunk to
+* The copy gets every tag of the original except its date, through the
+  target's `REMAP`s, and is dated today (`TAG-02`). It is `Untagged` if the
+  original had no tags
+* Its recorded sources are copied too. The source library itself is not
+  recorded as a source
+* `TAG`, `UNTAG` and `REMOVE` don't apply to the images in a block. To tag
+  them, tag them in the source first: WebSIL puts its blocks at the end of its
+  manifests for this reason
+* Reported as `COPIED`, with the target's outcome, eg
+  `[COPIED] /home/me/Pictures/work: SHRINK 1a2b3c4d5e6f - 1.2 MB -> 290.1 KB`.
+  The hash given in the report is the copy's
+* A hash not in the source is `NOHASH`; other failures are those of adding an
+  image (`REQ-08`)
+
+## MOVE
+
+* ALIAS: `MV`, `SILMOVE`
+* Only in a manifest (`REQ-14`)
+
+Moves images from one library to another: as `COPY`, then removes each image
+from the source as `REMOVE` would, tags and records included
+
+* Written and read as `COPY`, eg `MOVE ~/Pictures/sil -> ~/Pictures/work`
+* An image the target already has counts as moved: the one there gains its
+  tags and sources, and it is removed from the source
+* An image is only removed once all of its copy succeeded, tags and sources
+  included. Otherwise it is kept in the source and reported as `NOTMOVED`; run
+  the block again (eg from the error log) to finish
+* Reported as `MOVED`, with the target's outcome
+
+## STOPCOPY
+
+* ALIAS: none. `STOPMOVE` is the same
+* Flag parameter; only in a manifest. Ignored with a warning on the command
+  line
+
+Ends a `COPY` or `MOVE` block, and does nothing else. A block also ends at any
+other line that isn't a hash, so this is for legibility. Either may end either
+kind of block. WebSIL ends its blocks with them
+
+## STOPMOVE
+
+* See `STOPCOPY`

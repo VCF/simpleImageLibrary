@@ -244,6 +244,9 @@ the closest match if it has a larger pixel area, as it would be stored (after
 * `CHECK` and `REBUILD` can't be set in a manifest, and are ignored with a
   warning
 * `STOPSIL` ends the manifest at its line; later lines are ignored
+* `COPY` and `MOVE` start a block of hashes to copy or move to another library
+  (`REQ-14`). A block ends at the next line that isn't a hash, a comment or
+  blank; `STOPCOPY` and `STOPMOVE` only end one
 * `LINK` is carried out at its line, once, rather than applying to later URIs.
   If it must ask the user (`REQ-11`), processing waits for the answer. It is
   not written to the error log, so a retry doesn't repeat it
@@ -323,6 +326,8 @@ Successful outcomes, with their status tag:
 | DUPE    | Already in the library: recovered and matched by fingerprint (reported with how many bits differ), or a URL already recorded as a source and not downloaded (`REFETCH`). Reported with the existing image's hash; remaining operations (eg tagging) apply to the existing image |
 | FOUND   | A hash URI (`REQ-03`) matched a stored image, or with `UNTAG` a known source or identical file did (`REQ-11`); remaining operations apply to it |
 | REMOVED | The image was removed from the library (`REMOVE`, `REQ-11`) |
+| COPIED  | The image was copied to another library (`COPY`, `REQ-14`). Reported with the copy's hash, and its outcome in the target (eg `ADDED`, `DUPE`) |
+| MOVED   | As `COPIED`, and the image was then removed from its library (`MOVE`) |
 
 Failures, with their reason tag. No further action is taken on the image. This
 list is expected to grow as new failure modes are found; tags are at most 12
@@ -345,6 +350,8 @@ characters.
 | NOTSTORED   | With `REMOVE` or `UNTAG`, the URI is not a known source or a stored file (`REQ-11`); nothing is downloaded |
 | STOREFAIL   | The image could not be written into the library (eg disk full) |
 | SHRINKFAIL  | The shrunk copy failed its fingerprint check (`REQ-07`), so the image was not added; retry with a different `SHRINK` (or `SHRINKVID`) |
+| NOLIBRARY   | The source or target of a `COPY` or `MOVE` block is missing, not a library, the same library, or in use by another run (`REQ-14`) |
+| NOTMOVED    | With `MOVE`, the image was copied but kept in the source, as part of the copy (eg a tag) failed, or it could not be removed; retrying finishes it |
 
 ## Reporting
 
@@ -508,6 +515,8 @@ original, so two runs at once would silently undo each other's changes
     as they may belong to the run holding the lock
   * If a manifest moves to a locked library, the run halts there, with any
     earlier manifests on its command line already finished
+  * A `COPY` or `MOVE` library (`REQ-14`) that is locked doesn't halt the run:
+    the block's hashes fail as `NOLIBRARY`, and the manifest goes on
 * The lock is held by the operating system (`flock`), and ends with the process
   however it stops, including `kill -9` or a power failure. A leftover lock file
   means nothing, so there are no stale locks to detect
@@ -538,6 +547,28 @@ original, so two runs at once would silently undo each other's changes
 * `REBUILD` applies the setting to everything already in the library, including
   `.git`, keeping execute permission where it exists (eg git hooks). `CHECK` does
   not report differences, as a library works whichever is set
+
+# REQ-14 Copying and moving images between libraries
+
+Images can be copied (`COPY`) or moved (`MOVE`) from one library to another,
+from a manifest. See [parameters.md](./parameters.md) for both
+
+* A `COPY` or `MOVE` line names the source and target libraries, and the hashes
+  on the lines after it are the images. Only hashes are accepted, as they name
+  a stored image exactly
+* Both libraries must already exist; neither is created. Both are locked
+  (`REQ-12`) for the rest of the run
+* In the target, each image is handled as a newly added one (`REQ-05`,
+  `REQ-07`), with the target's settings: shrunk, matched by fingerprint, and
+  not stored again if a duplicate is there
+* The copy takes the original's user tags (not its date tag) and recorded
+  sources, and is dated the day it is copied. A duplicate already in the
+  target gains them, keeping its own date
+* A move removes the original only once everything about its copy succeeded,
+  so an image is never lost between libraries
+* `WEB-01`: WebSIL offers the reserved tags `SILCOPY` and `SILMOVE` to queue
+  blocks. It can't know the target library, so writes a placeholder that SIL
+  refuses until it is replaced
 
 # TAG-01 Tagging
 
@@ -614,6 +645,15 @@ changes in a web browser. `BUILDWEB` builds it (see
   a manifest, by download or the clipboard, naming images by hash and giving
   `LIBRARY`, so it can be run from any folder. Queued changes are kept in the
   browser until the data shows them done
+* The reserved tags `SILCOPY` and `SILMOVE` queue a `COPY` or `MOVE` block
+  (`REQ-14`) instead of a tag. Blocks come at the end of the manifest, after
+  every tag change, so images are tagged before they are sent. Each block is
+  preceded by comments saying what it does and how to give the target, which
+  is written as `update/this/path/to/your/desired/destination/library`, and
+  ends with `STOPCOPY` or `STOPMOVE`. A `MOVE` block's comments stress that it
+  deletes the images from this library. A queued move is done once the data no
+  longer has its images; a queued copy, once the data is rebuilt after it was
+  queued
 * Tag filters match a tag and every tag below it. All required tags must
   match, and no excluded (`!`) one
 * `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`), unless

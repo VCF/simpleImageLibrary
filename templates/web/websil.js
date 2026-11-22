@@ -23,6 +23,16 @@
   /** Characters SIL allows in a tag level (TAG-03): ASCII and Latin-1 letters. */
   const TAG_LEVEL_RE = /^[A-Za-z0-9 _\-À-ÖØ-öø-ÿ]+$/;
   const VIDEO_EXT = new Set(['mp4', 'webm', 'mov']);
+  /**
+   * Reserved tags that queue a COPY or MOVE block, rather than a tag
+   * (REQ-14), with what the autocomplete says of them.
+   */
+  const SEND_TAGS = {
+    SILCOPY: { op: 'COPY', note: 'copy to another library' },
+    SILMOVE: { op: 'MOVE', note: 'move to another library' },
+  };
+  /** Target written in COPY and MOVE blocks, for the user to replace. SIL refuses it. */
+  const SEND_PLACEHOLDER = 'update/this/path/to/your/desired/destination/library';
   /** Upper edges of the size histogram's bins, in bytes; the last is open. */
   const HIST_EDGES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
     .map((kb) => kb * 1024).concat([Infinity]);
@@ -72,8 +82,9 @@
   /** Tags typed in the selection bar, waiting for Add or Remove. */
   let editTags = [];
   /**
-   * Queued changes, in order.
-   * @type {{op: ('TAG'|'UNTAG'), tags: string[], hashes: string[]}[]}
+   * Queued changes, in order. COPY and MOVE have no tags, and note when
+   * they were queued (epoch seconds), to compare with the data's build.
+   * @type {{op: ('TAG'|'UNTAG'|'COPY'|'MOVE'), tags: string[], hashes: string[], at: ?number}[]}
    */
   let pending = [];
   let pendingHashes = new Set();
@@ -141,6 +152,8 @@
    * @returns {string} The tag path, or '' if nothing usable remains
    */
   function cleanTag(text) {
+    const send = text.trim().toUpperCase();
+    if (SEND_TAGS[send]) return send;
     const levels = text.split(/[/:]/)
       .map((l) => [...l].filter((c) => TAG_LEVEL_RE.test(c)).join('').trim())
       .filter(Boolean);
@@ -277,11 +290,14 @@
    *     chosen tag path, and whether it was given with a leading '!'
    * @param {boolean} opts.allowNew - Offer the typed text as a new tag
    * @param {function(): void} opts.onBackspace - Empty input and Backspace
+   * @param {Object[]} [opts.extra] - Entries offered besides the library's
+   *     tags, eg SILCOPY, each with a 'note' to show in place of a count
    * @returns {void}
    */
   function attachComplete(input, opts) {
     const list = $('complete');
     let items = [], active = 0;
+    const choices = () => (opts.extra ? vocab.concat(opts.extra) : vocab);
 
     function close() { list.hidden = true; items = []; }
 
@@ -291,7 +307,7 @@
       const q = raw.replace(/^!/, '').trim().toLowerCase();
       if (!q) { close(); return; }
       const scored = [];
-      for (const v of vocab) {
+      for (const v of choices()) {
         const l = v.label.toLowerCase();
         let score = l === q ? 0 : l.startsWith(q) ? 1 : l.includes('/' + q) ? 2 : l.includes(q) ? 3 : -1;
         if (score >= 0) scored.push([score, v]);
@@ -299,7 +315,7 @@
       scored.sort((a, b) => a[0] - b[0] || b[1].count - a[1].count || a[1].label.localeCompare(b[1].label));
       items = scored.slice(0, 12).map(([, v]) => ({ ...v, negate }));
       const typed = cleanTag(raw.replace(/^!/, ''));
-      if (opts.allowNew && typed && !vocab.some((v) => v.label.toLowerCase() === typed.toLowerCase())) {
+      if (opts.allowNew && typed && !choices().some((v) => v.label.toLowerCase() === typed.toLowerCase())) {
         items.push({ label: typed, target: typed, isNew: true, count: 0 });
       }
       if (!items.length) { close(); return; }
@@ -311,6 +327,7 @@
         name.textContent = (it.negate ? '!' : '') + it.label;
         const note = document.createElement('span');
         if (it.isNew) { note.textContent = 'new tag'; note.className = 'alias'; }
+        else if (it.note) { note.textContent = it.note; note.className = 'alias'; }
         else if (it.alias) { note.textContent = '→ ' + it.target; note.className = 'alias'; }
         else { note.textContent = it.count.toLocaleString(); note.className = 'n'; }
         row.append(name, note);
@@ -726,11 +743,15 @@
     try { pending = JSON.parse(localStorage.getItem(storeKey) || '{}').pending || []; } catch (e) { pending = []; }
     const byHash = new Map(images.map((im) => [im.hash, im]));
     const has = (im, t) => im.tags.some((x) => x.toLowerCase() === t.toLowerCase());
+    // A copy leaves no mark in the data, so is taken as done once the data
+    // is rebuilt after it was queued, as running the manifest does
+    pending = pending.filter((p) => p.op !== 'COPY' || !(data.built > p.at));
     pending = pending.map((p) => ({
       ...p,
       hashes: p.hashes.filter((h) => {
         const im = byHash.get(h);
         if (!im) return false;
+        if (p.op === 'COPY' || p.op === 'MOVE') return true;
         return p.op === 'TAG' ? !p.tags.every((t) => has(im, t)) : p.tags.some((t) => has(im, t));
       }),
     })).filter((p) => p.hashes.length);
@@ -739,7 +760,8 @@
 
   /**
    * Queue the selection bar's tags to be added to, or removed from, the
-   * selected images.
+   * selected images. Adding SILCOPY or SILMOVE queues a copy or move of
+   * them to another library instead, after any tags added with it.
    * @param {('TAG'|'UNTAG')} op
    * @returns {void}
    */
@@ -749,8 +771,21 @@
     $('tagInput').value = '';
     if (!editTags.length) { toast('Type a tag first'); $('tagInput').focus(); return; }
     if (!selected.size) { toast('Select some images first'); return; }
-    pending.push({ op, tags: [...editTags], hashes: [...selected] });
-    toast(`Queued: ${op === 'TAG' ? 'add' : 'remove'} ${editTags.join(', ')} for ${selected.size} image(s)`);
+    const sends = editTags.filter((t) => SEND_TAGS[t]);
+    const tags = editTags.filter((t) => !SEND_TAGS[t]);
+    if (sends.length && op === 'UNTAG') { toast(`${sends.join(' and ')} can only be added, to queue a copy or move`); return; }
+    if (sends.length > 1) { toast('Choose SILCOPY or SILMOVE, not both'); return; }
+    const done = [];
+    if (tags.length) {
+      pending.push({ op, tags, hashes: [...selected] });
+      done.push(`${op === 'TAG' ? 'add' : 'remove'} ${tags.join(', ')}`);
+    }
+    if (sends.length) {
+      const send = SEND_TAGS[sends[0]].op;
+      pending.push({ op: send, tags: [], hashes: [...selected], at: Date.now() / 1000 });
+      done.push(`${send === 'COPY' ? 'copy' : 'move'} to another library`);
+    }
+    toast(`Queued: ${done.join(', then ')} for ${selected.size} image(s)`);
     editTags = [];
     selected.clear();
     renderEditChips();
@@ -765,13 +800,39 @@
    */
   function renderEditChips() {
     $('tagChips').replaceChildren(...editTags.map((t) => chip(t,
-      tagSpelling.has(t.toLowerCase()) ? '' : 'new',
+      SEND_TAGS[t] || tagSpelling.has(t.toLowerCase()) ? '' : 'new',
       () => { editTags = editTags.filter((x) => x !== t); renderEditChips(); })));
   }
 
   /**
+   * A queued copy or move as a manifest block, with comments explaining it
+   * and asking for the target library (REQ-14).
+   * @param {{op: ('COPY'|'MOVE'), hashes: string[]}} p
+   * @returns {string[]} The block's lines
+   */
+  function sendBlock(p) {
+    const n = p.hashes.length;
+    const lines = [
+      `# ${p.op === 'COPY' ? 'Copy' : 'Move'} ${n} image(s) from this library to another one.`,
+      '# Before running this file, replace the path after "->" below with the',
+      '# folder of the library to send them to. It must already be a SIL library;',
+      '# SIL refuses the placeholder. The images keep their tags and sources there.',
+    ];
+    if (p.op === 'MOVE') {
+      lines.push(
+        '#',
+        '# !!! MOVE DELETES THESE IMAGES FROM THIS LIBRARY once each is copied.',
+        '# !!! To keep them here as well, change MOVE to COPY and STOPMOVE to STOPCOPY.',
+      );
+    }
+    lines.push(`${p.op} ${libraryPath} -> ${SEND_PLACEHOLDER}`, ...p.hashes, `STOP${p.op}`);
+    return lines;
+  }
+
+  /**
    * The queued changes as a SIL manifest. LIBRARY is given, so it works
-   * from any folder, eg Downloads.
+   * from any folder, eg Downloads. Copies and moves come last, so that
+   * images are tagged before they are sent.
    * @returns {string}
    */
   function manifestText() {
@@ -782,7 +843,9 @@
       `LIBRARY=${libraryPath}`,
     ];
     let tag = '', untag = '';
+    const sends = pending.filter((p) => p.op === 'COPY' || p.op === 'MOVE');
     for (const p of pending) {
+      if (sends.includes(p)) continue;
       lines.push('');
       const value = p.tags.join(',');
       if (p.op === 'TAG') {
@@ -794,6 +857,7 @@
       }
       lines.push(...p.hashes);
     }
+    for (const p of sends) lines.push('', ...sendBlock(p));
     return lines.join('\n') + '\n';
   }
 
@@ -814,7 +878,8 @@
     const body = $('pendingBody');
     body.replaceChildren();
     if (!pending.length) {
-      body.innerHTML = '<p class="muted">Nothing queued. Select images, type tags in the bar that appears, and use Add tags or Remove tags.</p>';
+      body.innerHTML = '<p class="muted">Nothing queued. Select images, type tags in the bar that appears, and use Add tags or Remove tags. ' +
+        'To copy or move images to another library, add the tag SILCOPY or SILMOVE.</p>';
       $('pendingDlg').showModal();
       return;
     }
@@ -830,8 +895,12 @@
       </div>
       <p class="muted">Then run, adjusting the folder if your browser saves elsewhere:<br><code id="cmd"></code></p>
       <p class="muted">If you copied instead: paste into a new text file ending <code>.txt</code>, and run sil on that file in the same way.</p>
+      <p id="sendNote" hidden><strong>Copies and moves:</strong> edit the manifest first, to replace
+      <code>${SEND_PLACEHOLDER}</code> with the folder of the library to send the images to.
+      A queued copy is cleared from this list once the page's data is rebuilt.</p>
       <textarea readonly id="manifestText"></textarea>`;
     $('cmd').textContent = cmd;
+    $('sendNote').hidden = !pending.some((p) => p.op === 'COPY' || p.op === 'MOVE');
     $('manifestText').value = manifestText();
     $('dlBtn').addEventListener('click', () => {
       const a = document.createElement('a');
@@ -1058,6 +1127,7 @@
     attachComplete($('tagInput'), {
       onPick: (tag) => { if (!editTags.includes(tag)) editTags.push(tag); renderEditChips(); },
       allowNew: true,
+      extra: Object.entries(SEND_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, count: 0 })),
       onBackspace: () => { editTags.pop(); renderEditChips(); },
     });
     $('filterBox').addEventListener('click', () => $('filterInput').focus());

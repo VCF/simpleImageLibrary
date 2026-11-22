@@ -35,6 +35,10 @@ declare -gA _silParamType=(
     [GITWEB]=flag
     [TOR]=flag
     [STOPSIL]=flag
+    [COPY]=value
+    [MOVE]=value
+    [STOPCOPY]=flag
+    [STOPMOVE]=flag
 )
 
 ## Alias -> canonical name
@@ -46,6 +50,10 @@ declare -gA _silParamAlias=(
     [TAGMAP]=REMAP
     [MAP]=REMAP
     [WEBGIT]=GITWEB
+    [CP]=COPY
+    [SILCOPY]=COPY
+    [MV]=MOVE
+    [SILMOVE]=MOVE
 )
 
 ## Values applied by resetParams before any source is read
@@ -63,10 +71,25 @@ declare -gA _silParamDefault=(
     [TOR]=0
 )
 
-## Parameters that an empty value clears (eg 'TAG='), rather than halting
+## Parameters that an empty value clears (eg 'TAG='), rather than halting.
+## COPY and MOVE are set by their block in a manifest, and cleared where it
+## ends, so a retry file (REQ-08) writes the block's line before its hashes
 declare -gA _silParamClearable=(
     [TAG]=1
     [UNTAG]=1
+    [COPY]=1
+    [MOVE]=1
+)
+
+## Parameters that only mean something in a manifest. Ignored with a
+## warning on the command line, except COPY and MOVE, which halt, as the
+## hashes given with them would otherwise be acted on in the wrong way
+declare -gA _silManifestOnly=(
+    [STOPSIL]=warn
+    [STOPCOPY]=warn
+    [STOPMOVE]=warn
+    [COPY]=halt
+    [MOVE]=halt
 )
 
 ## Parameters restricted in configuration files. Unlisted parameters
@@ -85,6 +108,10 @@ declare -gA _silParamScope=(
     [BUILDWEB]=action
     [GITWEB]=action
     [STOPSIL]=action
+    [COPY]=image
+    [MOVE]=image
+    [STOPCOPY]=action
+    [STOPMOVE]=action
     [LIBRARY]=global
 )
 
@@ -336,15 +363,16 @@ function resetParams {
 # Arguments:
 #   $@ - Command line arguments
 # Outputs:
-#   A warning to STDERR for STOPSIL, which only applies in manifests
+#   A warning to STDERR for STOPSIL and the like, which only apply in
+#   manifests (_silManifestOnly)
 # Returns:
-#   Halts (msgError) on an unrecognized NAME=VALUE token, or on a parameter
-#   following a URI.
+#   Halts (msgError) on an unrecognized NAME=VALUE token, a parameter
+#   following a URI, or COPY or MOVE.
 #######################################
 function parseCliParams {
     _silCliParams=()
     _silArgs=()
-    local arg
+    local arg canon
     for arg in "$@"; do
         if isParamToken "$arg"; then
             if (( ${#_silArgs[@]} )); then
@@ -352,10 +380,20 @@ function parseCliParams {
     Parameters must come before any URIs or manifests, eg:
       sil TAG=Meme https://example.com/funny.jpg"
             fi
-            if [[ "$(paramCanonical "$(trim "${arg%%=*}")")" == STOPSIL ]]; then
-                msgWarn "[!] STOPSIL only applies in a manifest - ignored"
-                continue
-            fi
+            canon="$(paramCanonical "$(trim "${arg%%=*}")")"
+            case "${_silManifestOnly[$canon]:-}" in
+                warn)
+                    msgWarn "[!] $canon only applies in a manifest - ignored"
+                    continue
+                    ;;
+                halt)
+                    msgError "[!] $canon only applies in a manifest
+    Put it in a .txt file, followed by the hashes of the images, eg:
+      $canon ~/Pictures/sil -> ~/Pictures/other
+      0123456789abcdef0123456789abcdef01234567
+    then run: sil that-file.txt"
+                    ;;
+            esac
             _silCliParams+=("$arg")
         elif looksLikeParam "$arg" && [[ ! -e "$arg" ]]; then
             msgError "[!] Unrecognized parameter '${arg%%=*}'
@@ -521,17 +559,25 @@ declare -gA _silSavedParams=()
 #######################################
 # Save all current SIL_<NAME> values, eg before a manifest changes them.
 # Globals:
-#   _silParamType, SIL_<NAME>; sets _silSavedParams
+#   _silParamType, SIL_<NAME>; sets _silSavedParams, or the given array
+# Arguments:
+#   $1 - Optional name of an associative array to save into instead of
+#        _silSavedParams, so saves can nest (eg COPY within a manifest)
 #######################################
 function saveParams {
-    local canon var
-    _silSavedParams=()
-    for canon in "${!_silParamType[@]}"; do
-        var="SIL_$canon"
-        if [[ -n "${!var+x}" ]]; then
-            _silSavedParams[$canon]="=${!var}"
+    ## A reference to an associative array, which shellcheck can't see, so
+    ## it takes the keys below for arithmetic (SC2004)
+    local -n _saveTo="${1:-_silSavedParams}"
+    local _canon _var
+    _saveTo=()
+    for _canon in "${!_silParamType[@]}"; do
+        _var="SIL_$_canon"
+        if [[ -n "${!_var+x}" ]]; then
+            # shellcheck disable=SC2004
+            _saveTo[$_canon]="=${!_var}"
         else
-            _silSavedParams[$canon]="unset"
+            # shellcheck disable=SC2004
+            _saveTo[$_canon]="unset"
         fi
     done
 }
@@ -539,16 +585,19 @@ function saveParams {
 #######################################
 # Restore the SIL_<NAME> values saved by saveParams.
 # Globals:
-#   _silSavedParams; sets SIL_<NAME>
+#   _silSavedParams, or the given array; sets SIL_<NAME>
+# Arguments:
+#   $1 - Optional name of the array given to saveParams
 #######################################
 function restoreParams {
-    local canon saved
-    for canon in "${!_silSavedParams[@]}"; do
-        saved="${_silSavedParams[$canon]}"
-        if [[ "$saved" == unset ]]; then
-            unset "SIL_$canon"
+    local -n _restoreFrom="${1:-_silSavedParams}"
+    local _canon _saved
+    for _canon in "${!_restoreFrom[@]}"; do
+        _saved="${_restoreFrom[$_canon]}"
+        if [[ "$_saved" == unset ]]; then
+            unset "SIL_$_canon"
         else
-            printf -v "SIL_$canon" '%s' "${saved#=}"
+            printf -v "SIL_$_canon" '%s' "${_saved#=}"
         fi
     done
     applyFilePrivacy

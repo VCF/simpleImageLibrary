@@ -191,3 +191,12 @@ teardown() {
   assert_output "file:local.png
 https://example.com/a b"
 }
+
+@test "sourceRecord keeps a source as recorded; sourceAdd records it first" {
+  local h=0123456789abcdef0123456789abcdef01234567
+  sourceRecord "$h" file:cat.jpg
+  sourceAdd "$h" /some/where/cat.jpg
+  sourceRecord "$h" https://example.com/cat.jpg
+  run sourcesOf "$h"
+  assert_output $'file:cat.jpg\nhttps://example.com/cat.jpg'
+}

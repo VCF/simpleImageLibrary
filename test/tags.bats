@@ -194,6 +194,17 @@ storeOn() {
   assert_not_exists lib/tags/untagged
 }
 
+@test "SILCOPY and SILMOVE are reserved, but fine below another tag" {
+  SIL_TAG="silcopy, SILMOVE/Sub, Misc/SilCopy"
+  run applyTags "$hash"
+  assert_failure
+  assert_output --partial "'SILCOPY' is reserved for WebSIL, to copy images to another library - ignored: silcopy"
+  assert_output --partial "'SILMOVE' is reserved for WebSIL, to move images to another library - ignored: SILMOVE/Sub"
+  assert_output --partial "Tagged: Misc/SilCopy"
+  assert_not_exists lib/tags/silcopy
+  assert_not_exists lib/tags/SILMOVE
+}
+
 @test "a tag removes Untagged; a tag that existed does too" {
   markUntagged "$hash"
   assert_link_exists "lib/tags/Untagged/$hash.png"

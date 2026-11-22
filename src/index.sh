@@ -272,12 +272,24 @@ function sourceName {
 #   0 on success, 1 if the file can't be written
 #######################################
 function sourceAdd {
-    local file source tmp
+    sourceRecord "$1" "$(sourceName "$2")"
+}
+
+#######################################
+# Record a source already in its recorded form (sourceName), unless
+# already recorded, eg one copied from another library's sources file.
+# Arguments:
+#   $1 - Image hash
+#   $2 - Source, as recorded: a URL, or file:<name>
+# Returns:
+#   0 on success, 1 if the file can't be written
+#######################################
+function sourceRecord {
+    local file tmp
     file="$(sourcesFile)"
-    source="$(sourceName "$2")"
-    grep -qxF -- "$1 $source" "$file" 2> /dev/null && return 0
+    grep -qxF -- "$1 $2" "$file" 2> /dev/null && return 0
     tmp="$(silMktemp)" || return 1
-    { [[ -f "$file" ]] && cat -- "$file"; printf '%s %s\n' "$1" "$source"; } \
+    { [[ -f "$file" ]] && cat -- "$file"; printf '%s %s\n' "$1" "$2"; } \
         | sourcesWriteSorted "$tmp"
     placeLibraryFile "$tmp" "$file"
 }

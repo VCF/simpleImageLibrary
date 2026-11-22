@@ -73,6 +73,12 @@ Web page:
 
 Manifests only:
   STOPSIL              Stop reading the manifest at this line
+  COPY SRC -> DEST     Copy the images whose hashes follow to library DEST
+                       (alias CP, SILCOPY). Without 'SRC ->', from the library
+                       in use. Ends at the next line that isn't a hash
+  MOVE SRC -> DEST     As COPY, then remove the images from SRC
+                       (alias MV, SILMOVE)
+  STOPCOPY, STOPMOVE   End a COPY or MOVE block, for legibility
 
 Settings are read in this order, with later sources taking precedence:
   ~/.sil.conf          Your defaults
@@ -95,6 +101,11 @@ Examples:
 
   # Repair, then check, a library
   sil REBUILD CHECK
+
+  # Copy images to another library: in copy.txt, put a line such as
+  #   COPY ~/Pictures/sil -> ~/Pictures/work
+  # followed by the hashes of the images, one per line, then run
+  sil copy.txt
 
 Exit status:
   0 if everything succeeded, 1 if anything failed

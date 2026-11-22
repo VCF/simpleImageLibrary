@@ -311,6 +311,33 @@ teardown() {
   assert_equal "${_silArgs[*]}" "a.jpg"
 }
 
+@test "parseCliParams ignores STOPCOPY and STOPMOVE, and halts on COPY and MOVE" {
+  run parseCliParams STOPCOPY stopmove a.jpg
+  assert_success
+  assert_output --partial "STOPCOPY only applies in a manifest - ignored"
+  assert_output --partial "STOPMOVE only applies in a manifest - ignored"
+  local token
+  for token in 'COPY=a -> b' 'cp=b' SILCOPY 'MOVE=a -> b' mv SilMove; do
+    run parseCliParams "$token" a.jpg
+    assert_failure
+    assert_output --partial "only applies in a manifest"
+  done
+}
+
+@test "saveParams and restoreParams can use a store of the caller's" {
+  # shellcheck disable=SC2034  # Used by name, through saveParams
+  local -A mine=()
+  SIL_TAG=Outer
+  saveParams
+  SIL_TAG=Middle
+  saveParams mine
+  SIL_TAG=Inner
+  restoreParams mine
+  assert_equal "$SIL_TAG" Middle
+  restoreParams
+  assert_equal "$SIL_TAG" Outer
+}
+
 @test "parseCliParams treats an existing NAME=x file as a URI" {
   touch "weird=name.jpg"
   parseCliParams "weird=name.jpg"

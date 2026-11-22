@@ -6,7 +6,7 @@ srcLib "tags"
 srcLib "replace"
 
 ## Successful outcome tags, in reporting order; anything else is a failure
-declare -ga _silSuccessTags=(ADDED SHRINK UPGRADED DUPE FOUND REMOVED)
+declare -ga _silSuccessTags=(ADDED SHRINK UPGRADED DUPE FOUND REMOVED COPIED MOVED)
 
 ## Outcome tag -> count, for the run summary
 declare -gA _silOutcomes=()
@@ -199,6 +199,17 @@ function updateStored {
 }
 
 #######################################
+# Make sure the tools for adding images are installed.
+# Returns:
+#   0 if they are; halts (msgError) with install instructions otherwise
+#######################################
+function requireImageTools {
+    requireTool identify imagemagick "inspect images"
+    requireTool findimagedupes findimagedupes "fingerprint images"
+    requireTool ffmpeg ffmpeg "fingerprint animations and videos"
+}
+
+#######################################
 # Process one URI (REQ-03): a hash selects a stored image; a URL already
 # recorded as a source is a DUPE of its image, unless REFETCH; any other
 # URL or local path is recovered and added. The URI is recorded as a source of
@@ -227,9 +238,7 @@ function processURI {
     local uri="$1" base="${2:-}" lineNum="${3:-}"
     local kind path tmp hash rv isNew=0
     msgInfo "${lineNum:+[$lineNum] }$uri"
-    requireTool identify imagemagick "inspect images"
-    requireTool findimagedupes findimagedupes "fingerprint images"
-    requireTool ffmpeg ffmpeg "fingerprint animations and videos"
+    requireImageTools
 
     kind="$(uriKind "$uri")"
     path="$uri"

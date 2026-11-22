@@ -4,6 +4,7 @@ srcLib "params"
 srcLib "ingest"
 srcLib "report"
 srcLib "library"
+srcLib "copy"
 
 ## Parameters that can't change within a manifest
 declare -gA _silManifestBlocked=(
@@ -22,7 +23,11 @@ declare -gA _silManifestBlocked=(
 # (REQ-02). LINK and REMAP
 # are carried out at their line, LINK waiting for the user if it must ask.
 # GITWEB is recorded in the web page's stamp at its line, so it lasts.
-# STOPSIL ends the manifest at its line, leaving the remaining lines unread. Each
+# STOPSIL ends the manifest at its line, leaving the remaining lines unread.
+# A COPY or MOVE line starts a block: the hashes on the lines after it are
+# copied or moved to another library (copyStored), until any other line
+# (comments and blank lines aside) ends it. STOPCOPY and STOPMOVE do
+# nothing but end a block, for legibility. Each
 # setting other than TAG and UNTAG is echoed with its previous value, so
 # overrides of the library's settings are visible. Settings,
 # including the library, are restored afterwards, so each manifest is
@@ -45,6 +50,7 @@ declare -gA _silManifestBlocked=(
 function parseManifest {
     local path="$1"
     local base line lineNum=0 canon lib home was now rv=0 urisSeen=0
+    local mode value
     local -a tokens=()
 
     if [[ ! -f "$path" || ! -r "$path" ]]; then
@@ -71,6 +77,21 @@ function parseManifest {
         ## containing '#' survive
         line="$(trim "$line")"
         [[ -z "$line" || "$line" == \#* ]] && continue
+
+        if copyBlockLine "$line" "$base" mode value; then
+            openCopyBlock "$mode" "$value" "$base" "$path line $lineNum" || rv=1
+            continue
+        fi
+        if [[ -n "$_silCopyMode" ]]; then
+            if [[ "$line" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+                urisSeen=1
+                logErrBegin
+                copyStored "$line" "$lineNum" "${tokens[@]}" || rv=1
+                logOutcome "$line"
+                continue
+            fi
+            closeCopyBlock
+        fi
 
         if isParamToken "$line"; then
             canon="$(paramCanonical "$(trim "${line%%=*}")")"
@@ -129,6 +150,8 @@ function parseManifest {
                 flagIsSet BUILDWEB || webGitNote
                 continue
             fi
+            ## Only end a block, which the line has done already
+            [[ "$canon" == STOPCOPY || "$canon" == STOPMOVE ]] && continue
             if [[ "$canon" == STOPSIL ]]; then
                 setParamToken "$line" "$path line $lineNum"
                 if flagIsSet STOPSIL; then
@@ -155,9 +178,15 @@ function parseManifest {
     Found in: $path line $lineNum"
             rv=1
         else
-            if (( ! urisSeen )) && [[ -z "${SIL_LIBRARY:-}" ]]; then
-                msgWarn "[!] No library for this manifest - skipped: $path
-    Set LIBRARY at the top of the manifest, give one on the command line,
+            ## A COPY or MOVE block names its own libraries, so URIs may
+            ## have been seen without one
+            if [[ -z "${SIL_LIBRARY:-}" ]]; then
+                if (( urisSeen )); then
+                    msgWarn "[!] No library for the URIs from line $lineNum - rest of manifest skipped: $path"
+                else
+                    msgWarn "[!] No library for this manifest - skipped: $path"
+                fi
+                msgWarn "    Set LIBRARY at the top of the manifest, give one on the command line,
     or keep the manifest inside a library folder"
                 rv=1
                 break
@@ -169,6 +198,7 @@ function parseManifest {
         fi
     done < "$path"
 
+    closeCopyBlock
     logFinish
     _silHaltHook=""
     restoreParams

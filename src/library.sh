@@ -69,11 +69,15 @@ function clearLeftoverTemp {
 #   _silCommandLine; updates _silLibraryLocks; clears _silHaltHook on refusal
 # Arguments:
 #   $1 - Absolute library path
+#   $2 - 'try' to warn and return 1 if another process has the lock,
+#        rather than halt, eg for a COPY target (the manifest's logs are
+#        then this run's own, so are kept)
 # Returns:
-#   0 once locked; halts (msgError) if locked elsewhere, or locking fails
+#   0 once locked; 1 if locked elsewhere with 'try'; otherwise halts
+#   (msgError) if locked elsewhere, or locking fails
 #######################################
 function lockLibrary {
-    local lib="$1" lockPath fd errTxt rc
+    local lib="$1" mode="${2:-}" lockPath fd errTxt rc
     [[ -n "${_silLibraryLocks[$lib]:-}" ]] && return 0
     requireTool flock util-linux "keep two runs from using a library at once"
     lockPath="$lib/.tmp/$_silLockFile"
@@ -83,7 +87,12 @@ function lockLibrary {
     fi
     errTxt="$(flock -n -E "$_silLockBusy" "$fd" 2>&1)"
     rc=$?
-    if (( rc == _silLockBusy )); then
+    if (( rc == _silLockBusy )) && [[ "$mode" == try ]]; then
+        exec {fd}>&-
+        msgWarn "[!] Library is in use by another sil: $lib
+$(lockHolderText "$lib")"
+        return 1
+    elif (( rc == _silLockBusy )); then
         ## Any logs beside a manifest are not this run's to finish: they may
         ## belong to the very run holding the lock. No URI can have been
         ## processed yet, as LIBRARY must precede them

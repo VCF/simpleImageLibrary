@@ -192,6 +192,17 @@ writeOwner() {
   refute_output --partial "rm '"
 }
 
+@test "lockLibrary with 'try' warns and fails rather than halting" {
+  mkdir -p lib/images lib/tags
+  holdLock lib
+  writeOwner lib "$$" "$(uname -n)"
+  run lockLibrary "$TEST_SANDBOX/lib" try
+  assert_failure
+  assert_output --partial "Library is in use by another sil: $TEST_SANDBOX/lib"
+  lockLibrary "$TEST_SANDBOX/lib" try 2> /dev/null || :
+  assert_equal "${_silLibraryLocks[$TEST_SANDBOX/lib]:-}" ""
+}
+
 @test "a holder recorded as ended on this machine is explained" {
   mkdir -p lib/images lib/tags
   holdLock lib

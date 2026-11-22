@@ -20,6 +20,8 @@ of standard open source tools, and aims to stay simple.
 * **Duplicate detection** by visual fingerprint, so a rescaled or converted copy
   of an image isn't stored twice, with a separate record of every source. A
   larger copy can optionally replace the stored image (`KEEPLARGER`)
+* **Copy or move images between libraries** from a manifest, with their tags
+  and sources (`COPY`, `MOVE`)
 * **Tags** as nested folders you can browse, with aliases (`LINK`) and
   controlled vocabularies (`REMAP`)
 * **Automatic date tags**, linked from day to day, and an `Untagged` tag, so
@@ -139,7 +141,7 @@ types are:
 | Parameter | Value | Default | Where | Function |
 | --------- | ----- | ------- | ----- | -------- |
 | `LIBRARY` | Path | See above | G C M | The library to use. Created if needed |
-| `TAG`, `TAGS` | Tags | None | C M | Tags to apply, comma separated. `/` or `:` separates levels of a hierarchy, eg `Animal/Dog`. Case-insensitive. `Date` and `Untagged` are reserved |
+| `TAG`, `TAGS` | Tags | None | C M | Tags to apply, comma separated. `/` or `:` separates levels of a hierarchy, eg `Animal/Dog`. Case-insensitive. `Date`, `Untagged`, `SILCOPY` and `SILMOVE` are reserved |
 | `UNTAG`, `UNTAGS` | Tags | None | C M | Tags to remove from images already in the library. `*` removes all but the date tag |
 | `REMOVE` | Flag | Off | C M | Remove images from the library, with their tags and records |
 | `LINK` | `SOURCE -> TARGET` | None | C M | Make tag `SOURCE` a symlink to tag `TARGET`, as an alias. Asks before moving any images already in `SOURCE` |
@@ -159,6 +161,10 @@ types are:
 | `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
 | `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
 | `STOPSIL` | Flag | Off | M | Stop reading the manifest at this line |
+| `COPY`, `CP`, `SILCOPY` | `SOURCE -> TARGET` | None | M | Copy the images whose hashes follow, one per line, from library `SOURCE` to library `TARGET`, with their tags and sources. `SOURCE ->` may be left out, for the library in use. Both must exist. The block ends at the next line that isn't a hash. In the target they are added as new images, with its settings, and dated today. `SILCOPY` is a reserved tag |
+| `MOVE`, `MV`, `SILMOVE` | `SOURCE -> TARGET` | None | M | As `COPY`, then remove each image from `SOURCE` once its copy succeeded. `SILMOVE` is a reserved tag |
+| `STOPCOPY` | Flag | Off | M | End a `COPY` or `MOVE` block. Does nothing else; for legibility |
+| `STOPMOVE` | Flag | Off | M | As `STOPCOPY` |
 
 # WebSIL
 
@@ -184,6 +190,12 @@ not even a network connection.
   ```bash
   sil LIBRARY=~/Pictures/sil BUILDWEB ~/Downloads/WebSIL_Manifest_2026-11-21_1042.txt
   ```
+
+* **Copy or move** images to another library: select them, and Add the tag
+  `SILCOPY` or `SILMOVE`. These are queued as `COPY` or `MOVE` blocks at the end
+  of the manifest, after the tag changes. Edit the manifest to give the target
+  library in place of the placeholder before running it; SIL refuses the block
+  until then. `SILMOVE` deletes the images from this library once copied
 
 * **Summary**: counts and sizes of images by type, and a histogram of sizes
 
