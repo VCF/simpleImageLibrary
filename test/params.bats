@@ -43,6 +43,8 @@ teardown() {
   assert_output "TAG"
   run paramCanonical usetor
   assert_output "TOR"
+  run paramCanonical silstop
+  assert_output "STOPSIL"
   run paramCanonical maptag
   assert_output "REMAP"
   run paramCanonical TagMap

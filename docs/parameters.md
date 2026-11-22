@@ -481,7 +481,9 @@ with its scripts, styles and data in `web/`. The page runs from the library
 folder in any web browser, with no server or network. See WebSIL in the README
 
 * `web/imageData.js` holds every image's hash, suffix, size, date added and
-  tags, and the tag folders and `LINK` aliases. It is JavaScript rather than
+  tags, and the tag folders and `LINK` aliases. Also how many leading hash
+  characters tell every image apart, so the page can show short names (the full
+  hash is used everywhere else, eg in manifests). It is JavaScript rather than
   JSON as browsers won't let a page read a local JSON file, but will run a
   local script
 * The page files are copied from SIL's `templates/web` on each build, so a
@@ -537,6 +539,7 @@ Indicates that `torsocks` should be used to recover a remote URI
   not available
 ## STOPSIL
 
+* ALIAS: `SILSTOP`
 * Flag parameter; only applies in a manifest
 
 Stops reading a manifest at its line: the lines after it are ignored, as if the

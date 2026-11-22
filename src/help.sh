@@ -72,7 +72,7 @@ Web page:
                        than ignoring it (alias WEBGIT). Kept until changed
 
 Manifests only:
-  STOPSIL              Stop reading the manifest at this line
+  STOPSIL              Stop reading the manifest at this line (alias SILSTOP)
   COPY SRC -> DEST     Copy the images whose hashes follow to library DEST
                        (alias CP, SILCOPY). Without 'SRC ->', from the library
                        in use. Ends at the next line that isn't a hash

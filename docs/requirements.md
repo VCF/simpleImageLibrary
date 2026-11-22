@@ -635,7 +635,8 @@ changes in a web browser. `BUILDWEB` builds it (see
 * The page loads its data with `<script src>`, as browsers refuse `fetch()` of
   `file://` URLs:
   * `web/imageData.js` - every image's hash, suffix, size, date added and tag
-    numbers, plus the tag folders and `LINK` aliases. Rebuilt only by
+    numbers, plus the tag folders, `LINK` aliases, and how many leading hash
+    characters tell every image apart. Rebuilt only by
     `BUILDWEB`, as a large library takes a while
   * `web/silStamp.js` - when a run last used the library, its command line, and
     when the data was built. Written by every run using a library that has a

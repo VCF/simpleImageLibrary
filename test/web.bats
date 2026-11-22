@@ -62,6 +62,24 @@ function imageRow {
   assert_output --regexp ",null,\[3\]\]"
 }
 
+@test "webDataJs records how many hash characters tell images apart" {
+  local a b c
+  a="0060d$(printf '0%.0s' {1..35})"
+  b="0061a$(printf '0%.0s' {1..35})"
+  c="7f$(printf '0%.0s' {1..38})"
+  run webDataJs 0 < <(printf 'I\t%s.jpg\t1\n' "$a" "$b" "$c")
+  assert_success
+  assert_output --partial '"prefix":4};'
+  assert_output --partial "[\"$a\",\"jpg\""
+}
+
+@test "webDataJs prefix is 1 for one image, and 0 for none" {
+  run webDataJs 0 < <(printf 'I\t%s.png\t1\n' "$(printf 'a%.0s' {1..40})")
+  assert_output --partial '"prefix":1};'
+  run webDataJs 0 < /dev/null
+  assert_output --partial '"prefix":0};'
+}
+
 @test "buildWeb numbers the first tag 0, not blank" {
   tagImage "$anim" Animal
   buildWeb 2> /dev/null

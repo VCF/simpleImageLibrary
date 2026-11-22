@@ -62,7 +62,9 @@
   /** @type {Img[]} Images passing the filters, in sort order. */
   let view = [];
   let rendered = 0;
-  /** Vocabulary for autocomplete: tags, aliases and their image counts. */
+  /** The library's tags and aliases, with their image counts. */
+  let libraryVocab = [];
+  /** Vocabulary for autocomplete: libraryVocab, then new tags in queued changes. */
   let vocab = [];
   /** Lowercased tag path -> images having it or a tag below it. */
   const tagCount = new Map();
@@ -121,10 +123,41 @@
       };
     });
     shuffle();
-    vocab = names.map((t) => ({ label: t, target: t, count: tagCount.get(t.toLowerCase()) || 0 }));
+    libraryVocab = names.map((t) => ({ label: t, target: t, count: tagCount.get(t.toLowerCase()) || 0 }));
     for (const [alias, target] of data.aliases) {
-      vocab.push({ label: alias, target, alias: true, count: tagCount.get(target.toLowerCase()) || 0 });
+      libraryVocab.push({ label: alias, target, alias: true, count: tagCount.get(target.toLowerCase()) || 0 });
     }
+  }
+
+  /**
+   * Rebuild the autocomplete vocabulary: the library's tags, plus tags
+   * that queued changes would add, so a new tag can be picked again.
+   * @returns {void}
+   */
+  function refreshVocab() {
+    const known = new Set(libraryVocab.map((v) => v.label.toLowerCase()));
+    const queued = [];
+    for (const p of pending) {
+      if (p.op !== 'TAG') continue;
+      for (const t of p.tags) {
+        if (known.has(t.toLowerCase())) continue;
+        known.add(t.toLowerCase());
+        queued.push({ label: t, target: t, note: 'queued', count: 0 });
+      }
+    }
+    vocab = libraryVocab.concat(queued);
+  }
+
+  /**
+   * An image's name for display: enough of its hash to tell it apart from
+   * every other image in the library (BUILDWEB's prefix), plus two
+   * characters. Everything else, eg manifests, uses the full hash.
+   * @param {string} hash
+   * @returns {string} eg "0060d...", or the full hash if it is no shorter
+   */
+  function shortHash(hash) {
+    const n = (data.prefix || hash.length) + 2;
+    return n < hash.length ? hash.slice(0, n) + '...' : hash;
   }
 
   /**
@@ -551,7 +584,7 @@
     const keys = slideTimer
       ? '← → manual · ↑ ↓ slower/faster · Space pause'
       : '← → move · Space slideshow';
-    add(` · ${im.hash}  —  ${keys} · X select · I hide this · Esc close`, 'muted');
+    add(` · ${shortHash(im.hash)}  —  ${keys} · X select · I hide this · Esc close`, 'muted');
     const tags = document.createElement('div');
     tags.className = 'lbtags';
     if (!im.tags.length) {
@@ -791,7 +824,8 @@
   // ------------------------------------------------------- queued changes
 
   /**
-   * Save queued changes in the browser, so a reload doesn't lose them.
+   * Save queued changes in the browser, so a reload doesn't lose them,
+   * and offer the tags they add in autocomplete.
    * @returns {void}
    */
   function savePending() {
@@ -799,6 +833,7 @@
     const n = pending.reduce((sum, p) => sum + p.hashes.length, 0);
     $('pendingCount').textContent = n.toLocaleString();
     $('pendingCount').classList.toggle('on', n > 0);
+    refreshVocab();
     try { localStorage.setItem(storeKey, JSON.stringify({ pending })); } catch (e) { /* private mode */ }
   }
 

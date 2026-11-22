@@ -50,6 +50,7 @@ declare -gA _silParamAlias=(
     [TAGMAP]=REMAP
     [MAP]=REMAP
     [WEBGIT]=GITWEB
+    [SILSTOP]=STOPSIL
     [CP]=COPY
     [SILCOPY]=COPY
     [MV]=MOVE

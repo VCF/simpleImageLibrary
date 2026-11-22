@@ -160,7 +160,7 @@ types are:
 | `REBUILD` | Flag | Off | C | Repair the library from its stored images, keeping tags. Runs before `CHECK` if both are given |
 | `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
 | `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
-| `STOPSIL` | Flag | Off | M | Stop reading the manifest at this line |
+| `STOPSIL`, `SILSTOP` | Flag | Off | M | Stop reading the manifest at this line |
 | `COPY`, `CP`, `SILCOPY` | `SOURCE -> TARGET` | None | M | Copy the images whose hashes follow, one per line, from library `SOURCE` to library `TARGET`, with their tags and sources. `SOURCE ->` may be left out, for the library in use. Both must exist. The block ends at the next line that isn't a hash. In the target they are added as new images, with its settings, and dated today. `SILCOPY` is a reserved tag |
 | `MOVE`, `MV`, `SILMOVE` | `SOURCE -> TARGET` | None | M | As `COPY`, then remove each image from `SOURCE` once its copy succeeded. `SILMOVE` is a reserved tag |
 | `STOPCOPY` | Flag | Off | M | End a `COPY` or `MOVE` block. Does nothing else; for legibility |
@@ -175,7 +175,9 @@ not even a network connection.
 * **Browse** a grid of images, each either fitted whole into its tile or
   cropped to fill it (Tiles: Fit or Fill). Click one to fill the window, then
   move with the arrow keys or Page Up/Down, and leave with Escape. Its tags are
-  shown there; click a tag's × to queue removing it
+  shown there; click a tag's × to queue removing it. The image's name is
+  shortened to the start of its hash: enough characters to tell it from every
+  other image in the library, plus two, eg `0060d...`
 * **Slideshow**: in the full window view, Space starts or pauses a slideshow,
   moving on every 5 seconds. While it runs, Up and Down make it slower or
   faster (1, 3, 5, 10, 15, 30 or 60 seconds), and Left, Right or Page Up/Down
@@ -187,7 +189,8 @@ not even a network connection.
   can also be filtered by the date added, size and type, and sorted by date,
   size or at random
 * **Change tags**: select images (Select, or Ctrl+click, Shift+click for a
-  range), type tags, and Add or Remove them. Show only selected narrows the
+  range), type tags, and Add or Remove them. A new tag, once queued, is offered
+  by autocomplete like the library's own. Show only selected narrows the
   grid to the selection to check it first. A web page can't change files, so
   changes are queued and saved as a manifest naming each image by its hash.
   Download it, or copy it into a `.txt` file, then run it as the page shows:

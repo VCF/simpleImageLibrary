@@ -85,6 +85,14 @@ EOF
   assert_equal "${SIL_STOPSIL+set}" ""
 }
 
+@test "SILSTOP is an alias for STOPSIL" {
+  printf 'plasma.png\nSILSTOP\nanimated.gif\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_success
+  assert_output --partial "STOPSIL: rest of manifest skipped (line 2)"
+  refute_output --partial "animated.gif"
+}
+
 @test "STOPSIL=off does not stop the manifest" {
   printf 'plasma.png\nSTOPSIL=off\nanimated.gif\n' > work/m.txt
   run parseManifest work/m.txt
