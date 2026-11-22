@@ -174,8 +174,13 @@ not even a network connection.
 
 * **Browse** a grid of images, each either fitted whole into its tile or
   cropped to fill it (Tiles: Fit or Fill). Click one to fill the window, then
-  move with the arrow keys, Page Up/Down or Space, and leave with Escape. Its
-  tags are shown there; click a tag's × to queue removing it
+  move with the arrow keys or Page Up/Down, and leave with Escape. Its tags are
+  shown there; click a tag's × to queue removing it
+* **Slideshow**: in the full window view, Space starts or pauses a slideshow,
+  moving on every 5 seconds. While it runs, Up and Down make it slower or
+  faster (1, 3, 5, 10, 15, 30 or 60 seconds), and Left, Right or Page Up/Down
+  return to moving by hand. It stops at the last image, and is always off when
+  the view is opened again
 * **Filter** by tags, typed with autocomplete or picked from the tag tree. All
   tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
   tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images

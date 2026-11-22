@@ -89,6 +89,12 @@
   let pending = [];
   let pendingHashes = new Set();
   let lbIndex = -1;
+  /** Slideshow delays offered, in seconds; Up and Down move along these. */
+  const SLIDE_DELAYS = [1, 3, 5, 10, 15, 30, 60];
+  const SLIDE_DEFAULT = SLIDE_DELAYS.indexOf(5);
+  let slideDelay = SLIDE_DEFAULT;
+  /** Timer for the next slide, or null when the lightbox is manual. */
+  let slideTimer = null;
 
   // ---------------------------------------------------------------- data
 
@@ -541,7 +547,11 @@
     };
     add(`${lbIndex + 1} / ${view.length} · ${im.date || 'no date'} · ${humanSize(im.bytes)} · ${im.ext}`);
     if (selected.has(im.hash)) add(' · selected', 'sel');
-    add(` · ${im.hash}  —  ← → move · Space next · X select · I hide this · Esc close`, 'muted');
+    if (slideTimer) add(` · ▶ every ${SLIDE_DELAYS[slideDelay]}s`, 'sel');
+    const keys = slideTimer
+      ? '← → manual · ↑ ↓ slower/faster · Space pause'
+      : '← → move · Space slideshow';
+    add(` · ${im.hash}  —  ${keys} · X select · I hide this · Esc close`, 'muted');
     const tags = document.createElement('div');
     tags.className = 'lbtags';
     if (!im.tags.length) {
@@ -573,7 +583,7 @@
     b.type = 'button';
     b.textContent = queued ? '↺' : '×';
     b.title = queued ? 'Keep this tag' : 'Remove this tag';
-    // Keep focus off the button, so Space still moves to the next image
+    // Keep focus off the button, so Space still starts or pauses the slideshow
     b.addEventListener('mousedown', (e) => e.preventDefault());
     b.addEventListener('click', () => {
       if (queued) {
@@ -620,6 +630,8 @@
    * @returns {void}
    */
   function closeLightbox() {
+    stopSlideshow();
+    slideDelay = SLIDE_DEFAULT;
     $('lightbox').hidden = true;
     $('lbMedia').replaceChildren();
     while (rendered <= lbIndex && rendered < view.length) renderMore();
@@ -635,6 +647,62 @@
   function lightboxStep(step) {
     const i = Math.max(0, Math.min(view.length - 1, lbIndex + step));
     if (i !== lbIndex) { lbIndex = i; showLightbox(); }
+  }
+
+  /**
+   * Start the slideshow, or pause it if running. It pauses itself on
+   * reaching the last image.
+   * @returns {void}
+   */
+  function toggleSlideshow() {
+    if (slideTimer) {
+      stopSlideshow();
+      toast('Slideshow paused');
+    } else {
+      scheduleSlide();
+      toast(`Slideshow: every ${SLIDE_DELAYS[slideDelay]}s`);
+    }
+    showLightbox();
+  }
+
+  /**
+   * Time the next slide from now, replacing any pending one.
+   * @returns {void}
+   */
+  function scheduleSlide() {
+    clearTimeout(slideTimer);
+    slideTimer = setTimeout(() => {
+      if (lbIndex >= view.length - 1) {
+        stopSlideshow();
+        showLightbox();
+        toast('Slideshow ended: last image');
+        return;
+      }
+      scheduleSlide();
+      lightboxStep(1);
+    }, SLIDE_DELAYS[slideDelay] * 1000);
+  }
+
+  /**
+   * Return the lightbox to manual mode.
+   * @returns {void}
+   */
+  function stopSlideshow() {
+    clearTimeout(slideTimer);
+    slideTimer = null;
+  }
+
+  /**
+   * Move the running slideshow to the next delay up or down, stopping at
+   * either end, and time the next slide with it.
+   * @param {number} step - +1 slower, -1 faster
+   * @returns {void}
+   */
+  function slideDelayStep(step) {
+    slideDelay = Math.max(0, Math.min(SLIDE_DELAYS.length - 1, slideDelay + step));
+    scheduleSlide();
+    toast(`Slideshow: every ${SLIDE_DELAYS[slideDelay]}s`);
+    showLightbox();
   }
 
   // -------------------------------------------------------------- tag tree
@@ -1200,7 +1268,10 @@
     $('lbClose').addEventListener('click', closeLightbox);
     $('lbMedia').addEventListener('click', (e) => {
       if (e.target.tagName === 'VIDEO') return;
+      const wasRunning = slideTimer;
+      stopSlideshow();
       lightboxStep(e.clientX < window.innerWidth / 3 ? -1 : 1);
+      if (wasRunning) showLightbox();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -1210,10 +1281,22 @@
         // the ones the lightbox doesn't use, and X and I with them
         if (e.key.length === 1) e.preventDefault();
         const keys = {
-          ArrowRight: 1, ArrowDown: 1, PageDown: 1, ' ': 1,
+          ArrowRight: 1, ArrowDown: 1, PageDown: 1,
           ArrowLeft: -1, ArrowUp: -1, PageUp: -1,
         };
-        if (e.key in keys) { lightboxStep(keys[e.key]); e.preventDefault(); }
+        // While the slideshow runs, Up and Down change its delay; the other
+        // movement keys return to manual mode before moving
+        const delayKeys = { ArrowUp: 1, ArrowDown: -1 };
+        if (e.key === ' ') { toggleSlideshow(); e.preventDefault(); }
+        else if (slideTimer && e.key in delayKeys) { slideDelayStep(delayKeys[e.key]); e.preventDefault(); }
+        else if (e.key in keys) {
+          const wasRunning = slideTimer;
+          stopSlideshow();
+          lightboxStep(keys[e.key]);
+          // lightboxStep doesn't redraw at either end; the caption still must
+          if (wasRunning) showLightbox();
+          e.preventDefault();
+        }
         else if (e.key === 'Home') { lbIndex = 0; showLightbox(); e.preventDefault(); }
         else if (e.key === 'End') { lbIndex = view.length - 1; showLightbox(); e.preventDefault(); }
         else if (e.key === 'Escape') closeLightbox();

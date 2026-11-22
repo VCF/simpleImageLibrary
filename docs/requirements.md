@@ -656,6 +656,11 @@ changes in a web browser. `BUILDWEB` builds it (see
   queued
 * Tag filters match a tag and every tag below it. All required tags must
   match, and no excluded (`!`) one
+* The full window view has a slideshow, off whenever the view opens. Space
+  starts or pauses it. It moves on every 5 seconds; while it runs, Up and Down
+  step the delay through 1, 3, 5, 10, 15, 30 and 60 seconds, without wrapping.
+  Left, Right, Page Up and Page Down pause it and move. It pauses at the last
+  image. Escape leaves the view, ending the slideshow and resetting its delay
 * `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`), unless
   `GITWEB` is on. The setting is kept in `web/silStamp.js`, and applied to
   `.gitignore` by `BUILDWEB`
