@@ -49,6 +49,14 @@ teardown() {
   assert_output "REMAP"
   run paramCanonical map
   assert_output "REMAP"
+  run paramCanonical webgit
+  assert_output "GITWEB"
+}
+
+@test "GITWEB has no default, so an unset value means not given" {
+  [[ -z "${SIL_GITWEB:-}" ]]
+  setParamToken GITWEB=off
+  assert_equal "$SIL_GITWEB" 0
 }
 
 @test "paramCanonical fails on unknown or empty names" {

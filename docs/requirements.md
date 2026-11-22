@@ -616,4 +616,9 @@ changes in a web browser. `BUILDWEB` builds it (see
   browser until the data shows them done
 * Tag filters match a tag and every tag below it. All required tags must
   match, and no excluded (`!`) one
-* `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`)
+* `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`), unless
+  `GITWEB` is on. The setting is kept in `web/silStamp.js`, and applied to
+  `.gitignore` by `BUILDWEB`
+* Files SIL writes for the page start with a comment saying what the file does,
+  and that it is generated and should not be edited. `web/silStamp.js` puts
+  one value on each line, for people reading or grepping it

@@ -21,6 +21,7 @@ declare -gA _silManifestBlocked=(
 # set before the first URI, and the library's settings are then loaded
 # (REQ-02). LINK and REMAP
 # are carried out at their line, LINK waiting for the user if it must ask.
+# GITWEB is recorded in the web page's stamp at its line, so it lasts.
 # STOPSIL ends the manifest at its line, leaving the remaining lines unread. Each
 # setting other than TAG and UNTAG is echoed with its previous value, so
 # overrides of the library's settings are visible. Settings,
@@ -110,6 +111,22 @@ function parseManifest {
                 else
                     remapAdd "$SIL_REMAP" || rv=1
                 fi
+                continue
+            fi
+            ## Kept in the web page's stamp at once, as manifest settings
+            ## are undone when it ends
+            if [[ "$canon" == GITWEB ]]; then
+                if [[ -z "${SIL_LIBRARY:-}" ]]; then
+                    msgWarn "[!] GITWEB needs a library - ignored
+    Found in: $path line $lineNum"
+                    rv=1
+                    continue
+                fi
+                setParamToken "$line" "$path line $lineNum"
+                msgInfo "  GITWEB (line $lineNum)"
+                srcLib "web"
+                webStamp || rv=1
+                flagIsSet BUILDWEB || webGitNote
                 continue
             fi
             if [[ "$canon" == STOPSIL ]]; then

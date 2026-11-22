@@ -489,7 +489,38 @@ folder in any web browser, with no server or network. See WebSIL in the README
   the time and its command line to `web/silStamp.js`. The page compares this
   with its data's build time to say when it is out of date
 * `web/` and `WebSIL.html` are added to the library's `.gitignore`: they are
-  derived from the library, and would conflict when merged
+  derived from the library, and would conflict when merged. `GITWEB` shares
+  them through git instead
+* Every file SIL writes for the page begins with a comment saying what it is,
+  and that it is generated and should not be edited
+
+## GITWEB
+
+* ALIAS: `WEBGIT`
+* Default: off
+* Flag parameter; can't be set in configuration files, as the setting is kept
+  with the web page
+
+Shares the library's web page, `web/` and `WebSIL.html`, through git, for
+people who can clone a library but won't run `sil` to build their own page
+
+* The setting is kept in `web/silStamp.js` as `"gitweb":true` (or `false`), so
+  it lasts until changed: `sil GITWEB=on BUILDWEB` once, then `sil BUILDWEB`
+  keeps it. A clone of the library gets it along with the page
+* `BUILDWEB` applies it to the library's `.gitignore`:
+  * On: removes the `/web/` and `/WebSIL.html` lines, and shows the `git add`
+    command to share them
+  * Off: restores the lines. Git keeps files it already has, so if they were
+    committed, SIL shows the `git rm --cached` command to stop sharing them
+* Given without `BUILDWEB`, the setting is recorded in the stamp but
+  `.gitignore` waits for the next `BUILDWEB`. A library without a web page has
+  no stamp, so the setting is ignored with a warning
+* In a manifest, it is recorded at its line, and lasts after the manifest ends,
+  unlike other manifest settings
+* While on, every `sil` run changes `web/silStamp.js`, and every `BUILDWEB`
+  changes `web/imageData.js`, so these show as changes to commit. Two people
+  building the page will conflict in them: keep either side, and rerun
+  `sil BUILDWEB`
 
 ## TOR
 

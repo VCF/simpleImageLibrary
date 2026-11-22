@@ -1,5 +1,9 @@
 /* WebSIL styles. Colors are tokens, dark by default as images read best on
-   a dark surround; a light set follows the system preference. */
+   a dark surround; a light set follows the system preference.
+
+   Copied into a library's web/ folder by `sil BUILDWEB`, which replaces it
+   on each build: do not edit a library's copy. The source is SIL's
+   templates/web/websil.css. */
 :root {
   --bg: #121316;
   --panel: #1c1e22;

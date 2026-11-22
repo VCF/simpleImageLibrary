@@ -68,6 +68,8 @@ Maintenance:
 Web page:
   BUILDWEB             Build WebSIL.html in the library, for browsing it and
                        queueing tag changes in a web browser
+  GITWEB               With BUILDWEB, share the web page through git rather
+                       than ignoring it (alias WEBGIT). Kept until changed
 
 Manifests only:
   STOPSIL              Stop reading the manifest at this line

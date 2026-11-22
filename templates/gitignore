@@ -11,6 +11,7 @@
 # Images replaced by larger copies (KEEPLARGER)
 replacedWithHigherRes/
 
-# The web page and its data, built by each copy of the library (BUILDWEB)
+# The web page and its data, built by each copy of the library (BUILDWEB).
+# sil GITWEB=on BUILDWEB removes these lines, to share them through git
 /web/
 /WebSIL.html

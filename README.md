@@ -157,6 +157,7 @@ types are:
 | `CHECK` | Flag | Off | C | Report problems in the library, changing nothing. Exits with status 1 if any are found |
 | `REBUILD` | Flag | Off | C | Repair the library from its stored images, keeping tags. Runs before `CHECK` if both are given |
 | `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
+| `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
 | `STOPSIL` | Flag | Off | M | Stop reading the manifest at this line |
 
 # WebSIL
@@ -189,7 +190,9 @@ not even a network connection.
 The page's data isn't updated by every run, which would be slow for a large
 library. Instead, each run notes the time in `web/silStamp.js`, and the page
 says when its data is out of date and how to rebuild it. `web/` and
-`WebSIL.html` are kept out of git; each copy of a library builds its own.
+`WebSIL.html` are kept out of git, as each copy of a library builds its own.
+To share the page with people who clone the library but don't run `sil`, run
+`sil GITWEB=on BUILDWEB`, then commit `web/` and `WebSIL.html`.
 
 # Installation
 

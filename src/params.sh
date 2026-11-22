@@ -32,6 +32,7 @@ declare -gA _silParamType=(
     [CHECK]=flag
     [REBUILD]=flag
     [BUILDWEB]=flag
+    [GITWEB]=flag
     [TOR]=flag
     [STOPSIL]=flag
 )
@@ -44,6 +45,7 @@ declare -gA _silParamAlias=(
     [MAPTAG]=REMAP
     [TAGMAP]=REMAP
     [MAP]=REMAP
+    [WEBGIT]=GITWEB
 )
 
 ## Values applied by resetParams before any source is read
@@ -81,6 +83,7 @@ declare -gA _silParamScope=(
     [CHECK]=action
     [REBUILD]=action
     [BUILDWEB]=action
+    [GITWEB]=action
     [STOPSIL]=action
     [LIBRARY]=global
 )

@@ -119,7 +119,7 @@ function imageRow {
   _silCommandLine='sil TAG="Dog" x.jpg'
   webStamp
   run cat "$SIL_LIBRARY/web/silStamp.js"
-  assert_output --partial '"built":123}'
+  assert_output --partial '"built":123,'
   assert_output --partial '"command":"sil TAG=\"Dog\" x.jpg"'
 }
 
@@ -163,4 +163,112 @@ function imageRow {
   assert_success
   assert_line --index 0 'Back\slash|Say "Hi"'
   assert_line --index 1 --partial 'Say "Hi"'
+}
+
+## The stamp's GITWEB value
+function stampGitweb {
+  grep -o '"gitweb":[a-z]*' "$SIL_LIBRARY/web/silStamp.js"
+}
+
+@test "web data files start with a comment saying they are generated" {
+  buildWeb 2> /dev/null
+  local f
+  for f in WebSIL.html web/websil.js web/websil.css web/imageData.js web/silStamp.js; do
+    ## The opening comment, up to its close
+    run sed -n '1,/\*\/\|-->/p' "$SIL_LIBRARY/$f"
+    assert_output --regexp "^(<!doctype html>.)?(/\*|<!--)"
+    assert_output --regexp "[Dd]o not[[:space:]]+(\* )?edit"
+  done
+}
+
+@test "webStamp writes one value to a line, as valid JavaScript" {
+  buildWeb 2> /dev/null
+  local stamp="$SIL_LIBRARY/web/silStamp.js"
+  assert_file_contains "$stamp" '^  "built":[0-9]*,$'
+  assert_file_contains "$stamp" '^  "gitweb":false$'
+  command -v node > /dev/null || skip "node is not installed"
+  run node -e 'global.window = {}; require(process.argv[1]);
+    console.log(window.SIL_STAMP.gitweb, window.SIL_STAMP.built > 0)' "$stamp"
+  assert_output "false true"
+}
+
+@test "GITWEB on lets git share the page, and is kept by later runs" {
+  SIL_GITWEB=1
+  run buildWeb
+  assert_success
+  assert_output --partial "git -C '$SIL_LIBRARY' add web WebSIL.html"
+  assert_file_not_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+  assert_file_not_contains "$SIL_LIBRARY/.gitignore" '^/WebSIL.html$'
+  run stampGitweb
+  assert_output '"gitweb":true'
+  unset SIL_GITWEB
+  webStamp
+  run buildWeb
+  refute_output --partial "GITWEB"
+  run stampGitweb
+  assert_output '"gitweb":true'
+  assert_file_not_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+}
+
+@test "GITWEB off ignores the page again, and says how to remove committed copies" {
+  command -v git > /dev/null || skip "git is not installed"
+  SIL_GITWEB=1
+  buildWeb 2> /dev/null
+  git -C "$SIL_LIBRARY" init -q
+  git -C "$SIL_LIBRARY" add web WebSIL.html
+  SIL_GITWEB=0
+  run buildWeb
+  assert_success
+  assert_output --partial "rm -r --cached web WebSIL.html"
+  assert_file_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+  assert_file_contains "$SIL_LIBRARY/.gitignore" '^/WebSIL.html$'
+  run stampGitweb
+  assert_output '"gitweb":false'
+  run buildWeb
+  refute_output --partial "cached"
+}
+
+@test "sil GITWEB without BUILDWEB records it for the next build" {
+  buildWeb 2> /dev/null
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" WEBGIT
+  assert_success
+  assert_output --partial "next BUILDWEB applies it"
+  run stampGitweb
+  assert_output '"gitweb":true'
+  assert_file_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" BUILDWEB
+  assert_success
+  assert_file_not_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+}
+
+@test "sil GITWEB is ignored with a warning for a library without a web page" {
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" GITWEB=on
+  assert_success
+  assert_output --partial "GITWEB ignored"
+  assert_not_exists "$SIL_LIBRARY/web"
+}
+
+@test "GITWEB in a manifest is kept after the manifest ends" {
+  buildWeb 2> /dev/null
+  printf '%s\n' "GITWEB" "$plasma" > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" m.txt
+  assert_success
+  assert_output --partial "next BUILDWEB applies it"
+  run stampGitweb
+  assert_output '"gitweb":true'
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" BUILDWEB
+  assert_success
+  assert_file_not_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+}
+
+@test "GITWEB=off in a manifest with BUILDWEB applies to that build" {
+  SIL_GITWEB=1
+  buildWeb 2> /dev/null
+  printf '%s\n' "GITWEB=off" "$plasma" > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" BUILDWEB m.txt
+  assert_success
+  refute_output --partial "next BUILDWEB"
+  assert_file_contains "$SIL_LIBRARY/.gitignore" '^/web/$'
+  run stampGitweb
+  assert_output '"gitweb":false'
 }

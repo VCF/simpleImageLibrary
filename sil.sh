@@ -39,7 +39,7 @@ loadParams "$@"
 ## With no library yet, manifests may name one (REQ-06); anything else
 ## needs one now
 needLibrary=0
-if flagIsSet CHECK || flagIsSet REBUILD || flagIsSet BUILDWEB || [[ -n "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
+if flagIsSet CHECK || flagIsSet REBUILD || flagIsSet BUILDWEB || [[ -n "${SIL_LINK:-}${SIL_REMAP:-}${SIL_GITWEB:-}" ]]; then
     needLibrary=1
 fi
 for arg in "${_silArgs[@]}"; do
@@ -85,11 +85,15 @@ if [[ -n "${SIL_LINK:-}" ]]; then
     msgInfo "LINK $SIL_LINK"
     linkTag "$SIL_LINK" || status=1
 fi
+## GITWEB is applied to .gitignore by BUILDWEB
+if [[ -n "${SIL_GITWEB:-}" ]] && ! flagIsSet BUILDWEB; then
+    webGitNote
+fi
 
 if (( ${#_silArgs[@]} == 0 )); then
     if flagIsSet BUILDWEB; then
         buildWeb || status=1
-    elif ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}${SIL_REMAP:-}" ]]; then
+    elif ! flagIsSet REBUILD && ! flagIsSet CHECK && [[ -z "${SIL_LINK:-}${SIL_REMAP:-}${SIL_GITWEB:-}" ]]; then
         msgInfo "No images or manifests given, nothing more to do"
     fi
     exit "$status"

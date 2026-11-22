@@ -8,6 +8,10 @@
  *   web/silStamp.js  - window.SIL_STAMP, rewritten by every sil run
  * A page can't write to the library, so changes become a manifest the user
  * downloads or copies, and runs with sil.
+ *
+ * Copied into a library's web/ folder by `sil BUILDWEB`, which replaces it
+ * on each build: do not edit a library's copy. The source is SIL's
+ * templates/web/websil.js.
  */
 (function () {
   'use strict';
