@@ -183,6 +183,11 @@ not even a network connection.
   faster (1, 3, 5, 10, 15, 30 or 60 seconds), and Left, Right or Page Up/Down
   return to moving by hand. It stops at the last image, and is always off when
   the view is opened again
+* **Zoom**: in the full window view, `+` and `-` step through Fit all (the
+  whole image), Fit edge (its shorter side fills the window) and 1:1 (actual
+  pixels). Pan a cropped image with the wheel (Shift+wheel sideways) or by
+  dragging. `I` cycles the info line between minimal, extended and hidden, `R`
+  resets the view, and `H` or `?` lists every key
 * **Filter** by tags, typed with autocomplete or picked from the tag tree. All
   tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
   tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images

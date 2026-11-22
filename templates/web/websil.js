@@ -97,6 +97,30 @@
   let slideDelay = SLIDE_DEFAULT;
   /** Timer for the next slide, or null when the lightbox is manual. */
   let slideTimer = null;
+  /**
+   * Lightbox zoom levels, in the order + steps through them, each giving
+   * the scale for an image's natural size in a window of the given size.
+   * 1:1 is in screen pixels, which a HiDPI display has several of per CSS
+   * pixel.
+   */
+  const ZOOMS = [
+    { name: 'Fit all', scale: (w, h, vw, vh) => Math.min(vw / w, vh / h) },
+    { name: 'Fit edge', scale: (w, h, vw, vh) => Math.max(vw / w, vh / h) },
+    { name: '1:1', scale: () => 1 / (window.devicePixelRatio || 1) },
+  ];
+  let zoom = 0;
+  /** The point of the image at the window's centre, as fractions of its width and height. */
+  let panX = 0.5;
+  let panY = 0.5;
+  /**
+   * The lightbox image as last placed: its shown size, and whether it is
+   * wider or taller than the window. Null for a video or an image not loaded.
+   * @type {?{w: number, h: number, cropX: boolean, cropY: boolean}}
+   */
+  let lbPlace = null;
+  /** Lightbox info line levels, in the order I steps through them. */
+  const INFO_MODES = ['minimal', 'extended', 'hidden'];
+  let infoMode = 0;
 
   // ---------------------------------------------------------------- data
 
@@ -555,22 +579,48 @@
   }
 
   /**
-   * Show the lightbox's current image, and preload the next.
+   * Show the lightbox's current image, centred, and preload the next. The
+   * media is only replaced when the image changes, so redrawing the info
+   * line keeps the pan, and a video playing.
    * @returns {void}
    */
   function showLightbox() {
     const im = view[lbIndex];
-    let media;
-    if (im.video) {
-      media = document.createElement('video');
-      Object.assign(media, { src: im.src, controls: true, autoplay: true, loop: true, muted: true });
-    } else {
-      media = document.createElement('img');
-      media.src = im.src;
-      media.alt = im.tags.join(', ');
+    const box = $('lbMedia');
+    if (box.dataset.hash !== im.hash) {
+      let media;
+      if (im.video) {
+        media = document.createElement('video');
+        Object.assign(media, { src: im.src, controls: true, autoplay: true, loop: true, muted: true });
+      } else {
+        media = document.createElement('img');
+        media.src = im.src;
+        media.alt = im.tags.join(', ');
+        media.draggable = false;
+        media.addEventListener('load', placeImage);
+      }
+      box.replaceChildren(media);
+      box.dataset.hash = im.hash;
+      box.classList.remove('pan');
+      panX = 0.5;
+      panY = 0.5;
+      lbPlace = null;
+      const next = view[lbIndex + 1];
+      if (next && !next.video) new Image().src = next.src;
     }
-    $('lbMedia').replaceChildren(media);
+    renderCaption();
+  }
+
+  /**
+   * Fill the lightbox's info line for its current image, at the level I
+   * chose: minimal, extended, or hidden.
+   * @returns {void}
+   */
+  function renderCaption() {
+    const im = view[lbIndex];
     const cap = $('lbCaption');
+    const extended = INFO_MODES[infoMode] === 'extended';
+    cap.hidden = INFO_MODES[infoMode] === 'hidden';
     cap.replaceChildren();
     const add = (text, cls) => {
       const s = document.createElement('span');
@@ -578,14 +628,11 @@
       if (cls) s.className = cls;
       cap.append(s);
     };
-    add(`${lbIndex + 1} / ${view.length} · ${im.date || 'no date'} · ${humanSize(im.bytes)} · ${im.ext}`);
-    if (selected.has(im.hash)) add(' · selected', 'sel');
-    if (slideTimer) add(` · ▶ every ${SLIDE_DELAYS[slideDelay]}s`, 'sel');
-    const keys = slideTimer
-      ? '← → manual · ↑ ↓ slower/faster · Space pause'
-      : '← → move · Space slideshow';
-    add(` · ${shortHash(im.hash)}  —  ${keys} · X select · I hide this · Esc close`, 'muted');
-    const tags = document.createElement('div');
+    if (extended) add(`${lbIndex + 1} / ${view.length}`);
+    add(im.date || 'no date');
+    add(humanSize(im.bytes));
+    if (extended) add(im.ext);
+    const tags = document.createElement('span');
     tags.className = 'lbtags';
     if (!im.tags.length) {
       tags.textContent = 'no tags';
@@ -593,8 +640,94 @@
     }
     for (const t of im.tags) tags.append(lightboxTag(im, t));
     cap.append(tags);
-    const next = view[lbIndex + 1];
-    if (next && !next.video) new Image().src = next.src;
+    if (extended) add(shortHash(im.hash), 'muted');
+    if (selected.has(im.hash)) add('selected', 'sel');
+    if (slideTimer) add(`▶ every ${SLIDE_DELAYS[slideDelay]}s`, 'sel');
+    add('h - key help', 'muted help');
+  }
+
+  /**
+   * Size and position the lightbox image for the zoom and pan, keeping the
+   * pan within the image: a dimension smaller than the window is centred,
+   * and a larger one never shows a gap at its edges. Does nothing for a
+   * video, or an image still loading, which CSS fits to the window.
+   * @returns {void}
+   */
+  function placeImage() {
+    const box = $('lbMedia');
+    const img = box.querySelector('img');
+    lbPlace = null;
+    if (!img || !img.naturalWidth) return;
+    const vw = box.clientWidth;
+    const vh = box.clientHeight;
+    const s = ZOOMS[zoom].scale(img.naturalWidth, img.naturalHeight, vw, vh);
+    const w = Math.round(img.naturalWidth * s);
+    const h = Math.round(img.naturalHeight * s);
+    const offset = (pan, size, room) => (size <= room ? (room - size) / 2
+      : Math.min(0, Math.max(room - size, room / 2 - pan * size)));
+    const x = Math.round(offset(panX, w, vw));
+    const y = Math.round(offset(panY, h, vh));
+    // Store the pan as clamped, so panning back from past an edge moves at once
+    panX = (vw / 2 - x) / w;
+    panY = (vh / 2 - y) / h;
+    Object.assign(img.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+    img.classList.add('placed');
+    lbPlace = { w, h, cropX: w > vw, cropY: h > vh };
+    box.classList.toggle('pan', lbPlace.cropX || lbPlace.cropY);
+  }
+
+  /**
+   * Move the view over a zoomed lightbox image, as scrolling would.
+   * @param {number} dx - CSS pixels; positive shows more of the right
+   * @param {number} dy - CSS pixels; positive shows more of the bottom
+   * @returns {void}
+   */
+  function panBy(dx, dy) {
+    if (!lbPlace) return;
+    panX += dx / lbPlace.w;
+    panY += dy / lbPlace.h;
+    placeImage();
+  }
+
+  /**
+   * Step through the zoom levels, wrapping at either end, and say which
+   * is now in use.
+   * @param {number} step - +1 closer, -1 back
+   * @returns {void}
+   */
+  function zoomStep(step) {
+    zoom = (zoom + step + ZOOMS.length) % ZOOMS.length;
+    placeImage();
+    const im = view[lbIndex];
+    toast(`Zoom: ${ZOOMS[zoom].name}` + (im.video ? ' (images only)' : ''), 1000);
+  }
+
+  /**
+   * Step to the next info line level, and say which is now in use.
+   * @returns {void}
+   */
+  function infoStep() {
+    infoMode = (infoMode + 1) % INFO_MODES.length;
+    renderCaption();
+    toast(`Info: ${INFO_MODES[infoMode]}`, 1000);
+  }
+
+  /**
+   * Return the lightbox's zoom, pan, info line, help and slideshow to how
+   * they are when it first opens.
+   * @returns {void}
+   */
+  function resetLightbox() {
+    stopSlideshow();
+    slideDelay = SLIDE_DEFAULT;
+    zoom = 0;
+    panX = 0.5;
+    panY = 0.5;
+    infoMode = 0;
+    $('lbHelp').hidden = true;
+    placeImage();
+    renderCaption();
+    toast('View reset', 1000);
   }
 
   /**
@@ -665,8 +798,12 @@
   function closeLightbox() {
     stopSlideshow();
     slideDelay = SLIDE_DEFAULT;
+    zoom = 0;
+    $('lbHelp').hidden = true;
     $('lightbox').hidden = true;
     $('lbMedia').replaceChildren();
+    delete $('lbMedia').dataset.hash;
+    lbPlace = null;
     while (rendered <= lbIndex && rendered < view.length) renderMore();
     $('grid').children[lbIndex]?.scrollIntoView({ block: 'center' });
     lbIndex = -1;
@@ -1204,14 +1341,15 @@
   /**
    * Show a short message at the bottom of the window.
    * @param {string} text
+   * @param {number} [ms=2600] - How long to show it
    * @returns {void}
    */
-  function toast(text) {
+  function toast(text, ms = 2600) {
     const t = $('toast');
     t.textContent = text;
     t.hidden = false;
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => { t.hidden = true; }, 2600);
+    toast.timer = setTimeout(() => { t.hidden = true; }, ms);
   }
 
   /**
@@ -1301,8 +1439,47 @@
     }, { root: document.querySelector('main'), rootMargin: '1500px' }).observe($('sentinel'));
 
     $('lbClose').addEventListener('click', closeLightbox);
-    $('lbMedia').addEventListener('click', (e) => {
-      if (e.target.tagName === 'VIDEO') return;
+    // A click on either side moves through the images; a drag pans a zoomed
+    // one, and the click that ends it is ignored
+    const lbMedia = $('lbMedia');
+    let drag = null;
+    let dragged = false;
+    lbMedia.addEventListener('pointerdown', (e) => {
+      dragged = false;
+      if (e.button !== 0 || !lbPlace || !(lbPlace.cropX || lbPlace.cropY)) return;
+      drag = { x: e.clientX, y: e.clientY };
+      lbMedia.setPointerCapture(e.pointerId);
+    });
+    lbMedia.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      // Small movements are a shaky click, not a drag
+      if (!dragged && Math.hypot(dx, dy) < 5) return;
+      dragged = true;
+      lbMedia.classList.add('dragging');
+      panBy(-dx, -dy);
+      drag = { x: e.clientX, y: e.clientY };
+    });
+    const endDrag = () => { drag = null; lbMedia.classList.remove('dragging'); };
+    lbMedia.addEventListener('pointerup', endDrag);
+    lbMedia.addEventListener('pointercancel', endDrag);
+    // With one dimension cropped, the wheel pans along it, Shift or not.
+    // With both, it pans up and down, and Shift+wheel sideways
+    lbMedia.addEventListener('wheel', (e) => {
+      if (!lbPlace || !(lbPlace.cropX || lbPlace.cropY)) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? lbMedia.clientHeight : 1;
+      let dx = e.deltaX * unit;
+      let dy = e.deltaY * unit;
+      // Some browsers turn Shift+wheel into sideways scrolling themselves
+      if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+      if (!lbPlace.cropY) { dx += dy; dy = 0; } else if (!lbPlace.cropX) { dy += dx; dx = 0; }
+      panBy(dx, dy);
+    }, { passive: false });
+    window.addEventListener('resize', () => { if (!$('lightbox').hidden) placeImage(); });
+    lbMedia.addEventListener('click', (e) => {
+      if (e.target.tagName === 'VIDEO' || dragged) return;
       const wasRunning = slideTimer;
       stopSlideshow();
       lightboxStep(e.clientX < window.innerWidth / 3 ? -1 : 1);
@@ -1334,9 +1511,18 @@
         }
         else if (e.key === 'Home') { lbIndex = 0; showLightbox(); e.preventDefault(); }
         else if (e.key === 'End') { lbIndex = view.length - 1; showLightbox(); e.preventDefault(); }
-        else if (e.key === 'Escape') closeLightbox();
-        else if (e.key.toLowerCase() === 'x') { toggleSelect(lbIndex, false); showLightbox(); }
-        else if (e.key.toLowerCase() === 'i') $('lbCaption').hidden = !$('lbCaption').hidden;
+        else if (e.key === 'Escape') {
+          if ($('lbHelp').hidden) closeLightbox(); else $('lbHelp').hidden = true;
+        } else {
+          // Shifted or not, so + and = zoom in, - and _ back
+          const k = e.key.toLowerCase();
+          if (k === 'x') { toggleSelect(lbIndex, false); showLightbox(); }
+          else if (k === 'i') infoStep();
+          else if (k === 'h' || k === '/' || k === '?') $('lbHelp').hidden = !$('lbHelp').hidden;
+          else if (k === '+' || k === '=') zoomStep(1);
+          else if (k === '-' || k === '_') zoomStep(-1);
+          else if (k === 'r') resetLightbox();
+        }
         return;
       }
       if (e.target.matches('input, select, textarea') || document.querySelector('dialog[open]')) return;

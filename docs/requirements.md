@@ -662,6 +662,23 @@ changes in a web browser. `BUILDWEB` builds it (see
   step the delay through 1, 3, 5, 10, 15, 30 and 60 seconds, without wrapping.
   Left, Right, Page Up and Page Down pause it and move. It pauses at the last
   image. Escape leaves the view, ending the slideshow and resetting its delay
+* The full window view zooms images (not videos) through three levels: Fit
+  all (the default: the whole image fits the window), Fit edge (its shorter
+  side fits, cropping the longer) and 1:1 (one image pixel per screen pixel).
+  `+` steps forward through them, `-` back, both wrapping, and `=` and `_`
+  work as `+` and `-`. Each step shows the new level for a second. The level
+  is kept moving between images, and reset when the view closes
+* A cropped image can be panned, starting centred on each image. With only
+  one dimension cropped, the wheel pans along it, with or without Shift. With
+  both, the wheel pans up and down, Shift+wheel sideways. Dragging pans in any
+  direction, and doesn't count as a click to move between images
+* The view's info line is one line over the bottom of the image, outlined in
+  black. `I` steps it through Minimal (the default: date, size, tags), Extended
+  (adds the image number, type and short name) and Hidden. It ends with `h -
+  key help`: `H`, `/` or `?` shows or hides a list of the view's keys, which
+  Escape closes before leaving the view
+* `R` resets the zoom, pan, info line, help and slideshow to how the view
+  opens
 * `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`), unless
   `GITWEB` is on. The setting is kept in `web/silStamp.js`, and applied to
   `.gitignore` by `BUILDWEB`

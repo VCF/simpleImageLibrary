@@ -176,29 +176,49 @@ body.selecting .tile { cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
 }
 #lightbox[hidden] { display: none; }
-#lbMedia { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-#lbMedia img, #lbMedia video { width: 100%; height: 100%; object-fit: contain; }
-#lbCaption {
-  position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 14px;
-  background: linear-gradient(transparent, rgb(0 0 0 / 0.8) 40%); color: #eee; font-size: 13px;
+#lbMedia {
+  position: relative; overflow: hidden; width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
 }
+/* Until an image has loaded, and for videos, the media fits the window.
+   Once placed (see placeImage) it is sized and positioned for the zoom */
+#lbMedia img, #lbMedia video { width: 100%; height: 100%; object-fit: contain; }
+#lbMedia img.placed { position: absolute; max-width: none; max-height: none; object-fit: fill; }
+#lbMedia.pan { cursor: grab; }
+#lbMedia.dragging { cursor: grabbing; }
+/* One line over the image, legible on any image by its black outline */
+#lbCaption {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  color: #eee; font-size: 13px; pointer-events: none;
+  text-shadow: 0 0 2px #000, 0 0 2px #000, 1px 1px 3px #000;
+}
+#lbCaption > * { pointer-events: auto; }
 #lbCaption .sel { color: var(--select); font-weight: 600; }
-#lbCaption .lbtags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
-#lbCaption .muted { color: #999; }
+#lbCaption .lbtags { display: flex; flex-wrap: wrap; gap: 4px; }
+#lbCaption .muted { color: #bbb; }
+#lbCaption .help { margin-left: auto; }
 .lbtag {
   display: inline-flex; align-items: center; gap: 2px; border-radius: 10px;
-  padding: 0 2px 0 8px; font-size: 12px; background: rgb(91 156 245 / 0.25); color: #cfe0ff;
+  padding: 0 2px 0 8px; font-size: 12px; background: rgb(30 50 85 / 0.7); color: #cfe0ff;
 }
 .lbtag button {
   background: none; border: 0; color: inherit; padding: 0 5px; font-size: 13px; line-height: 1.3;
 }
 .lbtag button:hover { color: #fff; }
-.lbtag.gone { background: rgb(231 113 107 / 0.25); color: #f3b5b1; text-decoration: line-through; }
+.lbtag.gone { background: rgb(90 35 32 / 0.7); color: #f3b5b1; text-decoration: line-through; }
 .lbtag.gone button { text-decoration: none; }
 .lbbtn {
   position: absolute; top: 10px; right: 12px; background: rgb(0 0 0 / 0.5);
   color: #fff; border-color: #555; font-size: 16px;
 }
+#lbHelp {
+  position: absolute; top: 52px; right: 12px; max-width: calc(100vw - 24px);
+  background: rgb(20 21 24 / 0.92); color: #eee; border: 1px solid #444;
+  border-radius: 8px; padding: 8px 12px; font-size: 13px;
+}
+#lbHelp th { text-align: left; padding: 2px 14px 2px 0; white-space: nowrap; color: #cfe0ff; font-weight: 600; }
+#lbHelp td { padding: 2px 0; }
 
 dialog {
   background: var(--panel); color: var(--ink); border: 1px solid var(--line);
@@ -235,6 +255,8 @@ dialog code { background: var(--raise); padding: 2px 6px; border-radius: 4px; us
   pointer-events: none; box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
 }
 #toast { left: 50%; bottom: 24px; transform: translateX(-50%); font-size: 13px; }
+/* Over the full window view, keep messages clear of the info line */
+#lightbox:not([hidden]) ~ #toast { bottom: auto; top: 16px; }
 
 @media (max-width: 640px) {
   :root { --tile: 110px; }
