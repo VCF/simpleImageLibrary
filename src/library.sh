@@ -4,6 +4,11 @@
 ## Libraries locked by this run: absolute path -> open lock file descriptor
 declare -gA _silLibraryLocks=()
 
+## Libraries with a web page locked by this run: absolute path -> a file in
+## its .tmp made at locking, against which stampChangedLibraries compares
+## folder times at exit to see if the run changed the library
+declare -gA _silLibraryStart=()
+
 ## Both live in the library's .tmp folder, which git already ignores. The lock
 ## file is only a target for flock; who holds it is noted separately, as
 ## opening and closing the locked file to rewrite it could drop an NFS lock
@@ -65,8 +70,11 @@ function clearLeftoverTemp {
 # it ends with the process however that happens, and a leftover lock file
 # means nothing. Locks are kept until exit, even after moving to another
 # library, so a manifest can always return to the library it started from.
+# A library with a web page gets a start marker (_silLibraryStart), so its
+# stamp is updated at exit only if the run changed it.
 # Globals:
-#   _silCommandLine; updates _silLibraryLocks; clears _silHaltHook on refusal
+#   _silCommandLine; updates _silLibraryLocks, _silLibraryStart; clears
+#   _silHaltHook on refusal
 # Arguments:
 #   $1 - Absolute library path
 #   $2 - 'try' to warn and return 1 if another process has the lock,
@@ -111,6 +119,26 @@ $(lockHolderText "$lib")"
             "${_silCommandLine:-sil}" > "$lib/.tmp/$_silLockOwnerFile"
     } 2> /dev/null || :
     clearLeftoverTemp "$lib"
+    [[ -d "$lib/web" ]] && markLibraryStart "$lib"
+    return 0
+}
+
+#######################################
+# Make the start marker for a library: a file (removed with leftover temp
+# files, if the run is interrupted) dated a second back, so changes made in
+# the same tick on filesystems with coarse times aren't missed. Its time
+# comes from the library's own filesystem, as an NFS server's clock may
+# differ from this one.
+# Globals:
+#   Updates _silLibraryStart
+# Arguments:
+#   $1 - Absolute library path
+#######################################
+function markLibraryStart {
+    local marker mtime
+    marker="$(mktemp --tmpdir="$1/.tmp" --suffix=.start sil.XXXXXX 2> /dev/null)" || return 0
+    mtime="$(stat -c %Y -- "$marker")" && touch -d "@$(( mtime - 1 ))" -- "$marker"
+    _silLibraryStart[$1]="$marker"
 }
 
 #######################################
@@ -256,8 +284,7 @@ function noLibraryError {
 
 #######################################
 # Use a library, creating it if it doesn't exist or is an empty folder,
-# lock it for this run, and set SIL_LIBRARY to its absolute path. A library
-# with a web page has its stamp updated (webStamp). A leading
+# lock it for this run, and set SIL_LIBRARY to its absolute path. A leading
 # '~' is expanded, as conf files and manifests are not shell-expanded.
 # Globals:
 #   HOME; sets SIL_LIBRARY
@@ -288,11 +315,6 @@ function useLibrary {
     fi
     lockLibrary "$lib"
     printf -v SIL_LIBRARY '%s' "$lib"
-    ## Tell an open web page its data may be out of date (BUILDWEB)
-    if [[ -d "$lib/web" ]]; then
-        srcLib "web"
-        runOnlyReads || webStamp || msgWarn "[!] Could not update $lib/web/silStamp.js"
-    fi
 }
 
 #######################################

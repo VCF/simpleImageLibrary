@@ -83,6 +83,38 @@ fakeFingerprint() {
   assert_output AVIF
 }
 
+@test "an animated AVIF without a suffix is read, though ImageMagick misses it" {
+  convert -size 60x40 xc:red xc:blue -set delay 20 anim.gif
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
+    -pix_fmt yuv420p -f avif anim
+  run identify anim
+  assert_failure
+  run imageFormat anim
+  assert_success
+  assert_output AVIF
+  run imageDimensions anim
+  assert_output 60x40
+  run imageFrames anim
+  assert_output 2
+  run imageFingerprint anim
+  assert_success
+}
+
+@test "an image ImageMagick can't read is unsupported (3), or damaged if supported (2)" {
+  ## A JPEG XL header, which ImageMagick 6 can't decode
+  printf '\xff\x0a\xfa\x7f\x01\x90\x08\x06\x01\x00\x48\x01\x00\x10' > pic
+  run imageFormat pic
+  assert_failure 3
+  assert_output JXL
+  ## A PNG signature and nothing more
+  printf '\x89PNG\r\n\x1a\n' > pic
+  run file -b --mime-type pic
+  [[ "$output" == image/png ]] || skip "file(1) doesn't call a bare PNG signature an image"
+  run imageFormat pic
+  assert_failure 2
+  assert_output PNG
+}
+
 # --- animations ------------------------------------------------------
 
 ## Write a 3 frame animated GIF: black, plasma, black (0.2 s each)

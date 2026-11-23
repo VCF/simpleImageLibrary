@@ -54,7 +54,7 @@ function encodeShrunk {
     local errTxt
     if [[ "$ref" != "$src" ]]; then
         msgStatus "  Flattening transparency onto white"
-        if ! errTxt="$(convert "${src}[0]" -background white -flatten "$ref" 2>&1)"; then
+        if ! errTxt="$(convert "$(magickInput "$src")[0]" -background white -flatten "$ref" 2>&1)"; then
             msgWarn "[!] ImageMagick could not flatten the image, keeping original
     $errTxt"
             return 1

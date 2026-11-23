@@ -65,6 +65,39 @@ storedHash() {
   assert_file_exists "a/images/${png:0:2}/${png:2:2}/$png.png"
 }
 
+@test "COPY copies an animated AVIF, which ImageMagick can't identify unaided" {
+  ## Unlike animated.gif, which is already in the source library
+  convert -size 60x40 xc:red xc:blue -set delay 20 anim.gif
+  ffmpeg -v error -i anim.gif -fps_mode passthrough -c:v libaom-av1 \
+    -pix_fmt yuv420p anim.avif
+  "$sil" LIBRARY=a anim.avif 2> /dev/null
+  local avif
+  avif="$(storedHash a avif)"
+  printf 'COPY a -> b\n%s\n' "$avif" > m.txt
+  run "$sil" m.txt
+  assert_success
+  assert_output --partial "[COPIED] $TEST_SANDBOX/b: ADDED ${avif:0:12}"
+  assert_file_exists "b/images/${avif:0:2}/${avif:2:2}/$avif.avif"
+}
+
+@test "COPY updates the web page stamp of the target, not the source" {
+  "$sil" LIBRARY=a BUILDWEB 2> /dev/null
+  "$sil" LIBRARY=b BUILDWEB 2> /dev/null
+  sed -i 's/"changed":[0-9]*/"changed":1/' a/web/silStamp.js b/web/silStamp.js
+  printf 'COPY a -> b\n%s\n' "$png" > m.txt
+  run "$sil" m.txt
+  assert_success
+  assert_file_contains a/web/silStamp.js '"changed":1,'
+  assert_file_not_contains b/web/silStamp.js '"changed":1,'
+  sed -i 's/"changed":[0-9]*/"changed":1/' a/web/silStamp.js
+  printf 'MOVE a -> b\n%s\n' "$png" > m.txt
+  run "$sil" m.txt
+  assert_success
+  assert_file_not_contains a/web/silStamp.js '"changed":1,'
+  run find a/.tmp -name '*.start'
+  assert_output ""
+}
+
 @test "MOVE copies, then removes the image from the source" {
   printf 'MOVE a -> b\n%s\n' "$gif" > m.txt
   run "$sil" m.txt

@@ -5,7 +5,7 @@
  * The page runs from file:// with nothing outside the library. Data comes
  * from two script files, as browsers refuse fetch() of file:// URLs:
  *   web/imageData.js - window.SIL_DATA, written by `sil BUILDWEB`
- *   web/silStamp.js  - window.SIL_STAMP, rewritten by every sil run
+ *   web/silStamp.js  - window.SIL_STAMP, rewritten by sil runs that change the library
  * A page can't write to the library, so changes become a manifest the user
  * downloads or copies, and runs with sil.
  *
@@ -1149,7 +1149,7 @@
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
-    $('copyBtn').addEventListener('click', () => copyText(manifestText()));
+    $('copyBtn').addEventListener('click', (e) => copyText(manifestText(), e.currentTarget));
     $('clearBtn').addEventListener('click', () => {
       if (!confirm('Discard every queued change?')) return;
       pending = [];
@@ -1162,19 +1162,43 @@
 
   /**
    * Copy text to the clipboard, falling back to the older API for
-   * browsers that don't allow the newer one on file:// pages.
+   * browsers that don't allow the newer one on file:// pages, and say
+   * how it went in a bubble above the button pressed.
    * @param {string} text
+   * @param {HTMLElement} btn - The button pressed
    * @returns {void}
    */
-  function copyText(text) {
+  function copyText(text, btn) {
     const fallback = () => {
       const ta = $('manifestText');
       ta.select();
-      toast(document.execCommand('copy') ? 'Copied' : 'Copy failed: select the text and copy it');
+      if (document.execCommand('copy')) bubble(btn, 'Copied!');
+      else bubble(btn, 'Copy failed: select the text and copy it', true);
     };
     if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(() => toast('Copied'), fallback);
+      navigator.clipboard.writeText(text).then(() => bubble(btn, 'Copied!'), fallback);
     } else fallback();
+  }
+
+  /**
+   * Show a short message in a bubble above an element, which stays for two
+   * seconds then fades over two more (the .bubble animation). Unlike
+   * toast, it shows inside a modal dialog, which covers everything else.
+   * @param {HTMLElement} el - The element to show it above
+   * @param {string} text
+   * @param {boolean} [failed=false] - Color it as a failure
+   * @returns {void}
+   */
+  function bubble(el, text, failed = false) {
+    el.parentElement.querySelector('.bubble')?.remove();
+    const b = document.createElement('span');
+    b.className = 'bubble' + (failed ? ' failed' : '');
+    b.setAttribute('role', 'status');
+    b.textContent = text;
+    b.style.left = `${el.offsetLeft + el.offsetWidth / 2}px`;
+    b.style.top = `${el.offsetTop}px`;
+    b.addEventListener('animationend', () => b.remove());
+    el.parentElement.append(b);
   }
 
   // ------------------------------------------------------- library summary
@@ -1287,8 +1311,8 @@
   // ----------------------------------------------------------- staleness
 
   /**
-   * Compare the data's build time with the stamp each sil run leaves, and
-   * say if the page is out of date.
+   * Compare the data's build time with the stamp left by the last sil run
+   * to change the library, and say if the page is out of date.
    * @returns {void}
    */
   function checkStale() {

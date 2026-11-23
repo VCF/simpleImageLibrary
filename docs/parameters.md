@@ -490,8 +490,10 @@ folder in any web browser, with no server or network. See WebSIL in the README
   library picks up changes to the page from SIL updates
 * Runs after everything else on the command line, so the page shows its
   results: `sil BUILDWEB manifest.txt` processes the manifest, then builds
-* Every run using a library that has a web page, except `CHECK` alone, writes
-  the time and its command line to `web/silStamp.js`. The page compares this
+* Every run that changes a library that has a web page (images stored or
+  removed, tags or tag links made or removed) writes the time and its command
+  line to `web/silStamp.js` as it ends. Runs that only read a library, such as
+  a `COPY` source, leave it alone. The page compares this
   with its data's build time to say when it is out of date
 * `web/` and `WebSIL.html` are added to the library's `.gitignore`: they are
   derived from the library, and would conflict when merged. `GITWEB` shares
@@ -522,7 +524,8 @@ people who can clone a library but won't run `sil` to build their own page
   no stamp, so the setting is ignored with a warning
 * In a manifest, it is recorded at its line, and lasts after the manifest ends,
   unlike other manifest settings
-* While on, every `sil` run changes `web/silStamp.js`, and every `BUILDWEB`
+* While on, every `sil` run that changes the library changes
+  `web/silStamp.js`, and every `BUILDWEB`
   changes `web/imageData.js`, so these show as changes to commit. Two people
   building the page will conflict in them: keep either side, and rerun
   `sil BUILDWEB`

@@ -27,6 +27,14 @@ declare -gA _silVideoMime=(
     [video/quicktime]=MOV
 )
 
+## ImageMagick coders to name for file(1) MIME types its own detection
+## misses. It knows AVIF only by the 'avif' brand, not 'avis', which
+## animated AVIFs carry (including those SHRINKVID writes), so a suffixless
+## animated AVIF would be taken for no image at all
+declare -gA _silMagickCoder=(
+    [image/avif]=AVIF
+)
+
 ## ffmpeg filter placing frames on a white background, so transparency
 ## doesn't depend on whatever color hides beneath it
 declare -g _silFlattenVf="split[a][b];[a]drawbox=t=fill:c=white:replace=1[bg];[bg][b]overlay=format=auto,format=rgb24"
@@ -73,10 +81,30 @@ function videoFormat {
 }
 
 #######################################
+# Name a file for ImageMagick to read, with its coder given explicitly
+# (eg 'AVIF:/path') when its MIME type is one ImageMagick fails to detect
+# from content (_silMagickCoder). Add any frame selector ([0]) after.
+# Globals:
+#   _silMagickCoder
+# Arguments:
+#   $1 - File path
+# Outputs:
+#   The name to give ImageMagick, to STDOUT
+#######################################
+function magickInput {
+    local mime coder
+    mime="$(file -b --mime-type -- "$1" 2> /dev/null)"
+    coder="${_silMagickCoder[$mime]:-}"
+    printf '%s\n' "${coder:+$coder:}$1"
+}
+
+#######################################
 # Determine an image's format from its content: videos with videoFormat,
 # anything else with ImageMagick. ImageMagick also takes hints from the
 # file suffix (eg trying to render '.html' files), so files being
-# identified should have no suffix.
+# identified should have no suffix. A file that file(1) calls an image
+# but ImageMagick can't read is damaged if its format is supported, and
+# unsupported otherwise (eg JPEG XL), rather than not an image.
 # Globals:
 #   _silImageSuffix
 # Arguments:
@@ -90,15 +118,24 @@ function videoFormat {
 #   3 - an image, but an unsupported format (eg SVG)
 #######################################
 function imageFormat {
-    local format errTxt rc=0
+    local format errTxt input mime rc=0
     format="$(videoFormat "$1")" || rc=$?
     if [[ -n "$format" ]]; then
         printf '%s\n' "$format"
         return "$rc"
     fi
-    errTxt="$(identify -format '%m' "$1[0]" 2>&1 > /dev/null)"
-    format="$(identify -format '%m' "$1[0]" 2> /dev/null)" || return 1
-    [[ -n "$format" ]] || return 1
+    input="$(magickInput "$1")"
+    errTxt="$(identify -format '%m' "${input}[0]" 2>&1 > /dev/null)"
+    if ! format="$(identify -format '%m' "${input}[0]" 2> /dev/null)" || [[ -z "$format" ]]; then
+        mime="$(file -b --mime-type -- "$1" 2> /dev/null)"
+        [[ "$mime" == image/* ]] || return 1
+        format="${mime#image/}"
+        format="${format#x-}"
+        format="${format^^}"
+        printf '%s\n' "$format"
+        [[ -n "${_silImageSuffix[$format]:-}" ]] && return 2
+        return 3
+    fi
     printf '%s\n' "$format"
     [[ -n "${_silImageSuffix[$format]:-}" ]] || return 3
     [[ -z "$errTxt" ]] || return 2
@@ -142,7 +179,7 @@ function imageFrames {
     format="$(imageFormat "$1")"
     n="$(frameDurations "$1" "$format" | wc -l)"
     if (( n == 0 )); then
-        n="$(identify -format '%n\n' "$1" 2> /dev/null | head -n 1)"
+        n="$(identify -format '%n\n' "$(magickInput "$1")" 2> /dev/null | head -n 1)"
     fi
     printf '%s\n' "$n"
 }
@@ -178,7 +215,7 @@ function imageDimensions {
         dims="$(ffprobe -v error -select_streams V:0 -show_entries stream=width,height \
             -of csv=p=0:s=x "file:$1" < /dev/null 2> /dev/null)"
     else
-        dims="$(identify -format '%wx%h' "$1[0]" 2> /dev/null)"
+        dims="$(identify -format '%wx%h' "$(magickInput "$1")[0]" 2> /dev/null)"
     fi
     [[ "$dims" =~ ^[0-9]+x[0-9]+$ ]] || return 1
     printf '%s\n' "$dims"
@@ -223,7 +260,7 @@ function fingerprintFrame {
     format="$(imageFormat "$1")"
     durations="$(frameDurations "$1" "$format")"
     if ! isVideoFormat "$format" && (( $(grep -c . <<< "$durations") <= 1 )); then
-        convert "$1[0]" -strip "$2" 2> /dev/null
+        convert "$(magickInput "$1")[0]" -strip "$2" 2> /dev/null
         return
     fi
     k="$(middleFrame <<< "$durations")"
@@ -245,7 +282,7 @@ function fingerprintFrame {
 #######################################
 function hasTransparency {
     local opaque
-    opaque="$(identify -format '%[opaque]' "$1[0]" 2> /dev/null)"
+    opaque="$(identify -format '%[opaque]' "$(magickInput "$1")[0]" 2> /dev/null)"
     [[ "${opaque,,}" == false ]]
 }
 

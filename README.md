@@ -213,7 +213,8 @@ not even a network connection.
 * **Summary**: counts and sizes of images by type, and a histogram of sizes
 
 The page's data isn't updated by every run, which would be slow for a large
-library. Instead, each run notes the time in `web/silStamp.js`, and the page
+library. Instead, each run that changes the library notes the time in
+`web/silStamp.js`, and the page
 says when its data is out of date and how to rebuild it. `web/` and
 `WebSIL.html` are kept out of git, as each copy of a library builds its own.
 To share the page with people who clone the library but don't run `sil`, run

@@ -121,6 +121,12 @@ Each stored image has two identifiers with different jobs:
 * Image format is determined from content with ImageMagick
   (`identify -format %m`), never from the file or URL suffix
   * Supported: JPEG, PNG, GIF, WEBP, BMP, TIFF, AVIF. SVG is shelved for now
+  * ImageMagick recognizes AVIF by the `avif` brand alone, missing animated
+    AVIFs (brand `avis`, as `SHRINKVID` writes). Files that `file --mime-type`
+    calls `image/avif` are given to ImageMagick as `AVIF:` explicitly
+  * A file `file --mime-type` calls an image, but which ImageMagick can't
+    read, is `BADIMAGE` if its format is supported, and `UNSUPPORTED`
+    otherwise (eg JPEG XL), rather than `NOTIMAGE`
 * Videos are also accepted, and handled as animations: MP4 (including M4V),
   WebM and MOV (QuickTime). ImageMagick can't decode video, so the container
   is recognized by `file --mime-type` and checked with ffprobe for a readable
@@ -638,9 +644,11 @@ changes in a web browser. `BUILDWEB` builds it (see
     numbers, plus the tag folders, `LINK` aliases, and how many leading hash
     characters tell every image apart. Rebuilt only by
     `BUILDWEB`, as a large library takes a while
-  * `web/silStamp.js` - when a run last used the library, its command line, and
-    when the data was built. Written by every run using a library that has a
-    `web` folder, except `CHECK` alone. The page rereads it when its window
+  * `web/silStamp.js` - when a run last changed the library, its command line,
+    and when the data was built. Written at exit by each run that changed
+    what the page shows (images stored or removed, tags or tag links made or
+    removed) in a library that has a `web` folder, so eg a `COPY` source or
+    a `CHECK` that finds nothing to fix leaves it alone. The page rereads it when its window
     regains focus, and says if its data is out of date, or newer data is ready
 * A page can't write files, so tag changes are queued and given to the user as
   a manifest, by download or the clipboard, naming images by hash and giving

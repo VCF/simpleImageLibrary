@@ -32,6 +32,10 @@ srcLib "manifest"
 srcLib "maintain"
 srcLib "web"
 
+## Tell the open web page of any library this run changes that its data
+## is out of date (BUILDWEB), however the run ends
+trap stampChangedLibraries EXIT
+
 ## REQ-02 precedence: defaults < ~/.sil.conf < library sil.conf < command
 ## line < manifest
 loadParams "$@"
@@ -85,8 +89,9 @@ if [[ -n "${SIL_LINK:-}" ]]; then
     msgInfo "LINK $SIL_LINK"
     linkTag "$SIL_LINK" || status=1
 fi
-## GITWEB is applied to .gitignore by BUILDWEB
+## GITWEB is recorded in the stamp now, and applied to .gitignore by BUILDWEB
 if [[ -n "${SIL_GITWEB:-}" ]] && ! flagIsSet BUILDWEB; then
+    webStamp || status=1
     webGitNote
 fi
 

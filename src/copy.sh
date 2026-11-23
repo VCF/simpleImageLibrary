@@ -62,51 +62,37 @@ function copyLibraryPath {
 
 #######################################
 # Check a COPY or MOVE source or target is a library this run can use,
-# locking it (REQ-12) and updating its web page's stamp (BUILDWEB).
-# Unlike LIBRARY, a library is never created here: a mistyped target
-# would otherwise quietly gather the images.
+# locking it (REQ-12) for the rest of the run. Its web page's stamp is
+# updated at exit if the run changes it (stampChangedLibraries). Unlike
+# LIBRARY, a library is never created here: a mistyped target would
+# otherwise quietly gather the images. Not to be run in a subshell, which
+# would release the lock as it ends.
 # Globals:
 #   _silCopyPlaceholder
 # Arguments:
 #   $1 - 'source' or 'target', for messages
 #   $2 - Path as written, for messages
 #   $3 - Absolute path
+#   $4 - Name of the variable to set to why it can't be used
 # Outputs:
-#   Why it can't be used, to STDOUT
+#   Who holds the lock, to STDERR, if another sil does
 # Returns:
 #   0 if usable, 1 otherwise
 #######################################
 function copyLibraryProblem {
-    local role="$1" given="$2" lib="$3"
-    if [[ "$given" == *"$_silCopyPlaceholder"* ]]; then
-        printf 'The %s is still the placeholder WebSIL wrote: replace it with the path of a library' "$role"
-        return 1
-    elif [[ ! -e "$lib" ]]; then
-        printf 'The %s library does not exist: %s' "$role" "$lib"
-        return 1
-    elif ! isLibrary "$lib"; then
-        printf "The %s is not a SIL library (a folder with 'images' and 'tags'): %s" "$role" "$lib"
-        return 1
-    elif ! lockLibrary "$lib" try 2> /dev/null; then
-        printf 'The %s library is in use by another sil: %s' "$role" "$lib"
-        return 1
+    local _role="$1" _given="$2" _lib="$3" _problemVar="$4"
+    if [[ "$_given" == *"$_silCopyPlaceholder"* ]]; then
+        printf -v "$_problemVar" 'The %s is still the placeholder WebSIL wrote: replace it with the path of a library' "$_role"
+    elif [[ ! -e "$_lib" ]]; then
+        printf -v "$_problemVar" 'The %s library does not exist: %s' "$_role" "$_lib"
+    elif ! isLibrary "$_lib"; then
+        printf -v "$_problemVar" "The %s is not a SIL library (a folder with 'images' and 'tags'): %s" "$_role" "$_lib"
+    elif ! lockLibrary "$_lib" try; then
+        printf -v "$_problemVar" 'The %s library is in use by another sil: %s' "$_role" "$_lib"
+    else
+        return 0
     fi
-    copyLibraryStamp "$lib" || :
-}
-
-#######################################
-# Note in a library's web page stamp that this run changes it (BUILDWEB),
-# as useLibrary does for the library in use.
-# Arguments:
-#   $1 - Absolute library path
-# Returns:
-#   0 on success or with no web page, 1 if the stamp can't be written
-#######################################
-function copyLibraryStamp {
-    local SIL_LIBRARY="$1"
-    [[ -d "$SIL_LIBRARY/web" ]] || return 0
-    srcLib "web"
-    webStamp
+    return 1
 }
 
 #######################################
@@ -175,8 +161,8 @@ function openCopyBlock {
     fi
 
     if [[ -z "$problem" ]]; then
-        if problem="$(copyLibraryProblem source "$srcGiven" "$src")" \
-            && problem="$(copyLibraryProblem target "$tgtGiven" "$tgt")"; then
+        if copyLibraryProblem source "$srcGiven" "$src" problem \
+            && copyLibraryProblem target "$tgtGiven" "$tgt" problem; then
             [[ "$src" == "$tgt" ]] && problem="The source and target are the same library: $src"
         fi
     fi

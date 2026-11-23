@@ -135,23 +135,48 @@ function imageRow {
   buildWeb 2> /dev/null
   sed -i 's/"built":[0-9]*/"built":123/' "$SIL_LIBRARY/web/silStamp.js"
   _silCommandLine='sil TAG="Dog" x.jpg'
-  webStamp
+  webStamp "$(date +%s)"
   run cat "$SIL_LIBRARY/web/silStamp.js"
   assert_output --partial '"built":123,'
   assert_output --partial '"command":"sil TAG=\"Dog\" x.jpg"'
 }
 
-@test "sil runs update the stamp, except CHECK alone" {
+@test "sil runs update the stamp only when they change the library" {
   buildWeb 2> /dev/null
   local stamp="$SIL_LIBRARY/web/silStamp.js"
   sed -i 's/"changed":[0-9]*/"changed":1/' "$stamp"
   run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" CHECK
   assert_success
   assert_file_contains "$stamp" '"changed":1,'
+  ## Already tagged Meme: nothing changes
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" TAG=Meme "$plasma"
+  assert_success
+  assert_file_contains "$stamp" '"changed":1,'
   run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" TAG=Cat "$plasma"
   assert_success
-  run grep -c '"changed":1,' "$stamp"
-  assert_output 0
+  assert_file_not_contains "$stamp" '"changed":1,'
+  assert_file_contains "$stamp" 'TAG=Cat'
+}
+
+@test "a run that changes the library before its BUILDWEB leaves fresh data" {
+  buildWeb 2> /dev/null
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" TAG=Dog BUILDWEB "$plasma"
+  assert_success
+  local built changed
+  built="$(grep -o '"built":[0-9]*' "$SIL_LIBRARY/web/imageData.js")"
+  changed="$(grep -o '"changed":[0-9]*' "$SIL_LIBRARY/web/silStamp.js")"
+  assert_equal "${changed#*:}" "${built#*:}"
+}
+
+@test "recording GITWEB keeps the stamp's change time and command" {
+  buildWeb 2> /dev/null
+  local stamp="$SIL_LIBRARY/web/silStamp.js"
+  sed -i 's/"changed":[0-9]*/"changed":1/; s/"command":".*"/"command":"sil TAG=\\"Dog\\" x.jpg"/' "$stamp"
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" GITWEB=on
+  assert_success
+  assert_file_contains "$stamp" '"changed":1,'
+  assert_file_contains "$stamp" '"command":"sil TAG=\\"Dog\\" x.jpg",'
+  assert_file_contains "$stamp" '"gitweb":true'
 }
 
 @test "sil BUILDWEB builds after processing its manifests" {
