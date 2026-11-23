@@ -166,7 +166,7 @@ f 644"
   assert_failure 1
   assert_output --partial "Library: $TEST_SANDBOX/lib"
   assert_output --partial "[ADDED]"
-  assert_output --partial "Done: 1 ADDED"
+  assert_output --regexp "Done: 1 ADDED\. [0-9]+ seconds?"
   assert_output --partial "1 failed: 1 NOFILE"
 }
 

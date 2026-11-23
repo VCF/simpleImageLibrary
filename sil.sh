@@ -118,6 +118,7 @@ if (( ${#_silArgs[@]} == 0 )); then
 fi
 
 ## Command line paths are relative to the current folder (REQ-03)
+started="$(clockMark)"
 for arg in "${_silArgs[@]}"; do
     if [[ -f "$arg" && "${arg,,}" == *.txt ]]; then
         ## REQ-06: manifests are text files with a .txt suffix
@@ -128,7 +129,7 @@ for arg in "${_silArgs[@]}"; do
         processURI "$arg" || status=1
     fi
 done
-outcomeSummary
+outcomeSummary "$started"
 ## Last, so the page shows everything this run did. Manifests restore the
 ## library they started from, so this is the command line's library
 if flagIsSet BUILDWEB; then

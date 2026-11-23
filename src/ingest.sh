@@ -303,9 +303,11 @@ function processURI {
 }
 
 #######################################
-# Report the totals of all outcomes so far.
+# Report the totals of all outcomes so far, and how long they took.
 # Globals:
 #   _silOutcomes, _silSuccessTags
+# Arguments:
+#   $1 - Optional start mark (clockMark); adds the elapsed time
 # Outputs:
 #   Summary lines to STDERR
 #######################################
@@ -319,7 +321,7 @@ function outcomeSummary {
         failed="${failed:+$failed, }${_silOutcomes[$tag]} $tag"
         nFailed=$(( nFailed + _silOutcomes[$tag] ))
     done
-    msgInfo "Done: ${ok:-nothing added}"
+    msgInfo "Done: ${ok:-nothing added}${1:+. $(elapsedText "$1")}"
     (( nFailed )) && msgWarn "[!] $nFailed failed: $failed"
     return 0
 }

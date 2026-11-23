@@ -81,6 +81,31 @@ EOF
   assert_output "500.0 KB"
   run humanSize 1572864
   assert_output "1.5 MB"
+  run humanSize 2199023255552
+  assert_output "2.0 TB"
+}
+
+@test "elapsedText gives seconds under a minute, then minutes to a tenth" {
+  run elapsedText 0 400000
+  assert_output "0 seconds"
+  run elapsedText 0 1000000
+  assert_output "1 second"
+  run elapsedText 1000000 6400000
+  assert_output "5 seconds"
+  run elapsedText 0 59400000
+  assert_output "59 seconds"
+  run elapsedText 0 59600000
+  assert_output "1.0 minutes"
+  run elapsedText 0 498000000
+  assert_output "8.3 minutes"
+}
+
+@test "clockMark gives microseconds, and elapsedText measures from it" {
+  local mark
+  mark="$(clockMark)"
+  assert_regex "$mark" '^[0-9]{16,}$'
+  run elapsedText "$mark"
+  assert_output "0 seconds"
 }
 
 @test "msgStatus shows only on a terminal; the next message overwrites it" {

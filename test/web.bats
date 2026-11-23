@@ -40,9 +40,12 @@ function imageRow {
 }
 
 @test "buildWeb writes the page, its files and data" {
+  local bytes
+  bytes=$(( $(stat -c %s "$DATA/plasma.png") + $(stat -c %s "$DATA/animated.gif") ))
   run buildWeb
   assert_success
-  assert_output --partial "2 images"
+  assert_output --regexp "2 images, $(humanSize "$bytes"), [0-9]+ seconds?"
+  assert_output --partial "Open in a web browser: $SIL_LIBRARY/WebSIL.html"
   assert_file_exists "$SIL_LIBRARY/WebSIL.html"
   assert_file_exists "$SIL_LIBRARY/web/websil.js"
   assert_file_exists "$SIL_LIBRARY/web/websil.css"
@@ -69,15 +72,21 @@ function imageRow {
   c="7f$(printf '0%.0s' {1..38})"
   run webDataJs 0 < <(printf 'I\t%s.jpg\t1\n' "$a" "$b" "$c")
   assert_success
-  assert_output --partial '"prefix":4};'
+  assert_output --partial '"prefix":4,'
   assert_output --partial "[\"$a\",\"jpg\""
+}
+
+@test "webDataJs totals the image sizes" {
+  run webDataJs 0 < <(printf 'I\t%s.jpg\t%s\n' "$(printf 'a%.0s' {1..40})" 3000000000 \
+    "$(printf 'b%.0s' {1..40})" 5)
+  assert_output --partial '"bytes":3000000005};'
 }
 
 @test "webDataJs prefix is 1 for one image, and 0 for none" {
   run webDataJs 0 < <(printf 'I\t%s.png\t1\n' "$(printf 'a%.0s' {1..40})")
-  assert_output --partial '"prefix":1};'
+  assert_output --partial '"prefix":1,'
   run webDataJs 0 < /dev/null
-  assert_output --partial '"prefix":0};'
+  assert_output --partial '"prefix":0,"bytes":0};'
 }
 
 @test "buildWeb numbers the first tag 0, not blank" {

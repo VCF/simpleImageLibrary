@@ -220,10 +220,41 @@ function requireTool {
 #######################################
 function humanSize {
     awk -v b="$1" 'BEGIN {
-        split("B KB MB GB", u, " ")
-        for (i = 1; b >= 1024 && i < 4; i++) b /= 1024
+        split("B KB MB GB TB", u, " ")
+        for (i = 1; b >= 1024 && i < 5; i++) b /= 1024
         printf (i == 1 ? "%d %s\n" : "%.1f %s\n"), b, u[i]
     }'
+}
+
+#######################################
+# The current time in microseconds, as a start mark for elapsedText.
+# EPOCHREALTIME's decimal point follows the locale, so either is dropped.
+# Outputs:
+#   Microseconds since the epoch to STDOUT
+#######################################
+function clockMark {
+    printf '%s\n' "${EPOCHREALTIME/[.,]/}"
+}
+
+#######################################
+# Time since a clockMark, for people: whole seconds under a minute,
+# otherwise minutes to one decimal place, eg '5 seconds', '8.3 minutes'.
+# Arguments:
+#   $1 - Start mark, from clockMark
+#   $2 - Optional end mark (default: now), for tests
+# Outputs:
+#   Elapsed time to STDOUT
+#######################################
+function elapsedText {
+    local us=$(( ${2:-$(clockMark)} - $1 )) secs tenths
+    secs=$(( (us + 500000) / 1000000 ))
+    if (( secs < 60 )); then
+        printf '%d second%s\n' "$secs" "$( (( secs == 1 )) || echo s)"
+    else
+        ## Tenths of a minute, rounded: us / 6,000,000
+        tenths=$(( (us + 3000000) / 6000000 ))
+        printf '%d.%d minutes\n' $(( tenths / 10 )) $(( tenths % 10 ))
+    fi
 }
 
 #######################################

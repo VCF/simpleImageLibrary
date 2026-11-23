@@ -435,7 +435,8 @@ function libraryRebuild {
     requireTool convert imagemagick "inspect and fingerprint stored images"
     requireTool findimagedupes findimagedupes "fingerprint stored images"
     requireTool ffmpeg ffmpeg "fingerprint stored animations and videos"
-    local rv=0 layout
+    local rv=0 layout started
+    started="$(clockMark)"
     msgInfo "Rebuilding library: $SIL_LIBRARY"
     libraryEnsureFiles "$SIL_LIBRARY"
     layout="$(libraryLayout "$SIL_LIBRARY")"
@@ -460,6 +461,7 @@ function libraryRebuild {
         srcLib "web"
         buildWeb || rv=1
     fi
+    msgInfo "REBUILD finished: $(elapsedText "$started")"
     return "$rv"
 }
 

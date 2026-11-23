@@ -199,6 +199,12 @@ $plasma https://example.com/second.gif"
   assert_file_exists "lib/images/01/$h.jpg"
 }
 
+@test "REBUILD reports how long it took" {
+  run libraryRebuild
+  assert_success
+  assert_output --regexp "REBUILD finished: [0-9]+ seconds?"
+}
+
 @test "sil REBUILD CHECK runs both, rebuild first" {
   rm lib/images/fingerprints.txt
   cd lib
