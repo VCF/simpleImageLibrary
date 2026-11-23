@@ -53,7 +53,7 @@ storedHash() {
   run "$sil" m.txt
   assert_success
   assert_output --partial "[COPIED] $TEST_SANDBOX/b: ADDED ${png:0:12}"
-  assert_file_exists "b/images/${png:0:2}/${png:2:2}/$png.png"
+  assert_file_exists "b/images/${png:0:2}/$png.png"
   assert_link_exists "b/tags/Animal/Dog/$png.png"
   assert_link_exists "b/tags/Fun/$png.png"
   run find b/tags/Date -name "$png.png"
@@ -62,7 +62,7 @@ storedHash() {
   assert_output "$png file:plasma.png"
   run grep -c '^[0-9a-f]' b/images/fingerprints.txt
   assert_output 1
-  assert_file_exists "a/images/${png:0:2}/${png:2:2}/$png.png"
+  assert_file_exists "a/images/${png:0:2}/$png.png"
 }
 
 @test "COPY copies an animated AVIF, which ImageMagick can't identify unaided" {
@@ -77,7 +77,7 @@ storedHash() {
   run "$sil" m.txt
   assert_success
   assert_output --partial "[COPIED] $TEST_SANDBOX/b: ADDED ${avif:0:12}"
-  assert_file_exists "b/images/${avif:0:2}/${avif:2:2}/$avif.avif"
+  assert_file_exists "b/images/${avif:0:2}/$avif.avif"
 }
 
 @test "COPY updates the web page stamp of the target, not the source" {
@@ -103,7 +103,7 @@ storedHash() {
   run "$sil" m.txt
   assert_success
   assert_output --partial "[MOVED]"
-  assert_file_exists "b/images/${gif:0:2}/${gif:2:2}/$gif.gif"
+  assert_file_exists "b/images/${gif:0:2}/$gif.gif"
   assert_link_exists "b/tags/Fun/$gif.gif"
   run find a -name "$gif.*"
   assert_output ""
@@ -258,4 +258,15 @@ storedHash() {
   run "$sil" LIBRARY=a STOPCOPY "$png"
   assert_success
   assert_output --partial "STOPCOPY only applies in a manifest - ignored"
+}
+
+@test "COPY refuses a target library in an older image layout" {
+  "$sil" LIBRARY=b "$PROJECT_ROOT/test/data/images/transparent.png" 2> /dev/null
+  toLayout1 b
+  printf 'COPY a -> b\n%s\n' "$png" > m.txt
+  run "$sil" m.txt
+  assert_failure
+  assert_output --partial "image layout this sil can't use"
+  run find b/images -name "$png.*"
+  assert_output ""
 }

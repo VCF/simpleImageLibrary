@@ -25,7 +25,7 @@ teardown() {
 @test "storeImage stores under the file hash and indexes it" {
   storeImage "$DATA/plasma.png" hash
   assert_equal "$hash" "$(sha1sum "$DATA/plasma.png" | cut -c1-40)"
-  assert_file_exists "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+  assert_file_exists "lib/images/${hash:0:2}/$hash.png"
   indexHas "$hash"
   run grep -c "^$hash " lib/images/fingerprints.txt
   assert_output 1
@@ -36,7 +36,7 @@ teardown() {
 @test "storeImage uses the content's format for the suffix" {
   convert "$DATA/plasma.png" webp:disguised.jpg
   storeImage disguised.jpg hash
-  assert_file_exists "lib/images/${hash:0:2}/${hash:2:2}/$hash.webp"
+  assert_file_exists "lib/images/${hash:0:2}/$hash.webp"
 }
 
 @test "storeImage twice keeps one file and one index line" {
@@ -51,7 +51,7 @@ teardown() {
   cp() { head -c 10 "$2" > "$3"; return 1; }
   run storeImage "$DATA/plasma.png" hash
   assert_failure
-  run find lib/images lib/.tmp -type f ! -name fingerprints.txt ! -name sources.txt
+  run find lib/images lib/.tmp -type f ! -name fingerprints.txt ! -name sources.txt ! -name layout.txt
   assert_output ""
 }
 
@@ -66,7 +66,7 @@ teardown() {
     assert_output ""
   }
   storeImage "$DATA/plasma.png" hash
-  assert_file_exists "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+  assert_file_exists "lib/images/${hash:0:2}/$hash.png"
 }
 
 @test "SHARED sets a stored image's permissions, whatever its source's" {
@@ -77,13 +77,13 @@ teardown() {
     chmod "$mode" source.png
     SIL_SHARED=0
     storeImage source.png hash
-    run stat -c %a "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+    run stat -c %a "lib/images/${hash:0:2}/$hash.png"
     assert_output 600
 
     rm -rf lib/images/??
     SIL_SHARED=1
     storeImage source.png hash
-    run stat -c %a "lib/images/${hash:0:2}/${hash:2:2}/$hash.png"
+    run stat -c %a "lib/images/${hash:0:2}/$hash.png"
     assert_output 644
     rm -f source.png
   done
@@ -134,7 +134,7 @@ teardown() {
 @test "findStoredImage finds by hash whatever the suffix" {
   storeImage "$DATA/animated.gif" hash
   run findStoredImage "$hash"
-  assert_output "$TEST_SANDBOX/lib/images/${hash:0:2}/${hash:2:2}/$hash.gif"
+  assert_output "$TEST_SANDBOX/lib/images/${hash:0:2}/$hash.gif"
   run findStoredImage "${hash^^}"
   assert_success
   run findStoredImage 0000000000000000000000000000000000000000

@@ -68,7 +68,7 @@ Meme"
   local link="lib/tags/Animal/Dog/$hash.png"
   assert_link_exists "$link"
   run readlink "$link"
-  assert_output "../../../images/${hash:0:2}/${hash:2:2}/$hash.png"
+  assert_output "../../../images/${hash:0:2}/$hash.png"
   assert_file_exists "$link"
 }
 
@@ -767,7 +767,8 @@ EOF
   assert_output --partial "sources.txt:0"
   grep -q "$other" lib/images/fingerprints.txt
   grep -q "$other" lib/images/sources.txt
-  assert_not_exists "lib/images/${hash:0:2}/${hash:2:2}"
+  ## Its emptied folder is removed too, unless the other image shares it
+  [[ "${hash:0:2}" == "${other:0:2}" ]] || assert_not_exists "lib/images/${hash:0:2}"
 }
 
 @test "removeImage keeps other images in shared tag folders" {

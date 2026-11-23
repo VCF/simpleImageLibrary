@@ -236,6 +236,7 @@ function initLibrary {
     local lib="$1"
     msgInfo "Creating new library at: $lib"
     libraryEnsureFiles "$lib"
+    layoutWrite "$lib" || msgError "[!] Could not write to the new library: $(layoutFile "$lib")"
     msgInfo "Library settings can be changed in: $lib/sil.conf
     To share it, it can be made a git repository: git -C '$lib' init"
 }
@@ -283,6 +284,41 @@ function noLibraryError {
 }
 
 #######################################
+# Explain why a library's image layout (REQ-05) keeps SIL from using it:
+# images in an older layout must be moved by REBUILD first, and a newer
+# layout needs a newer SIL.
+# Globals:
+#   _silImageLayout
+# Arguments:
+#   $1 - Absolute library path
+# Outputs:
+#   The explanation to STDOUT, if any
+# Returns:
+#   0 if the library is in the current layout, 1 otherwise
+#######################################
+function layoutProblem {
+    local lib="$1" layout
+    srcLib "index"
+    layout="$(libraryLayout "$lib")"
+    if (( layout > _silImageLayout )); then
+        printf '%s\n' "[!] This library was made by a newer version of SIL: $lib
+    Its images use layout $layout, and this SIL knows layouts up to $_silImageLayout
+    Update sil to use this library"
+        return 1
+    elif (( layout < _silImageLayout )); then
+        printf '%s\n' "[!] This library stores its images in an older layout: $lib
+    Its images must be moved from images/xx/yy/ to images/xx/ before use:
+      sil LIBRARY='$lib' REBUILD
+    First:
+      * Back up the library, eg commit it to git or take a snapshot
+      * Update sil on every computer sharing the library, as older versions
+        put images back in the old layout
+    'sil CHECK' shows how many images will be moved"
+        return 1
+    fi
+}
+
+#######################################
 # Use a library, creating it if it doesn't exist or is an empty folder,
 # lock it for this run, and set SIL_LIBRARY to its absolute path. A leading
 # '~' is expanded, as conf files and manifests are not shell-expanded.
@@ -290,12 +326,16 @@ function noLibraryError {
 #   HOME; sets SIL_LIBRARY
 # Arguments:
 #   $1 - Library path
+#   $2 - 'maintain' to accept a library in an older image layout, for
+#        CHECK and REBUILD. The caller must stop before anything else
+#        changes it (see layoutProblem)
 # Returns:
 #   0 on success; halts (msgError) if it is a non-empty folder that isn't
-#   a library, not a folder, or locked by another process
+#   a library, not a folder, locked by another process, or in an image
+#   layout this run can't use
 #######################################
 function useLibrary {
-    local lib="$1"
+    local lib="$1" mode="${2:-}" problem
     # shellcheck disable=SC2088  # Matching a literal, unexpanded '~'
     [[ "$lib" == "~" || "$lib" == "~/"* ]] && lib="$HOME${lib:1}"
     lib="$(realpath -m -- "$lib")"
@@ -314,6 +354,11 @@ function useLibrary {
         msgError "[!] LIBRARY is not a folder: $lib"
     fi
     lockLibrary "$lib"
+    if ! problem="$(layoutProblem "$lib")"; then
+        if [[ "$mode" != maintain || "$(libraryLayout "$lib")" -gt "$_silImageLayout" ]]; then
+            msgError "$problem"
+        fi
+    fi
     printf -v SIL_LIBRARY '%s' "$lib"
 }
 

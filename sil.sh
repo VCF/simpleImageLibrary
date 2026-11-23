@@ -49,8 +49,13 @@ fi
 for arg in "${_silArgs[@]}"; do
     [[ -f "$arg" && "${arg,,}" == *.txt ]] || needLibrary=1
 done
+## CHECK and REBUILD may use a library in an older image layout (REQ-05)
+maintainMode=""
+if flagIsSet CHECK || flagIsSet REBUILD; then
+    maintainMode="maintain"
+fi
 if lib="$(chooseLibrary)"; then
-    useLibrary "$lib"
+    useLibrary "$lib" "$maintainMode"
     loadLibraryParams
     msgInfo "Library: $SIL_LIBRARY"
 elif (( needLibrary || ${#_silArgs[@]} == 0 )); then
@@ -79,6 +84,14 @@ if flagIsSet REBUILD; then
 fi
 if flagIsSet CHECK; then
     libraryCheck || status=1
+fi
+## Nothing else may change a library still in an older image layout, as
+## REBUILD reported (or CHECK, run alone)
+if [[ -n "$maintainMode" && -n "${SIL_LIBRARY:-}" ]] && ! layoutProblem "$SIL_LIBRARY" > /dev/null; then
+    if (( ${#_silArgs[@]} )) || flagIsSet BUILDWEB || [[ -n "${SIL_LINK:-}${SIL_REMAP:-}${SIL_GITWEB:-}" ]]; then
+        msgWarn "[!] Nothing more was done, as the library's images are still in an older layout"
+    fi
+    exit 1
 fi
 ## REMAP first, so a LINK given with it follows the new remap
 if [[ -n "${SIL_REMAP:-}" ]]; then

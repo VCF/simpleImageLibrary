@@ -20,7 +20,7 @@ setup() {
   storeImage "$DATA/animated.gif" anim
   markUntagged "$plasma"
   markUntagged "$anim"
-  PLASMA="lib/images/${plasma:0:2}/${plasma:2:2}/$plasma.png"
+  PLASMA="lib/images/${plasma:0:2}/$plasma.png"
 }
 
 teardown() {
@@ -41,12 +41,12 @@ teardown() {
 }
 
 @test "CHECK finds a file in the wrong folder" {
-  mkdir -p lib/images/zz/zz
-  mv "$PLASMA" lib/images/zz/zz/
+  mkdir -p lib/images/zz
+  mv "$PLASMA" lib/images/zz/
   run libraryCheck
   assert_failure
   assert_output --partial "Stored in the wrong folder"
-  assert_output --partial "sil REBUILD moves it to images/${plasma:0:2}/${plasma:2:2}/"
+  assert_output --partial "sil REBUILD moves it to images/${plasma:0:2}/"
 }
 
 @test "CHECK finds unexpected files" {
@@ -61,12 +61,12 @@ teardown() {
   convert -size 100x100 -seed 5 plasma:fractal new.png
   local h
   h="$(sha1sum new.png | cut -c1-40)"
-  mkdir -p "lib/images/${h:0:2}/${h:2:2}"
-  cp new.png "lib/images/${h:0:2}/${h:2:2}/$h.png"
+  mkdir -p "lib/images/${h:0:2}"
+  cp new.png "lib/images/${h:0:2}/$h.png"
   run libraryCheck
   assert_failure
   assert_output --partial "lists an image that isn't stored: $plasma"
-  assert_output --partial "Not in fingerprint index: images/${h:0:2}/${h:2:2}/$h.png"
+  assert_output --partial "Not in fingerprint index: images/${h:0:2}/$h.png"
   assert_output --partial "sil REBUILD"
 }
 
@@ -136,25 +136,25 @@ tagByHand() {
   new="$(sha1sum "$PLASMA" | cut -c1-40)"
   libraryRebuild
   assert_file_not_exists "$PLASMA"
-  assert_file_exists "lib/images/${new:0:2}/${new:2:2}/$new.png"
+  assert_file_exists "lib/images/${new:0:2}/$new.png"
   assert_file_exists "lib/tags/Animal/Dog/$new.png"
   assert_file_exists "lib/tags/Meme/$new.png"
   run readlink "lib/tags/Animal/Dog/$new.png"
-  assert_output "../../../images/${new:0:2}/${new:2:2}/$new.png"
+  assert_output "../../../images/${new:0:2}/$new.png"
   assert_not_exists "lib/tags/Animal/Dog/$plasma.png"
   run libraryCheck
   assert_success
 }
 
 @test "REBUILD moves a misplaced image and keeps its tags" {
-  mkdir -p lib/images/zz/zz
-  mv "$PLASMA" lib/images/zz/zz/
-  tagByHand "lib/images/zz/zz/$plasma.png" Bird
+  mkdir -p lib/images/zz
+  mv "$PLASMA" lib/images/zz/
+  tagByHand "lib/images/zz/$plasma.png" Bird
   libraryRebuild
   assert_file_exists "$PLASMA"
   assert_dir_not_exists lib/images/zz
   run readlink "lib/tags/Bird/$plasma.png"
-  assert_output "../../images/${plasma:0:2}/${plasma:2:2}/$plasma.png"
+  assert_output "../../images/${plasma:0:2}/$plasma.png"
   run libraryCheck
   assert_success
 }
@@ -172,7 +172,7 @@ tagByHand() {
 
 @test "REBUILD merges a second copy, keeping both copies' tags" {
   ## A copy edited to match another stored image exactly
-  local animFile="lib/images/${anim:0:2}/${anim:2:2}/$anim.gif"
+  local animFile="lib/images/${anim:0:2}/$anim.gif"
   tagByHand "$PLASMA" Original
   tagByHand "$animFile" Copy
   sourceAdd "$plasma" https://example.com/first.png
@@ -191,12 +191,12 @@ $plasma https://example.com/second.gif"
 
 @test "REBUILD leaves unreadable images alone and reports them" {
   local h="0123456789abcdef0123456789abcdef01234567"
-  mkdir -p "lib/images/01/23"
-  cp "$DATA/not-an-image.jpg" "lib/images/01/23/$h.jpg"
+  mkdir -p "lib/images/01"
+  cp "$DATA/not-an-image.jpg" "lib/images/01/$h.jpg"
   run libraryRebuild
   assert_failure
   assert_output --partial "Not a readable, supported image, left alone"
-  assert_file_exists "lib/images/01/23/$h.jpg"
+  assert_file_exists "lib/images/01/$h.jpg"
 }
 
 @test "sil REBUILD CHECK runs both, rebuild first" {
@@ -246,9 +246,9 @@ $new https://example.com/p2.png"
 }
 
 @test "CHECK reports an image stored twice; REBUILD keeps one, with its tags" {
-  mkdir -p lib/images/zz/zz
-  cp "$PLASMA" lib/images/zz/zz/
-  tagByHand "lib/images/zz/zz/$plasma.png" Copy
+  mkdir -p lib/images/zz
+  cp "$PLASMA" lib/images/zz/
+  tagByHand "lib/images/zz/$plasma.png" Copy
   run libraryCheck
   assert_failure
   assert_output --partial "Image stored twice"
@@ -271,8 +271,8 @@ librarySnapshot() {
   ## One of each problem that REBUILD would act on
   tagByHand "$PLASMA" Meme
   rm lib/.gitignore lib/tags/Untagged/"$anim".gif
-  mkdir -p lib/images/zz/zz lib/tags/Date/2026/2026-10-30 lib/tags/Date/2026/2026-10-31
-  mv "$PLASMA" lib/images/zz/zz/
+  mkdir -p lib/images/zz lib/tags/Date/2026/2026-10-30 lib/tags/Date/2026/2026-10-31
+  mv "$PLASMA" lib/images/zz/
   touch lib/images/holiday.jpg
   ln -s ../nowhere.png lib/tags/Meme/broken.png
   echo "garbage" | tee -a lib/images/fingerprints.txt >> lib/images/sources.txt
@@ -383,4 +383,217 @@ makeStoredFormat() {
   run repairPermissions
   assert_failure
   assert_output --partial "Could not set permissions"
+}
+
+# --- Image layout (REQ-05) ----------------------------------------------
+
+## Tags as in everyday use, settled by a REBUILD: nested tags, several per
+## image, a LINK alias, Untagged, and two date tag days with their links
+richLibrary() {
+  tagImage "$plasma" Animal/Dog
+  tagImage "$plasma" Meme
+  linkTag "Pets -> Animal" 2> /dev/null
+  dateTagImage "$plasma"
+  tagByHand "$(findStoredImage "$anim")" Date/2026/2026-10-30
+  libraryRebuild 2> /dev/null
+  run libraryCheck
+  assert_success
+}
+
+## Every path with its type and link target, and each file's content: any
+## change shows, except to modification times
+layoutSnapshot() {
+  find lib -path lib/.tmp -prune -o -printf '%p %y %l\n' | LC_ALL=C sort
+  find lib -path lib/.tmp -prune -o -type f -exec sha1sum {} + | LC_ALL=C sort
+}
+
+@test "a new library records the current image layout" {
+  run libraryLayout lib
+  assert_output 2
+  run grep -v '^#' lib/images/layout.txt
+  assert_output "layout 2"
+}
+
+@test "a library with no image folders is current, and gets a layout file" {
+  mkdir -p bare/images bare/tags
+  run libraryLayout bare
+  assert_output 2
+  assert_file_exists bare/images/layout.txt
+}
+
+@test "a library from before the layout file is layout 1; an unreadable one is 0" {
+  toLayout1 lib
+  run libraryLayout lib
+  assert_output 1
+  assert_file_not_exists lib/images/layout.txt
+  echo "garbage" > lib/images/layout.txt
+  run libraryLayout lib
+  assert_output 0
+}
+
+@test "CHECK reports an older layout once, and changes nothing" {
+  richLibrary
+  toLayout1 lib
+  layoutSnapshot > before.txt
+  run libraryCheck
+  assert_failure
+  assert_output --partial "2 images are stored in the older images/xx/yy/ layout"
+  assert_output --partial "Fix: sil REBUILD moves them to images/xx/"
+  refute_output --partial "Stored in the wrong folder"
+  refute_output --partial "Broken tag link"
+  layoutSnapshot > after.txt
+  assert_files_equal before.txt after.txt
+}
+
+@test "REBUILD moves an older layout, keeping every image, tag and link" {
+  richLibrary
+  imageMap lib > images.before
+  linkMap lib > links.before
+  cp lib/images/fingerprints.txt lib/images/sources.txt .
+  toLayout1 lib
+  run libraryRebuild
+  assert_success
+  assert_output --partial "Moving 2 images from images/xx/yy/ to images/xx/"
+  assert_output --partial "Library now uses image layout 2"
+  run libraryLayout lib
+  assert_output 2
+  ## Nothing left in, or below, an images/xx/yy/ folder
+  run find lib/images -mindepth 2 -type d
+  assert_output ""
+  imageMap lib > images.after
+  assert_files_equal images.before images.after
+  linkMap lib > links.after
+  assert_files_equal links.before links.after
+  run grep -c BROKEN links.after
+  assert_output 0
+  run find lib/tags -type l -lname '/*'
+  assert_output ""
+  assert_files_equal fingerprints.txt lib/images/fingerprints.txt
+  assert_files_equal sources.txt lib/images/sources.txt
+  run libraryCheck
+  assert_success
+  ## Links are relative, so the library still works when moved
+  mv lib moved
+  run find moved/tags -xtype l
+  assert_output ""
+}
+
+@test "a second REBUILD after a move changes nothing" {
+  richLibrary
+  toLayout1 lib
+  libraryRebuild 2> /dev/null
+  layoutSnapshot > before.txt
+  run libraryRebuild
+  assert_success
+  refute_output --partial "Moving"
+  refute_output --partial "Relinked"
+  layoutSnapshot > after.txt
+  assert_files_equal before.txt after.txt
+}
+
+@test "REBUILD finishes a move that was interrupted" {
+  richLibrary
+  linkMap lib > links.before
+  toLayout1 lib
+  ## Interrupted after moving one image, before its links were changed
+  mv "lib/images/${plasma:0:2}/${plasma:2:2}/$plasma.png" "lib/images/${plasma:0:2}/"
+  run libraryCheck
+  assert_failure
+  assert_output --partial "Fix: sil REBUILD points it at its image"
+  run libraryRebuild
+  assert_success
+  linkMap lib > links.after
+  assert_files_equal links.before links.after
+  run libraryLayout lib
+  assert_output 2
+  run libraryCheck
+  assert_success
+}
+
+@test "REBUILD merges an identical copy left in the older layout, eg by git" {
+  local old="lib/images/${plasma:0:2}/${plasma:2:2}"
+  mkdir -p "$old"
+  cp "$PLASMA" "$old/"
+  tagByHand "$old/$plasma.png" Merged
+  run libraryCheck
+  assert_failure
+  assert_output --partial "1 images are stored in the older images/xx/yy/ layout"
+  run libraryRebuild
+  assert_success
+  assert_output --partial "removed 1 copies identical to one already moved"
+  assert_dir_not_exists "$old"
+  run readlink -e "lib/tags/Merged/$plasma.png"
+  assert_output "$(realpath "$PLASMA")"
+  run libraryCheck
+  assert_success
+}
+
+@test "a different file in an image's place stops REBUILD, losing no tag" {
+  richLibrary
+  linkMap lib > links.before
+  toLayout1 lib
+  local legacy="lib/images/${plasma:0:2}/${plasma:2:2}/$plasma.png"
+  cp "$DATA/animated.gif" "$PLASMA"
+  run libraryRebuild
+  assert_failure
+  assert_output --partial "Not moved, as a different file is already in its place: ${legacy#lib/}"
+  assert_output --partial "REBUILD stopped before repairing anything else"
+  refute_output --partial "Library now uses image layout 2"
+  run libraryLayout lib
+  assert_output 1
+  assert_file_exists "$legacy"
+  linkMap lib > links.after
+  assert_files_equal links.before links.after
+  ## Once the user removes the wrong file, REBUILD finishes
+  rm "$PLASMA"
+  run libraryRebuild
+  assert_success
+  linkMap lib > links.after
+  assert_files_equal links.before links.after
+  run libraryCheck
+  assert_success
+}
+
+@test "REBUILD moves an unreadable file by name, then reports it" {
+  toLayout1 lib
+  local h="0123456789abcdef0123456789abcdef01234567"
+  mkdir -p lib/images/01/23
+  cp "$DATA/not-an-image.jpg" "lib/images/01/23/$h.jpg"
+  run libraryRebuild
+  assert_failure
+  assert_output --partial "Library now uses image layout 2"
+  assert_output --partial "Not a readable, supported image, left alone: images/01/$h.jpg"
+  assert_file_exists "lib/images/01/$h.jpg"
+}
+
+@test "REBUILD points a broken link at its image, renaming it for a new suffix" {
+  mkdir -p lib/tags/Bird lib/tags/Cat
+  ln -s "../../images/zz/$plasma.png" "lib/tags/Bird/$plasma.png"
+  ln -s "../../images/${plasma:0:2}/$plasma.jpg" "lib/tags/Cat/$plasma.jpg"
+  ln -s ../../images/no/missing.jpg lib/tags/Cat/missing.jpg
+  run libraryRebuild
+  assert_output --partial "Relinked 2 tag links to their images"
+  run readlink "lib/tags/Bird/$plasma.png"
+  assert_output "../../images/${plasma:0:2}/$plasma.png"
+  assert_file_exists "lib/tags/Cat/$plasma.png"
+  assert_not_exists "lib/tags/Cat/$plasma.jpg"
+  ## A link to an image that isn't stored is left for the user
+  assert_link_exists lib/tags/Cat/missing.jpg
+  run libraryCheck
+  assert_failure
+  assert_output --partial "Broken tag link: tags/Cat/missing.jpg"
+  assert_output --partial "Fix: remove the link"
+}
+
+@test "REBUILD rebuilds the web page of a library it moves" {
+  srcLib "web"
+  buildWeb 2> /dev/null
+  toLayout1 lib
+  run libraryRebuild
+  assert_success
+  assert_output --partial "BUILDWEB: building the library web page"
+  run grep -c 'slice(2, 4)' lib/web/websil.js
+  assert_output 0
+  run grep -c "\"$plasma\"" lib/web/imageData.js
+  assert_output 1
 }

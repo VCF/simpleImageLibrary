@@ -6,6 +6,11 @@ srcLib "image"
 ## A stored image's file name: <hash>.<suffix>
 declare -g _silStoredNameRe='^([0-9a-f]{40})\.[a-z0-9]+$'
 
+## Image layout (REQ-05), recorded in each library's images/layout.txt:
+##   1 - images/<hash 1-2>/<hash 3-4>/<hash>.<suffix>, until 2026-11
+##   2 - images/<hash 1-2>/<hash>.<suffix>
+declare -g _silImageLayout=2
+
 #######################################
 # Move a finished temp file to its final place in the library, with the
 # permissions SHARED calls for. mktemp's private mode ignores the umask, and
@@ -49,6 +54,62 @@ EOF
 }
 
 #######################################
+# Path of a library's layout file, which records the image layout its
+# images are stored in (_silImageLayout).
+# Arguments:
+#   $1 - Library path
+# Outputs:
+#   Path to STDOUT
+#######################################
+function layoutFile {
+    printf '%s\n' "$1/images/layout.txt"
+}
+
+#######################################
+# Record that a library's images are stored in the current layout.
+# Arguments:
+#   $1 - Library path
+# Returns:
+#   0 on success, 1 if the layout file can't be written
+#######################################
+function layoutWrite {
+    {
+        printf '# SIL image layout - see REQ-05 in docs/requirements.md\n'
+        printf '# Images are stored as images/<first 2 characters of hash>/<hash>.<suffix>\n'
+        printf '# Written by sil. Libraries in older layouts are moved to this one by: sil REBUILD\n'
+        printf 'layout %s\n' "$_silImageLayout"
+    } 2> /dev/null > "$(layoutFile "$1")"
+}
+
+#######################################
+# The image layout a library's images are stored in. Libraries from before
+# the layout file are layout 1, unless images holds no folders at all: with
+# no images to move, such a library (new, a fresh clone, or made by hand)
+# is given a layout file and is current.
+# Arguments:
+#   $1 - Library path
+# Outputs:
+#   Layout number to STDOUT; 0 if the layout file is unreadable
+#######################################
+function libraryLayout {
+    local lib="$1" file line
+    file="$(layoutFile "$lib")"
+    if [[ -f "$file" ]]; then
+        line="$(grep -v '^#' -- "$file" 2> /dev/null | head -n 1)"
+        if [[ "$line" =~ ^layout\ ([0-9]+)$ ]]; then
+            printf '%s\n' "${BASH_REMATCH[1]}"
+        else
+            printf '0\n'
+        fi
+    elif [[ -z "$(find "$lib/images" -mindepth 1 -maxdepth 1 -type d -print -quit 2> /dev/null)" ]]; then
+        layoutWrite "$lib"
+        printf '%s\n' "$_silImageLayout"
+    else
+        printf '1\n'
+    fi
+}
+
+#######################################
 # Path at which an image with a given hash and suffix is stored.
 # Globals:
 #   SIL_LIBRARY
@@ -59,7 +120,7 @@ EOF
 #   Path to STDOUT
 #######################################
 function storedImagePath {
-    printf '%s\n' "$SIL_LIBRARY/images/${1:0:2}/${1:2:2}/$1.$2"
+    printf '%s\n' "$SIL_LIBRARY/images/${1:0:2}/$1.$2"
 }
 
 #######################################
@@ -76,7 +137,7 @@ function storedImagePath {
 function findStoredImage {
     local hash="${1,,}" f
     [[ "$hash" =~ ^[0-9a-f]{40}$ ]] || return 1
-    for f in "$SIL_LIBRARY/images/${hash:0:2}/${hash:2:2}/$hash".*; do
+    for f in "$SIL_LIBRARY/images/${hash:0:2}/$hash".*; do
         if [[ -f "$f" ]]; then
             printf '%s\n' "$f"
             return 0

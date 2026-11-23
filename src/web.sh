@@ -182,7 +182,7 @@ function webFacts {
             done
         find . -type l -xtype f -printf 'L\t%h\t%f\n' | LC_ALL=C sort
     ) | sed 's/\\/\\\\/g; s/"/\\"/g'
-    find "$SIL_LIBRARY/images" -mindepth 3 -maxdepth 3 -type f -printf 'I\t%f\t%s\n' \
+    find "$SIL_LIBRARY/images" -mindepth 2 -maxdepth 2 -type f -printf 'I\t%f\t%s\n' \
         | LC_ALL=C sort
 }
 

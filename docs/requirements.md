@@ -107,14 +107,53 @@ Each stored image has two identifiers with different jobs:
   shrinking), from the file exactly as stored
 * The stored file name is the hash plus a suffix for its format, eg `.jpg`
 * Images are stored within an `images` folder at the base level of the library
-* There will be two additional subdirectory levels in the `images` folder
-  * The first level will be the leftmost first two characters of the hash
-  * The next sublevel will be the next leftmost two characters
-  * So an image `f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg` will be stored at:
-    * `images/f1/d2/f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
-  * These additional subdirectories are to prevent too many files from being in
-    one folder
+* There is one additional subdirectory level in the `images` folder, named for
+  the leftmost two characters of the hash
+  * So an image `f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg` is stored at:
+    * `images/f1/f1d2d2f924e986ac86fdf7b36c94bcdf32beec15.jpg`
+  * The 256 subdirectories keep any one folder from holding too many files: a
+    million images is about 4,000 per folder. That stays well inside the limits
+    of FAT32 USB drives (about 13,000 SIL names per folder), shell globs, file
+    managers and network shares, while a whole-library walk (`CHECK`,
+    `BUILDWEB`) reads only 257 folders, which matters over NFS or SMB
 * Any stored file can be checked against its name with `sha1sum` (`REQ-09`)
+
+## Image layout
+
+* How images are arranged in `images` is the library's *image layout*, numbered
+  and recorded in `images/layout.txt` (`layout 2`), which is shared through git
+  * Layout 1, used until November 2026, had a second subdirectory level for the
+    next two characters of the hash: `images/f1/d2/f1d2...ec15.jpg`
+  * Layout 2 is the single level above
+  * A library with no `layout.txt` is layout 1, unless `images` holds no folders
+    (new, a fresh clone, or made by hand). That has nothing to move, so is given
+    a `layout.txt` and used
+* SIL only uses a library in its own layout:
+  * In an older layout, only `CHECK` and `REBUILD` may run. Anything else, a
+    manifest switching to it, and `COPY`/`MOVE` to or from it are refused,
+    showing the `REBUILD` to run. A run given `REBUILD` with images or other
+    actions does them once the library has been moved
+  * In a newer layout (made by a newer SIL), nothing runs, and the user is told
+    to update SIL. An older SIL can't safely rearrange a layout it doesn't know
+* `REBUILD` moves a library from layout 1 (`REQ-09`):
+  * Files named like stored images that are below `images/xx/` are moved to
+    `images/xx/` by name, without reading them, so even damaged files move
+  * A file already in the new place is kept. An identical older copy is removed;
+    a different one is left in place and reported, and nothing else is changed
+  * Tag links are relinked by name (each is named after its image's file), so
+    nothing needs to be recorded between steps. An interrupted `REBUILD` is
+    finished by running it again
+  * Afterwards it confirms the same image names are stored, and that no tag link
+    that reached an image before has stopped doing so
+  * `layout.txt` is only written once no image is left in the older layout and
+    those checks pass. Until then the library stays limited to `CHECK` and
+    `REBUILD`, and `REBUILD` stops after the move, repairing nothing else
+  * A library web page (`BUILDWEB`) is rebuilt, as the page finds images by the
+    layout
+* Every computer sharing a library through git must update SIL before it is
+  moved, as an older SIL puts images back in the older layout. `CHECK` reports
+  images in an older layout as one problem, with a count, and finds any brought
+  back by a git merge from an older SIL; `REBUILD` moves them
 
 ## Format
 
@@ -423,20 +462,26 @@ stored images. Run as action parameters, eg `sil CHECK` (see
   any are found:
   * A stored file whose `sha1sum` does not match its name (damaged, or edited
     after storage)
-  * A stored file in the wrong `images/xx/yy/` folder for its name
+  * A stored file in the wrong `images/xx/` folder for its name
+  * Stored files in an older image layout, or a missing or out of date
+    `images/layout.txt` (`REQ-05`)
   * An unexpected file in `images` (not named `<hash>.<suffix>`)
   * A stored image missing from the fingerprint index, or an index entry with
     no stored image
   * A malformed or repeated index line
   * A malformed sources line, or a source for an image that isn't stored
-  * A tag symlink whose target no longer exists
+  * A tag symlink whose target no longer exists. If its image is stored
+    elsewhere, `REBUILD` is given as the fix
   * Date tag next/previous links that are missing or out of date (`TAG-02`)
   * A missing standard library file (`REQ-10`)
 * `REBUILD` repairs what can be derived from the stored images, keeping tags
   wherever possible:
   * Adds any missing standard library files (`REQ-10`)
+  * Moves images from an older image layout (`REQ-05`)
+  * Points broken tag links at their image, found by the link's name, if it is
+    stored elsewhere
   * Renames each stored image to its current `sha1sum` and format suffix, in
-    its correct `images/xx/yy/` folder. This covers images edited after
+    its correct `images/xx/` folder. This covers images edited after
     storage, misplaced files and wrong suffixes
   * Tag links to a renamed image are replaced by links named after, and
     pointing to, its new file name. Its sources move to its new hash

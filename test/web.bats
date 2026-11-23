@@ -55,7 +55,7 @@ function imageRow {
   local js="$SIL_LIBRARY/web/imageData.js" size
   run grep '^"tags":' "$js"
   assert_output '"tags":["Animal","Animal/Dog","Meme","Untagged"],'
-  size="$(stat -c %s "lib/images/${plasma:0:2}/${plasma:2:2}/$plasma.png")"
+  size="$(stat -c %s "lib/images/${plasma:0:2}/$plasma.png")"
   run imageRow "$plasma"
   assert_output --regexp "^\[\"$plasma\",\"png\",$size,\"2026-03-04\",\[1,2\]\]"
   run imageRow "$anim"

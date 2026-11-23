@@ -89,6 +89,8 @@ function copyLibraryProblem {
         printf -v "$_problemVar" "The %s is not a SIL library (a folder with 'images' and 'tags'): %s" "$_role" "$_lib"
     elif ! lockLibrary "$_lib" try; then
         printf -v "$_problemVar" 'The %s library is in use by another sil: %s' "$_role" "$_lib"
+    elif ! layoutProblem "$_lib" > /dev/null; then
+        printf -v "$_problemVar" "The %s library's images are in an image layout this sil can't use. See: sil LIBRARY='%s' CHECK" "$_role" "$_lib"
     else
         return 0
     fi

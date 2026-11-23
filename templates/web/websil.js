@@ -141,7 +141,7 @@
       anc.forEach((a) => tagCount.set(a, (tagCount.get(a) || 0) + 1));
       return {
         hash, ext, bytes, date, tags, anc,
-        src: `images/${hash.slice(0, 2)}/${hash.slice(2, 4)}/${hash}.${ext}`,
+        src: `images/${hash.slice(0, 2)}/${hash}.${ext}`,
         video: VIDEO_EXT.has(ext),
         rand: 0,
       };

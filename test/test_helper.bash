@@ -29,3 +29,48 @@ teardown_sandbox() {
     rm -rf "$TEST_SANDBOX"
   fi
 }
+
+# Turn a library into one from before the layout file (image layout 1, see
+# REQ-05): each image moved into an images/xx/yy/ folder, every tag link
+# pointed at its new place, and the layout file removed.
+# Arguments:
+#   $1 - Library folder
+toLayout1() {
+  local lib="$1" f name old link
+  local -a files links
+  rm -f "$lib/images/layout.txt"
+  mapfile -t files < <(find "$lib/images" -mindepth 2 -maxdepth 2 -type f)
+  for f in "${files[@]}"; do
+    name="${f##*/}"
+    mkdir -p "$lib/images/${name:0:2}/${name:2:2}"
+    mv "$f" "$lib/images/${name:0:2}/${name:2:2}/$name"
+  done
+  mapfile -t links < <(find "$lib/tags" -type l)
+  for link in "${links[@]}"; do
+    name="${link##*/}"
+    old="$lib/images/${name:0:2}/${name:2:2}/$name"
+    [[ -f "$old" ]] || continue
+    ln -sfn "$(realpath -ms --relative-to="${link%/*}" "$old")" "$link"
+  done
+}
+
+# List every stored image by file name and content hash, whatever folder
+# holds it, so the same images in another layout list the same.
+# Arguments:
+#   $1 - Library folder
+imageMap() {
+  find "$1/images" -mindepth 2 -type f -exec sha1sum {} + \
+    | awk '{ n = $2; sub(/.*\//, "", n); print n, $1 }' | LC_ALL=C sort
+}
+
+# List every tag link with the name of what it reaches, or BROKEN, so the
+# same tags in another image layout list the same.
+# Arguments:
+#   $1 - Library folder
+linkMap() {
+  local link target
+  find "$1/tags" -type l | LC_ALL=C sort | while IFS= read -r link; do
+    target="$(readlink -e "$link")" || target=BROKEN
+    printf '%s -> %s\n' "${link#"$1"/}" "${target##*/}"
+  done
+}

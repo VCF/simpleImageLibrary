@@ -351,3 +351,72 @@ commitAll() {
   assert_success
   assert_output --partial "No problems found in 1 stored images"
 }
+
+# --- Image layout (REQ-05) ----------------------------------------------
+
+## A library of one tagged image, in image layout 1
+oldLibrary() {
+  "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Dog "$PROJECT_ROOT/test/data/images/plasma.png" 2> /dev/null
+  toLayout1 lib
+  find lib -path lib/.tmp -prune -o -printf '%p %y %l\n' | LC_ALL=C sort > before.txt
+}
+
+## Fail if the library has changed since oldLibrary
+assertUnchanged() {
+  find lib -path lib/.tmp -prune -o -printf '%p %y %l\n' | LC_ALL=C sort > after.txt
+  assert_files_equal before.txt after.txt
+}
+
+@test "sil won't change a library in an older image layout" {
+  oldLibrary
+  run "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Cat "$PROJECT_ROOT/test/data/images/animated.gif"
+  assert_failure
+  assert_output --partial "This library stores its images in an older layout"
+  assert_output --partial "sil LIBRARY='$TEST_SANDBOX/lib' REBUILD"
+  assert_output --partial "Update sil on every computer sharing the library"
+  assertUnchanged
+}
+
+@test "sil CHECK on an older layout only checks, even with images given" {
+  oldLibrary
+  run "$PROJECT_ROOT/sil" LIBRARY=lib CHECK "$PROJECT_ROOT/test/data/images/animated.gif"
+  assert_failure
+  assert_output --partial "1 images are stored in the older images/xx/yy/ layout"
+  assert_output --partial "Nothing more was done"
+  assertUnchanged
+}
+
+@test "sil REBUILD moves an older layout, then adds images given with it" {
+  oldLibrary
+  run "$PROJECT_ROOT/sil" LIBRARY=lib REBUILD TAG=Cat "$PROJECT_ROOT/test/data/images/animated.gif"
+  assert_success
+  assert_output --partial "Library now uses image layout 2"
+  run find lib/images -mindepth 2 -type f -name '*.*'
+  assert_line --regexp '^lib/images/[0-9a-f]{2}/[0-9a-f]{40}\.png$'
+  assert_line --regexp '^lib/images/[0-9a-f]{2}/[0-9a-f]{40}\.gif$'
+  run find lib/tags -xtype l
+  assert_output ""
+  run "$PROJECT_ROOT/sil" LIBRARY=lib CHECK
+  assert_success
+}
+
+@test "sil won't use a library from a newer SIL, even to REBUILD it" {
+  oldLibrary
+  printf 'layout 3\n' > lib/images/layout.txt
+  find lib -path lib/.tmp -prune -o -printf '%p %y %l\n' | LC_ALL=C sort > before.txt
+  run "$PROJECT_ROOT/sil" LIBRARY=lib REBUILD
+  assert_failure
+  assert_output --partial "made by a newer version of SIL"
+  assert_output --partial "layouts up to 2"
+  assertUnchanged
+}
+
+@test "a manifest can't switch to a library in an older image layout" {
+  oldLibrary
+  "$PROJECT_ROOT/sil" LIBRARY=other 2> /dev/null
+  printf 'LIBRARY=%s\n%s\n' "$TEST_SANDBOX/lib" "$PROJECT_ROOT/test/data/images/animated.gif" > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY=other m.txt
+  assert_failure
+  assert_output --partial "This library stores its images in an older layout"
+  assertUnchanged
+}

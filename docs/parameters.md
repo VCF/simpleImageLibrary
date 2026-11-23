@@ -462,14 +462,18 @@ Checks the library for problems and reports them, without changing anything
 * Flag parameter; an action, so can't be set in configuration files
 
 Repairs the library from its stored images (see `REQ-09`), keeping tags wherever
-possible: restores missing library files, renames images whose content or place
-no longer matches their name, updates their tag links, and regenerates the
-fingerprint index (`images/fingerprints.txt`)
+possible: restores missing library files, moves images from an older image
+layout (`REQ-05`), renames images whose content or place no longer matches their
+name, updates their tag links, and regenerates the fingerprint index
+(`images/fingerprints.txt`)
 
 * Use after `CHECK` reports problems, after editing or adding files in `images`
   by hand, or after a `git pull` (`REQ-10`)
 * Fingerprints every stored image, so takes a while on a large library
 * If combined with `CHECK`, the rebuild runs first
+* A library in an older image layout can only be checked or rebuilt. Before
+  rebuilding one, back it up (eg commit it to git, or take a snapshot) and
+  update `sil` on every computer sharing it. If interrupted, run it again
 
 ## BUILDWEB
 
