@@ -187,7 +187,8 @@ not even a network connection.
   whole image), Fit edge (its shorter side fills the window) and 1:1 (actual
   pixels). Pan a cropped image with the wheel (Shift+wheel sideways) or by
   dragging. `I` cycles the info line between minimal, extended and hidden, `R`
-  resets the view, and `H` or `?` lists every key
+  resets the view, `/` opens the tag menu as a right-click would (see below),
+  and `H` or `?` lists every key
 * **Filter** by tags, typed with autocomplete or picked from the tag tree. All
   tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
   tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images
@@ -204,6 +205,12 @@ not even a network connection.
   sil LIBRARY=~/Pictures/sil BUILDWEB ~/Downloads/WebSIL_Manifest_2026-11-21_1042.txt
   ```
 
+* **Right-click** an image, in the grid or the full window view, to add a tag
+  to it: type one, with autocomplete or as a new tag, or pick one of the 10
+  tags last added in this browser, listed most recent first under the
+  pointer. Right-clicking a selected image in the grid tags every selected
+  image. Shift+right-click gives the browser's own menu. In the full window
+  view, `/` opens the menu at the pointer too
 * **Copy or move** images to another library: select them, and Add the tag
   `SILCOPY` or `SILMOVE`. These are queued as `COPY` or `MOVE` blocks at the end
   of the manifest, after the tag changes. Edit the manifest to give the target

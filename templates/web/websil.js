@@ -43,6 +43,10 @@
     ? decodeURIComponent(location.pathname).replace(/\/[^/]*$/, '')
     : (data && data.library) || '';
   const storeKey = 'websil:' + libraryPath;
+  /** Where the tags recently added are kept, for the right-click menu. */
+  const recentKey = 'websil:recent:' + libraryPath;
+  /** Recent tags the right-click menu lists. */
+  const RECENT_MAX = 10;
 
   /**
    * One stored image.
@@ -59,6 +63,8 @@
    */
   /** @type {Img[]} */
   let images = [];
+  /** @type {Map<string, Img>} Images by hash. */
+  const imageByHash = new Map();
   /** @type {Img[]} Images passing the filters, in sort order. */
   let view = [];
   let rendered = 0;
@@ -121,6 +127,14 @@
   /** Lightbox info line levels, in the order I steps through them. */
   const INFO_MODES = ['minimal', 'extended', 'hidden'];
   let infoMode = 0;
+  /** Tags recently added from this browser, most recent first. */
+  let recentTags = [];
+  /** @type {string[]} Hashes of the images the right-click menu would tag. */
+  let menuHashes = [];
+  /** A left click closed the tag menu; the click it ends shouldn't act too. */
+  let swallowClick = false;
+  /** Last pointer position, where / opens the tag menu in the lightbox. Null until it moves. */
+  let pointer = null;
 
   // ---------------------------------------------------------------- data
 
@@ -146,6 +160,7 @@
         rand: 0,
       };
     });
+    images.forEach((im) => imageByHash.set(im.hash, im));
     shuffle();
     libraryVocab = names.map((t) => ({ label: t, target: t, count: tagCount.get(t.toLowerCase()) || 0 }));
     for (const [alias, target] of data.aliases) {
@@ -755,7 +770,7 @@
       if (queued) {
         queued.hashes = queued.hashes.filter((h) => h !== im.hash);
         pending = pending.filter((p) => p.hashes.length);
-      } else queueUntag(im.hash, tag);
+      } else queueTag('UNTAG', [im.hash], tag);
       savePending();
       refreshTiles();
       showLightbox();
@@ -777,18 +792,19 @@
   }
 
   /**
-   * Queue the removal of one tag from one image. Joins the last queue
-   * entry if it removes just that tag, so stepping through images removing
-   * the same tag makes one manifest block.
-   * @param {string} hash
+   * Queue adding or removing one tag on some images. Joins the last queue
+   * entry if it does the same with just that tag, so stepping through
+   * images with the same change makes one manifest block. The caller saves.
+   * @param {('TAG'|'UNTAG')} op
+   * @param {string[]} hashes
    * @param {string} tag
    * @returns {void}
    */
-  function queueUntag(hash, tag) {
+  function queueTag(op, hashes, tag) {
     const last = pending[pending.length - 1];
-    if (last && last.op === 'UNTAG' && last.tags.length === 1 && last.tags[0] === tag) {
-      last.hashes.push(hash);
-    } else pending.push({ op: 'UNTAG', tags: [tag], hashes: [hash] });
+    if (last && last.op === op && last.tags.length === 1 && last.tags[0] === tag) {
+      for (const h of hashes) if (!last.hashes.includes(h)) last.hashes.push(h);
+    } else pending.push({ op, tags: [tag], hashes: [...hashes] });
   }
 
   /**
@@ -873,6 +889,115 @@
     scheduleSlide();
     toast(`Slideshow: every ${SLIDE_DELAYS[slideDelay]}s`);
     showLightbox();
+  }
+
+  // ------------------------------------------------------ right-click menu
+
+  /**
+   * Restore the recent tags saved by noteRecent.
+   * @returns {void}
+   */
+  function loadRecent() {
+    try { recentTags = JSON.parse(localStorage.getItem(recentKey) || '[]'); } catch (e) { recentTags = []; }
+    if (!Array.isArray(recentTags)) recentTags = [];
+  }
+
+  /**
+   * Move tags just added to the top of the recent list, and save it.
+   * @param {string[]} tags - In the order added; the last ends up first
+   * @returns {void}
+   */
+  function noteRecent(tags) {
+    for (const t of tags) {
+      recentTags = [t].concat(recentTags.filter((x) => x.toLowerCase() !== t.toLowerCase()));
+    }
+    recentTags = recentTags.slice(0, RECENT_MAX);
+    try { localStorage.setItem(recentKey, JSON.stringify(recentTags)); } catch (e) { /* private mode */ }
+  }
+
+  /**
+   * Whether every image the menu would tag has a tag already, or has it
+   * queued to be added.
+   * @param {string} tag
+   * @returns {boolean}
+   */
+  function menuHasTag(tag) {
+    const t = tag.toLowerCase();
+    const queued = pending.filter((p) => p.op === 'TAG' && p.tags.some((x) => x.toLowerCase() === t));
+    return menuHashes.every((h) => {
+      const im = imageByHash.get(h);
+      return (im && im.tags.some((x) => x.toLowerCase() === t)) || queued.some((p) => p.hashes.includes(h));
+    });
+  }
+
+  /**
+   * Open the tag menu for some images: a box to type a tag, over the recent
+   * tags, placed so the most recent is under the pointer, and the box just
+   * above it.
+   * @param {string[]} hashes - Images a tag picked will be added to
+   * @param {number} x - Pointer position, in CSS pixels from the window's left
+   * @param {number} y - Pointer position, from the window's top
+   * @returns {void}
+   */
+  function openTagMenu(hashes, x, y) {
+    menuHashes = hashes;
+    const menu = $('tagMenu');
+    $('tmHead').textContent = hashes.length > 1
+      ? `Add a tag to ${hashes.length.toLocaleString()} selected images` : 'Add a tag to this image';
+    $('tmRecent').replaceChildren(...recentTags.map((t) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = t;
+      if (menuHasTag(t)) { b.disabled = true; b.title = 'Already has this tag'; }
+      b.addEventListener('click', () => menuPick(t));
+      return b;
+    }));
+    $('tmInput').value = '';
+    menu.hidden = false;
+    const first = $('tmRecent').firstElementChild || $('tmInput');
+    const r = menu.getBoundingClientRect();
+    const f = first.getBoundingClientRect();
+    const fit = (pos, size, room) => Math.max(4, Math.min(room - size - 4, pos));
+    menu.style.left = fit(x - r.width / 2, r.width, window.innerWidth) + 'px';
+    menu.style.top = fit(y - (f.top - r.top + f.height / 2), r.height, window.innerHeight) + 'px';
+    $('tmInput').focus();
+  }
+
+  /**
+   * Close the tag menu, if open.
+   * @returns {void}
+   */
+  function closeTagMenu() {
+    if ($('tagMenu').hidden) return;
+    $('tagMenu').hidden = true;
+    $('tmInput').blur();
+    menuHashes = [];
+  }
+
+  /**
+   * Queue the tag picked in the menu to be added to its images, and close
+   * it. SILCOPY and SILMOVE queue a copy or move instead, as in the
+   * selection bar.
+   * @param {string} tag - Tag path, as cleanTag gives it
+   * @returns {void}
+   */
+  function menuPick(tag) {
+    const hashes = menuHashes;
+    const n = hashes.length === 1 ? 'this image' : `${hashes.length.toLocaleString()} images`;
+    closeTagMenu();
+    if (!tag || !hashes.length) return;
+    if (SEND_TAGS[tag]) {
+      const op = SEND_TAGS[tag].op;
+      pending.push({ op, tags: [], hashes: [...hashes], at: Date.now() / 1000 });
+      toast(`Queued: ${op === 'COPY' ? 'copy' : 'move'} ${n} to another library`);
+    } else {
+      queueTag('TAG', hashes, tag);
+      noteRecent([tag]);
+      toast(`Queued: add ${tag} to ${n}`);
+    }
+    savePending();
+    refreshTiles();
+    if (!$('lightbox').hidden) showLightbox();
   }
 
   // -------------------------------------------------------------- tag tree
@@ -981,7 +1106,6 @@
    */
   function loadPending() {
     try { pending = JSON.parse(localStorage.getItem(storeKey) || '{}').pending || []; } catch (e) { pending = []; }
-    const byHash = new Map(images.map((im) => [im.hash, im]));
     const has = (im, t) => im.tags.some((x) => x.toLowerCase() === t.toLowerCase());
     // A copy leaves no mark in the data, so is taken as done once the data
     // is rebuilt after it was queued, as running the manifest does
@@ -989,7 +1113,7 @@
     pending = pending.map((p) => ({
       ...p,
       hashes: p.hashes.filter((h) => {
-        const im = byHash.get(h);
+        const im = imageByHash.get(h);
         if (!im) return false;
         if (p.op === 'COPY' || p.op === 'MOVE') return true;
         return p.op === 'TAG' ? !p.tags.every((t) => has(im, t)) : p.tags.some((t) => has(im, t));
@@ -1018,6 +1142,7 @@
     const done = [];
     if (tags.length) {
       pending.push({ op, tags, hashes: [...selected] });
+      if (op === 'TAG') noteRecent(tags);
       done.push(`${op === 'TAG' ? 'add' : 'remove'} ${tags.join(', ')}`);
     }
     if (sends.length) {
@@ -1395,6 +1520,12 @@
       extra: Object.entries(SEND_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, count: 0 })),
       onBackspace: () => { editTags.pop(); renderEditChips(); },
     });
+    attachComplete($('tmInput'), {
+      onPick: menuPick,
+      allowNew: true,
+      extra: Object.entries(SEND_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, count: 0 })),
+      onBackspace: () => {},
+    });
     $('filterBox').addEventListener('click', () => $('filterInput').focus());
     $('tagBox').addEventListener('click', () => $('tagInput').focus());
 
@@ -1458,6 +1589,30 @@
       } else openLightbox(i);
     });
 
+    // Right-click: the tag menu, for the image, or every selected image if
+    // it is one of them. Shift+right-click leaves the browser's own menu
+    $('grid').addEventListener('contextmenu', (e) => {
+      const tile = e.target.closest('.tile');
+      if (!tile || e.shiftKey) return;
+      e.preventDefault();
+      const im = view[Number(tile.dataset.i)];
+      openTagMenu(selected.has(im.hash) ? [...selected] : [im.hash], e.clientX, e.clientY);
+    });
+    // A click outside the menu closes it, without also acting on what it hit
+    document.addEventListener('pointerdown', (e) => {
+      if ($('tagMenu').hidden || $('tagMenu').contains(e.target) || $('complete').contains(e.target)) return;
+      closeTagMenu();
+      swallowClick = e.button === 0;
+    }, true);
+    document.addEventListener('click', (e) => {
+      if (!swallowClick) return;
+      swallowClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }, true);
+    document.querySelector('main').addEventListener('scroll', closeTagMenu);
+    window.addEventListener('resize', closeTagMenu);
+
     new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) renderMore();
     }, { root: document.querySelector('main'), rootMargin: '1500px' }).observe($('sentinel'));
@@ -1502,6 +1657,18 @@
       panBy(dx, dy);
     }, { passive: false });
     window.addEventListener('resize', () => { if (!$('lightbox').hidden) placeImage(); });
+    // The lightbox's tag menu, from a right-click or /, pausing the slideshow
+    const lightboxMenu = (x, y) => {
+      if (lbIndex < 0) return;
+      if (slideTimer) { stopSlideshow(); showLightbox(); }
+      openTagMenu([view[lbIndex].hash], x, y);
+    };
+    lbMedia.addEventListener('contextmenu', (e) => {
+      if (e.shiftKey) return;
+      e.preventDefault();
+      lightboxMenu(e.clientX, e.clientY);
+    });
+    document.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; }, { passive: true });
     lbMedia.addEventListener('click', (e) => {
       if (e.target.tagName === 'VIDEO' || dragged) return;
       const wasRunning = slideTimer;
@@ -1511,6 +1678,12 @@
     });
 
     document.addEventListener('keydown', (e) => {
+      // The menu takes the keys while open; its input closes the
+      // autocomplete on Escape, which reaches here to close the menu
+      if (!$('tagMenu').hidden) {
+        if (e.key === 'Escape') { closeTagMenu(); e.preventDefault(); }
+        return;
+      }
       if (!$('lightbox').hidden) {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         // Claim every character key, or Firefox's find as you type takes
@@ -1542,7 +1715,10 @@
           const k = e.key.toLowerCase();
           if (k === 'x') { toggleSelect(lbIndex, false); showLightbox(); }
           else if (k === 'i') infoStep();
-          else if (k === 'h' || k === '/' || k === '?') $('lbHelp').hidden = !$('lbHelp').hidden;
+          else if (k === 'h' || k === '?') $('lbHelp').hidden = !$('lbHelp').hidden;
+          // At the pointer, as a right-click would be; the window's centre
+          // if it hasn't moved since the page loaded
+          else if (k === '/') lightboxMenu(pointer ? pointer.x : window.innerWidth / 2, pointer ? pointer.y : window.innerHeight / 2);
           else if (k === '+' || k === '=') zoomStep(1);
           else if (k === '-' || k === '_') zoomStep(-1);
           else if (k === 'r') resetLightbox();
@@ -1611,6 +1787,7 @@
     buildTree();
     wire();
     loadPending();
+    loadRecent();
     updateSelBar();
     applyFilters();
     checkStale();

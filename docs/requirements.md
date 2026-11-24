@@ -728,10 +728,25 @@ changes in a web browser. `BUILDWEB` builds it (see
 * The view's info line is one line over the bottom of the image, outlined in
   black. `I` steps it through Minimal (the default: date, size, tags), Extended
   (adds the image number, type and short name) and Hidden. It ends with `h -
-  key help`: `H`, `/` or `?` shows or hides a list of the view's keys, which
+  key help`: `H` or `?` shows or hides a list of the view's keys, which
   Escape closes before leaving the view
 * `R` resets the zoom, pan, info line, help and slideshow to how the view
   opens
+* Right-clicking an image, in the grid or the full window view, opens a tag
+  menu: a box to type a tag (autocomplete, new tags, `SILCOPY` and
+  `SILMOVE`, as in the selection bar), above the 10 tags most recently added
+  in this browser (from the menu or the selection bar), most recent first.
+  The menu opens with the most recent tag under the pointer, and the box
+  just above it. Recent tags every target image already has, or has queued,
+  are shown ticked and can't be picked. Picking a tag queues adding it and
+  closes the menu; so do Escape, a click outside it, scrolling and resizing.
+  In the grid, right-clicking a selected image targets the whole selection,
+  otherwise just that image. Opening it in the full window view pauses the
+  slideshow, and `/` opens it as a right-click at the pointer would (at the
+  window's centre if the pointer hasn't moved since the page loaded).
+  Shift+right-click leaves the browser's own menu. Adding the same
+  tag to one image after another joins one queue entry, so makes one
+  manifest block. Recent tags are kept per library in the browser
 * `web/` and `WebSIL.html` are derived, and kept out of git (`REQ-10`), unless
   `GITWEB` is on. The setting is kept in `web/silStamp.js`, and applied to
   `.gitignore` by `BUILDWEB`

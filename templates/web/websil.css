@@ -112,7 +112,7 @@ input.size { width: 6.5em; }
 .notice code { user-select: all; }
 
 #complete {
-  position: fixed; z-index: 20; max-height: 50vh; overflow: auto;
+  position: fixed; z-index: 50; max-height: 50vh; overflow: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.35); min-width: 260px; padding: 3px 0;
 }
@@ -120,6 +120,25 @@ input.size { width: 6.5em; }
 #complete div[aria-selected="true"] { background: var(--raise); }
 #complete .n { color: var(--ink2); font-variant-numeric: tabular-nums; }
 #complete .alias { color: var(--ink2); font-style: italic; }
+
+/* Right-click tag menu: above the full window view, under its autocomplete */
+#tagMenu {
+  position: fixed; z-index: 45; width: 260px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+  display: flex; flex-direction: column; gap: 4px;
+}
+#tmHead { color: var(--ink2); font-size: 12px; padding: 0 2px; }
+#tmInput { width: 100%; }
+#tmRecent { display: flex; flex-direction: column; }
+#tmRecent:empty::after { content: "No recent tags yet"; color: var(--ink2); font-size: 12px; padding: 4px; }
+#tmRecent button {
+  background: none; border: 0; border-radius: 4px; text-align: left;
+  padding: 4px 8px; overflow: hidden; text-overflow: ellipsis;
+}
+#tmRecent button:hover:not(:disabled) { background: var(--raise); }
+#tmRecent button:disabled { opacity: 1; cursor: default; color: var(--ink2); }
+#tmRecent button:disabled::before { content: "✓ "; color: var(--pending); }
 
 #layout { flex: 1; display: flex; min-height: 0; }
 #tree {
