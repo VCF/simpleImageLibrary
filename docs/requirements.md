@@ -316,8 +316,8 @@ the closest match if it has a larger pixel area, as it would be stored (after
 # REQ-07 Image shrinking
 
 Optional reduction of image file size, controlled by the `SHRINK`,
-`SHRINKVID`, `SHRINKTRIGGER`, `SHRINKMINSAVE` and `FLATTEN` parameters (see
-[parameters.md](./parameters.md))
+`SHRINKVID`, `SHRINKTRIGGER`, `SHRINKMINSAVE`, `SHRINKMINQUAL` and `FLATTEN`
+parameters (see [parameters.md](./parameters.md))
 
 * Shrinking happens after recovery and before fingerprinting (`REQ-05`)
 
@@ -326,6 +326,11 @@ Optional reduction of image file size, controlled by the `SHRINK`,
 * An image is only shrunk if it is at least `SHRINK` x `SHRINKTRIGGER` bytes
 * Shrinking re-encodes as JPEG using ImageMagick's `jpeg:extent`, which picks
   the JPEG quality that fits the target size
+* If that quality is under `SHRINKMINQUAL` (unless it is `0`), the image is
+  scaled down, in steps of at least 10%, until the target size is met at
+  `SHRINKMINQUAL` or better. The largest resolution found is kept, encoded at
+  the best quality that fits. If resizing fails, or would go under 16 pixels,
+  the full resolution JPEG is used, with a warning
 * The original is kept, and the user told why, if:
   * The image has transparency (which JPEG cannot store), unless `FLATTEN` is
     set, in which case it is first placed on a white background

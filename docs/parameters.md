@@ -318,6 +318,25 @@ original is kept
   original would be kept
 * Applies to both `SHRINK` and `SHRINKVID`
 
+### SHRINKMINQUAL
+
+* Default: `40`
+* Percent parameter, used as a JPEG quality (`0`-`100`)
+
+The lowest JPEG quality `SHRINK` may use. The resolution of a shrunk image is
+kept unless meeting `SHRINK` would need a lower quality than this; then the
+image is scaled down until `SHRINK` can be met at this quality or better
+
+* Large, detailed or grainy photos can otherwise be forced to a very low
+  quality, eg a grainy 20 MP photo shrunk to 500 KB fell to quality 5, with
+  heavy blocking in smooth areas such as sky. With `SHRINKMINQUAL=40` it was
+  stored at 1570x2093, quality 48
+* `0` never reduces resolution
+* The outcome notes any resize, eg `resized 3888x5184 -> 1570x2093 (quality 48)`
+* Each step down is estimated from the size at this quality, so the final
+  quality is usually somewhat above it
+* Does not apply to `SHRINKVID`
+
 ### FLATTEN
 
 * Default: off

@@ -138,34 +138,57 @@ types are:
 * **Flag**: `NAME` alone or any other value is on; `0`, `no`, `false` or `off`
   is off
 
+### Core library management
+
 | Parameter | Value | Default | Where | Function |
 | --------- | ----- | ------- | ----- | -------- |
 | `LIBRARY` | Path | See above | G C M | The library to use. Created if needed |
-| `TAG`, `TAGS` | Tags | None | C M | Tags to apply, comma separated. `/` or `:` separates levels of a hierarchy, eg `Animal/Dog`. Case-insensitive. `Date`, `Untagged`, `SILCOPY`, `SILMOVE`, `SILREMOVE` and `SILREFETCH` are reserved |
-| `UNTAG`, `UNTAGS` | Tags | None | C M | Tags to remove from images already in the library. `*` removes all but the date tag |
 | `REMOVE` | Flag | Off | C M | Remove images from the library, with their tags and records |
-| `LINK` | `SOURCE -> TARGET` | None | C M | Make tag `SOURCE` a symlink to tag `TARGET`, as an alias. Asks before moving any images already in `SOURCE` |
-| `REMAP`, `MAPTAG`, `TAGMAP`, `MAP` | `SOURCE -> TARGET` | None | C M | Quietly replace tag `SOURCE` with `TARGET`, for existing images and from now on. Kept in `RemappedTags.txt` in the library, which can be edited by hand |
-| `SHRINK` | Size | `0` (off) | G L C M | Target size for still images, which are re-encoded as JPEG |
-| `SHRINKTRIGGER` | Number | `2` | G L C M | Only shrink still images at least this many times `SHRINK` |
-| `SHRINKMINSAVE` | Percent | `25%` | G L C M | Keep the original unless shrinking saves at least this much. Also applies to `SHRINKVID` |
-| `SHRINKVID` | `HIGH`, `MEDIUM`, `LOW`, `OFF` | `OFF` | G L C M | Convert animated GIF and WebP images, and videos, to animated AVIF at this quality. Removes transparency and sound |
-| `FLATTEN` | Flag | Off | G L C M | Allow `SHRINK` to shrink images with transparency, by placing them on white |
-| `THRESHOLD` | Percent | `90%` | G L C M | How similar two images must be to count as duplicates. Use a high value, eg `98%`, to keep near-identical images apart |
-| `REFETCH` | Flag | Off | G L C M | Download a URL even if it is already recorded as a source of a stored image. Given a hash, download the image again from its recorded sources and replace it, eg with a different `SHRINK` |
-| `KEEPLARGER` | Flag | Off | G L C M | When a duplicate has more pixels than the stored image, replace the stored image, keeping its tags, sources and date. Logged in `ReplacedImages.tsv`, with the old file kept in `replacedWithHigherRes/` |
 | `SHARED` | Flag | Off | G L C | Off, library files and folders can only be read by their owner (`600` and `700`). On, by everyone (`644` and `755`). Applies to what SIL creates from then on; `REBUILD` applies it to everything |
-| `TOR`, `USETOR` | Flag | Off | G L C M | Download through `torsocks`. Onion addresses always are |
 | `CHECK` | Flag | Off | C | Report problems in the library, changing nothing. Exits with status 1 if any are found |
 | `REBUILD` | Flag | Off | C | Repair the library from its stored images, keeping tags. Runs before `CHECK` if both are given |
-| `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
-| `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
-| `WEBACCENT` | Color | `blue` | G L C | The web page's accent color: `blue`, `teal`, `green`, `amber`, `violet`, `rose`, or a hex color such as `#3a7bd5`. Applied by `BUILDWEB` |
-| `STOPSIL`, `SILSTOP` | Flag | Off | M | Stop reading the manifest at this line |
 | `COPY`, `CP`, `SILCOPY` | `SOURCE -> TARGET` | None | M | Copy the images whose hashes follow, one per line, from library `SOURCE` to library `TARGET`, with their tags and sources. `SOURCE ->` may be left out, for the library in use. Both must exist. The block ends at the next line that isn't a hash. In the target they are added as new images, with its settings, and dated today. `SILCOPY` is a reserved tag |
 | `MOVE`, `MV`, `SILMOVE` | `SOURCE -> TARGET` | None | M | As `COPY`, then remove each image from `SOURCE` once its copy succeeded. `SILMOVE` is a reserved tag |
 | `STOPCOPY` | Flag | Off | M | End a `COPY` or `MOVE` block. Does nothing else; for legibility |
 | `STOPMOVE` | Flag | Off | M | As `STOPCOPY` |
+| `STOPSIL`, `SILSTOP` | Flag | Off | M | Stop reading the manifest at this line |
+
+### Tag management
+
+| Parameter | Value | Default | Where | Function |
+| --------- | ----- | ------- | ----- | -------- |
+| `TAG`, `TAGS` | Tags | None | C M | Tags to apply, comma separated. `/` or `:` separates levels of a hierarchy, eg `Animal/Dog`. Case-insensitive. `Date`, `Untagged`, `SILCOPY`, `SILMOVE`, `SILREMOVE` and `SILREFETCH` are reserved |
+| `UNTAG`, `UNTAGS` | Tags | None | C M | Tags to remove from images already in the library. `*` removes all but the date tag |
+| `LINK` | `SOURCE -> TARGET` | None | C M | Make tag `SOURCE` a symlink to tag `TARGET`, as an alias. Asks before moving any images already in `SOURCE` |
+| `REMAP`, `MAPTAG`, `TAGMAP`, `MAP` | `SOURCE -> TARGET` | None | C M | Quietly replace tag `SOURCE` with `TARGET`, for existing images and from now on. Kept in `RemappedTags.txt` in the library, which can be edited by hand |
+
+### Image recovery
+
+| Parameter | Value | Default | Where | Function |
+| --------- | ----- | ------- | ----- | -------- |
+| `THRESHOLD` | Percent | `90%` | G L C M | How similar two images must be to count as duplicates. Use a high value, eg `98%`, to keep near-identical images apart |
+| `REFETCH` | Flag | Off | G L C M | Download a URL even if it is already recorded as a source of a stored image. Given a hash, download the image again from its recorded sources and replace it, eg with a different `SHRINK` |
+| `KEEPLARGER` | Flag | Off | G L C M | When a duplicate has more pixels than the stored image, replace the stored image, keeping its tags, sources and date. Logged in `ReplacedImages.tsv`, with the old file kept in `replacedWithHigherRes/` |
+| `TOR`, `USETOR` | Flag | Off | G L C M | Download through `torsocks`. Onion addresses always are |
+
+### Image and video management
+
+| Parameter | Value | Default | Where | Function |
+| --------- | ----- | ------- | ----- | -------- |
+| `SHRINK` | Size | `0` (off) | G L C M | Target size for still images, which are re-encoded as JPEG |
+| `SHRINKTRIGGER` | Number | `2` | G L C M | Only shrink still images at least this many times `SHRINK` |
+| `SHRINKMINSAVE` | Percent | `25%` | G L C M | Keep the original unless shrinking saves at least this much. Also applies to `SHRINKVID` |
+| `SHRINKMINQUAL` | `0`-`100` | `40` | G L C M | Lowest JPEG quality `SHRINK` may use. If the target can't be met at this quality, the image's resolution is reduced until it can. `0` never reduces resolution |
+| `SHRINKVID` | `HIGH`, `MEDIUM`, `LOW`, `OFF` | `OFF` | G L C M | Convert animated GIF and WebP images, and videos, to animated AVIF at this quality. Removes transparency and sound |
+| `FLATTEN` | Flag | Off | G L C M | Allow `SHRINK` to shrink images with transparency, by placing them on white |
+
+### WebSIL configuration and building
+
+| Parameter | Value | Default | Where | Function |
+| --------- | ----- | ------- | ----- | -------- |
+| `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
+| `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
+| `WEBACCENT` | Color | `blue` | G L C | The web page's accent color: `blue`, `teal`, `green`, `amber`, `violet`, `rose`, or a hex color such as `#3a7bd5`. Applied by `BUILDWEB` |
 
 # WebSIL
 

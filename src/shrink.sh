@@ -15,6 +15,10 @@ declare -g _silShrinkVidVerify=90
 ## Set when shrinking is rejected (SHRINKFAIL): why, for the outcome
 declare -g _silShrinkFailDetail=""
 
+## Set by resizeForQuality: how SHRINKMINQUAL resized the image, for
+## _silShrinkNote. Empty when it was not resized
+declare -g _silShrinkResize=""
+
 ## Set by shrinkImage: what shrinking did, or why it left the image as
 ## is, for the outcome line. Empty when shrinking is off
 declare -g _silShrinkNote=""
@@ -34,7 +38,7 @@ declare -gA _silShrinkVidCrf=(
 # result saves enough and still matches. Helper for shrinkImage, which
 # handles cleanup.
 # Globals:
-#   SIL_SHRINK, SIL_SHRINKMINSAVE, _silShrinkVerify
+#   SIL_SHRINK, SIL_SHRINKMINSAVE, _silShrinkVerify; sets _silShrinkResize
 # Arguments:
 #   $1 - Original image path
 #   $2 - Reference path: the original, or a path at which to write a
@@ -68,9 +72,74 @@ function encodeShrunk {
     $errTxt"
         return 1
     fi
+    _silShrinkResize=""
+    resizeForQuality "$ref" "$out"
 
     verifyShrunk "$ref" "$out" "$srcBytes" SHRINK "$_silShrinkVerify" || return
+    _silShrinkNote+="$_silShrinkResize"
     [[ "$ref" != "$src" ]] && _silShrinkNote+=", flattened onto white"
+    return 0
+}
+
+#######################################
+# If fitting SHRINK forced the JPEG quality under SHRINKMINQUAL, re-encode
+# at a lower resolution, the largest found at which SHRINK can be met at
+# that quality. Each step estimates the scale from the size at
+# SHRINKMINQUAL, as JPEG size roughly follows pixel count, and is at
+# least a 10% reduction, so the search ends. Downscaling packs detail
+# more densely, so the estimate tends to be optimistic and may take a
+# few steps. Helper for encodeShrunk.
+# Globals:
+#   SIL_SHRINK, SIL_SHRINKMINQUAL; sets _silShrinkResize
+# Arguments:
+#   $1 - Reference image to encode from
+#   $2 - The JPEG encoded at full resolution; replaced if resized
+# Outputs:
+#   Warnings to STDERR
+# Returns:
+#   0; on any failure the full resolution JPEG is left as is
+#######################################
+function resizeForQuality {
+    local ref="$1" out="$2"
+    local minQ="${SIL_SHRINKMINQUAL:-0}" q w h
+    (( minQ > 0 )) || return 0
+    q="$(identify -format '%Q' "$out" 2> /dev/null)" || return 0
+    [[ "$q" =~ ^[0-9]+$ ]] && (( q < minQ )) || return 0
+    read -r w h <<< "$(identify -format '%w %h' "${ref}[0]" 2> /dev/null)"
+    [[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]] || return 0
+    msgStatus "  JPEG quality $q is under SHRINKMINQUAL $minQ: reducing resolution"
+
+    local probe scale=1 geom="${w}x${h}" bytes errTxt
+    probe="$(silMktemp .jpg)" || return 0
+    while :; do
+        if ! convert "${ref}[0]" -resize "$geom" -quality "$minQ" "$probe" 2> /dev/null; then
+            msgWarn "[!] ImageMagick could not resize the image; keeping JPEG quality $q"
+            break
+        fi
+        bytes="$(stat -c %s -- "$probe")"
+        if (( bytes <= SIL_SHRINK )); then
+            if errTxt="$(convert "${ref}[0]" -resize "$geom" \
+                -define "jpeg:extent=$SIL_SHRINK" "$probe" 2>&1)" && [[ -s "$probe" ]]; then
+                mv -f -- "$probe" "$out"
+                q="$(identify -format '%Q' "$out" 2> /dev/null)"
+                _silShrinkResize=", resized ${w}x${h} -> $(identify -format '%wx%h' "$out") (quality $q)"
+            else
+                msgWarn "[!] ImageMagick could not shrink the resized image; keeping JPEG quality $q
+    $errTxt"
+            fi
+            break
+        fi
+        scale="$(awk -v s="$scale" -v t="$SIL_SHRINK" -v b="$bytes" \
+            'BEGIN { f = 0.95 * sqrt(t / b); if (f > 0.9) f = 0.9; print s * f }')"
+        geom="$(awk -v s="$scale" -v w="$w" -v h="$h" \
+            'BEGIN { printf "%dx%d", w * s + 0.5, h * s + 0.5 }')"
+        if [[ "$geom" =~ ^([0-9]+)x([0-9]+)$ ]] \
+            && (( BASH_REMATCH[1] < 16 || BASH_REMATCH[2] < 16 )); then
+            msgWarn "[!] SHRINK can't be met at SHRINKMINQUAL $minQ above 16 pixels; keeping JPEG quality $q"
+            break
+        fi
+    done
+    rm -f -- "$probe"
     return 0
 }
 
@@ -240,15 +309,16 @@ function shrinkAnimation {
 #######################################
 # Shrink an image. Animations and videos go to shrinkAnimation
 # (SHRINKVID); other images are re-encoded as JPEG of about SIL_SHRINK
-# bytes (ImageMagick jpeg:extent). The original is kept if shrinking is off, not triggered,
-# not possible, saves too little, or changes the image.
+# bytes (ImageMagick jpeg:extent), at a lower resolution if that is needed
+# to stay at or above SHRINKMINQUAL. The original is kept if shrinking is
+# off, not triggered, not possible, saves too little, or changes the image.
 # Transparent images are only shrunk to JPEG with FLATTEN, which places
 # them on a white background first.
 # A kept shrunk copy is a new temporary file (silMktemp) that the caller
 # removes when done; the original is never modified.
 # Globals:
 #   SIL_SHRINK, SIL_SHRINKVID, SIL_SHRINKTRIGGER, SIL_SHRINKMINSAVE,
-#   SIL_FLATTEN; sets _silShrinkNote
+#   SIL_SHRINKMINQUAL, SIL_FLATTEN; sets _silShrinkNote
 # Arguments:
 #   $1 - Image path
 #   $2 - Name of the variable to receive the path to keep (the shrunk

@@ -82,6 +82,54 @@ assert_no_temp_files() {
   [[ "$_silShrinkNote" == *" -> "*" KB (saved "*"%)" ]]
 }
 
+@test "resolution is kept when SHRINK is met at SHRINKMINQUAL" {
+  shrinkImage big.png kept
+  run identify -format '%wx%h' "$kept"
+  assert_output 600x400
+  [[ "$_silShrinkNote" != *resized* ]]
+}
+
+@test "resolution is reduced when SHRINK would go under SHRINKMINQUAL" {
+  ## At full resolution, 25 KB needs a JPEG quality of about 68
+  SIL_SHRINK=$(( 25 * 1024 ))
+  SIL_SHRINKMINQUAL=80
+  shrinkImage big.png kept
+  assert_not_equal "$kept" big.png
+  local w h q bytes
+  read -r w h q <<< "$(identify -format '%w %h %Q' "$kept")"
+  (( w < 600 && h < 400 ))
+  (( q >= 80 ))
+  bytes="$(stat -c %s "$kept")"
+  (( bytes <= SIL_SHRINK ))
+  [[ "$_silShrinkNote" == *", resized 600x400 -> ${w}x${h} (quality $q)" ]]
+  run find "$TEST_SANDBOX/.tmp" -type f
+  assert_output "$kept"
+}
+
+@test "SHRINKMINQUAL of 0 never reduces resolution" {
+  SIL_SHRINK=$(( 25 * 1024 ))
+  SIL_SHRINKMINQUAL=0
+  shrinkImage big.png kept
+  run identify -format '%wx%h' "$kept"
+  assert_output 600x400
+}
+
+@test "if ImageMagick can't resize, the full resolution JPEG is kept" {
+  SIL_SHRINK=$(( 25 * 1024 ))
+  SIL_SHRINKMINQUAL=80
+  convert() {
+    [[ "$*" == *-resize* ]] && return 1
+    command convert "$@"
+  }
+  shrinkImage big.png kept 2> err.txt
+  run identify -format '%wx%h' "$kept"
+  assert_output 600x400
+  run cat err.txt
+  assert_output --partial "could not resize the image"
+  run find "$TEST_SANDBOX/.tmp" -type f
+  assert_output "$kept"
+}
+
 @test "too little saving keeps the original" {
   SIL_SHRINKMINSAVE=100
   shrinkImage big.png kept

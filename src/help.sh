@@ -47,6 +47,8 @@ Shrinking:
   SHRINK=SIZE          Target size for still images, eg 500kb (default 0, off)
   SHRINKTRIGGER=N      Only shrink images at least N x SHRINK (default 2)
   SHRINKMINSAVE=PCT    Keep the original unless this is saved (default 25%)
+  SHRINKMINQUAL=N      Lowest JPEG quality, 0-100, for SHRINK; below it the
+                       resolution is reduced instead (default 40, 0 off)
   SHRINKVID=LEVEL      Convert animations and videos to AVIF, at quality HIGH,
                        MEDIUM, LOW or OFF (default OFF)
   FLATTEN              Allow SHRINK of transparent images, placed on white
