@@ -220,7 +220,7 @@ function libraryEnsureFiles {
         msgInfo "  Added images/fingerprints.txt"
     fi
     if [[ ! -e "$lib/images/sources.txt" ]]; then
-        sourcesWriteSorted "$lib/images/sources.txt" < /dev/null
+        sourcesWrite "$lib/images/sources.txt" < /dev/null
         msgInfo "  Added images/sources.txt"
     fi
 }

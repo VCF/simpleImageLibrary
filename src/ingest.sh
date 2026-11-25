@@ -6,7 +6,7 @@ srcLib "tags"
 srcLib "replace"
 
 ## Successful outcome tags, in reporting order; anything else is a failure
-declare -ga _silSuccessTags=(ADDED SHRINK UPGRADED DUPE FOUND REMOVED COPIED MOVED)
+declare -ga _silSuccessTags=(ADDED SHRINK UPGRADED REFETCHED DUPE FOUND REMOVED COPIED MOVED)
 
 ## Outcome tag -> count, for the run summary
 declare -gA _silOutcomes=()
@@ -74,19 +74,22 @@ function setOutcome {
 #######################################
 # Add a recovered file to the library (REQ-05, REQ-07): check it is a
 # supported image, shrink it, then store it, or match it to a similar
-# stored image, which KEEPLARGER may replace with it. Temporary files made
-# here are removed; the input file is left for the caller.
+# stored image, which KEEPLARGER may replace with it. Given an image to
+# replace (REFETCH of a hash), the file must match that image, and then
+# replaces it whatever its size; anything else is NOMATCH. Temporary files
+# made here are removed; the input file is left for the caller.
 # Globals:
 #   SIL_THRESHOLD, SIL_KEEPLARGER; sets _silOutcome, _silOutcomeDetail,
 #   _silOutcomeHash
 # Arguments:
 #   $1 - Recovered file (in the library's temp folder, no suffix)
 #   $2 - The URI it came from, for the record of any replacement
+#   $3 - Hash of the stored image it should replace (optional)
 # Returns:
 #   0 if added or matched, 1 on failure
 #######################################
 function ingestFile {
-    local file="$1" source="$2"
+    local file="$1" source="$2" replace="${3:-}"
     local format rc kept fp match hash mime
     _silOutcomeHash=""
 
@@ -116,8 +119,16 @@ function ingestFile {
     fi
 
     msgStatus "  Comparing with library"
-    match="$(indexMatch "$fp" "$SIL_THRESHOLD" | head -n 1)"
-    if [[ -n "$match" ]]; then
+    if [[ -n "$replace" ]]; then
+        match="$(indexMatch "$fp" "$SIL_THRESHOLD" | awk -v h="$replace" '$2 == h' | head -n 1)"
+        if [[ -n "$match" ]]; then
+            _silOutcomeHash="$replace"
+            setOutcome DUPE "${replace:0:12} - unchanged"
+            refetchReplace "$kept" "$fp" "${match%% *}" "$source"
+        else
+            setOutcome NOMATCH "No longer matches ${replace:0:12} (THRESHOLD $SIL_THRESHOLD%); left unchanged"
+        fi
+    elif match="$(indexMatch "$fp" "$SIL_THRESHOLD" | head -n 1)" && [[ -n "$match" ]]; then
         _silOutcomeHash="${match#* }"
         setOutcome DUPE "${_silOutcomeHash:0:12} - already in library (${match%% *} of 256 bits differ)"
         if flagIsSet KEEPLARGER; then
@@ -199,6 +210,66 @@ function updateStored {
 }
 
 #######################################
+# Download a stored image again from its recorded URL sources, and replace
+# it with the download (REFETCH of a hash), with the SHRINK now in force.
+# With more than one source, the person running SIL chooses, from a list
+# newest first (askChoice), as a later source is likely the better copy.
+# With no terminal to ask at, they are tried newest first until one
+# downloads. The download must match
+# the image by fingerprint (NOMATCH otherwise), as a site may now serve
+# something else; it then replaces the image whatever its size, keeping its
+# tags, date and sources (refetchReplace). SIL_UNTAG and SIL_TAG are then
+# applied, as for FOUND.
+# Globals:
+#   SIL_THRESHOLD, SIL_TAG, SIL_UNTAG
+# Arguments:
+#   $1 - Image hash
+# Outputs:
+#   Progress and the outcome to STDERR
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+function refetchStored {
+    local hash="$1" url tmp="" rv choice
+    local -a urls
+    mapfile -t urls < <(sourcesOf "$hash" | tac | awk '!seen[$0]++' | while IFS= read -r url; do
+        [[ "$(uriKind "$url")" == url ]] && printf '%s\n' "$url"
+    done)
+    if (( ! ${#urls[@]} )); then
+        reportOutcome NOSOURCE "${hash:0:12} has no URL source to download again; left unchanged" "$hash"
+        return 1
+    fi
+    if (( ${#urls[@]} > 1 )); then
+        if askChoice choice "Multiple sources available for REFETCH on hash ${hash:0:12}.
+Please choose URL to fetch (shown newest to oldest):" "${urls[@]:0:26}"; then
+            urls=("${urls[choice]}")
+        else
+            msgInfo "  ${#urls[@]} sources, and no terminal to choose at: trying newest first"
+        fi
+    fi
+    for url in "${urls[@]}"; do
+        msgInfo "  Refetching $url"
+        fetchURI "$url" tmp && break
+        msgWarn "  [!] $_silFetchReason: $_silFetchDetail"
+        tmp=""
+    done
+    if [[ -z "$tmp" ]]; then
+        reportOutcome "$_silFetchReason" "No source of ${hash:0:12} could be downloaded; left unchanged" "$hash"
+        return 1
+    fi
+
+    ingestFile "$tmp" "$url" "$hash"
+    rv=$?
+    rm -f -- "$tmp"
+    reportOutcome "$_silOutcome" "$_silOutcomeDetail" "$_silOutcomeHash"
+    (( rv == 0 )) || return 1
+    rv=0
+    applyUntags "$_silOutcomeHash" || rv=1
+    applyTags "$_silOutcomeHash" || rv=1
+    return "$rv"
+}
+
+#######################################
 # Make sure the tools for adding images are installed.
 # Returns:
 #   0 if they are; halts (msgError) with install instructions otherwise
@@ -210,7 +281,8 @@ function requireImageTools {
 }
 
 #######################################
-# Process one URI (REQ-03): a hash selects a stored image; a URL already
+# Process one URI (REQ-03): a hash selects a stored image, which REFETCH
+# downloads again from its sources (refetchStored); a URL already
 # recorded as a source is a DUPE of its image, unless REFETCH; any other
 # URL or local path is recovered and added. The URI is recorded as a source of
 # the resulting image (REQ-05), a newly stored image gets today's date
@@ -251,7 +323,11 @@ function processURI {
             reportOutcome NOHASH "No image with this hash in the library"
             return 1
         fi
-        updateStored "${uri,,}"
+        if flagIsSet REFETCH && ! flagIsSet REMOVE; then
+            refetchStored "${uri,,}"
+        else
+            updateStored "${uri,,}"
+        fi
         return
     fi
 

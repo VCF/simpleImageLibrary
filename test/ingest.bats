@@ -315,8 +315,8 @@ assert_no_temp_files() {
   local hash
   hash="$(sha1sum "$DATA/plasma.png" | cut -c1-40)"
   run grep -v '^#' lib/images/sources.txt
-  assert_output "$hash file:other.png
-$hash file:pic.png"
+  assert_output "$hash file:pic.png
+$hash file:other.png"
 }
 
 @test "sources: URLs are recorded as given, a DUPE's too" {

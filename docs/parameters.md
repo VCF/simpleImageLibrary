@@ -123,9 +123,11 @@ The tag parameter defines one or more tags within the library
   * `Untagged`, for images with no other tags (`TAG-03`). `TAG=Untagged` warns
     that to remove all tags from an image, use `UNTAG=*`. Other tags in the same
     value are still applied
-  * `SILCOPY` and `SILMOVE`, which WebSIL offers as tags to queue copying or
-    moving images to another library (`COPY`, `MOVE`). The warning says how to
-    copy instead. Below another tag they are ordinary tags, eg `Misc/SilCopy`
+  * `SILCOPY`, `SILMOVE`, `SILREMOVE` and `SILREFETCH`, which WebSIL offers
+    as tags to queue SIL operations on images: copying or moving them to
+    another library (`COPY`, `MOVE`), removing them (`REMOVE`), or downloading
+    them again (`REFETCH`). The warning says how to do it instead. Below
+    another tag they are ordinary tags, eg `Misc/SilCopy`
 * A new image given no tags is tagged `Untagged`; giving an image any tag
   removes its `Untagged` tag (`TAG-03`)
 * `TAG=` (empty) clears an earlier `TAG` setting, eg partway through a
@@ -377,6 +379,29 @@ Download URLs again even when they are already recorded as a source
   serve a different image at the same address
 * Local files are always checked by fingerprint: they are recorded by name
   only, so two different files with the same name would be confused
+* A hash URI (`REQ-03`) is downloaded again from the image's recorded URL
+  sources, to replace the stored image, eg with a different `SHRINK`:
+  * With more than one URL source, SIL asks at the terminal which to
+    download, listing them newest first, as a later source is likely the
+    better copy (eg `a) https://...`). With no terminal, eg run from a
+    script, they are tried newest first until one downloads. Local file
+    sources are skipped; an image with no URL source is `NOSOURCE`, and left
+    as it is
+  * The download is shrunk as now set (`SHRINK`, `SHRINKVID`), then compared
+    with the stored image by fingerprint (`THRESHOLD`). If it no longer
+    matches, eg the site now serves another picture, it is `NOMATCH`, and
+    nothing changes
+  * A match replaces the stored image whatever its size, unlike `KEEPLARGER`,
+    reported as `REFETCHED` with both file sizes. As with `KEEPLARGER`, tags
+    (including the date tag) and sources move to its new hash, the replaced
+    file is kept in `replacedWithHigherRes/` and logged in
+    `ReplacedImages.tsv`, and the old hash no longer works as a URI. A
+    download identical to the stored file is a `DUPE`, changing nothing
+  * `TAG` and `UNTAG` then apply to the image, as for `FOUND`. With `REMOVE`,
+    the image is removed instead, and nothing is downloaded
+  * In a manifest, the WebSIL tag `SILREFETCH` queues this as:
+    `SHRINK=500kb`, `REFETCH`, the hashes, `REFETCH=off`, then `SHRINK=` to
+    restore the library's own (`REQ-06`)
 
 ## SHARED
 

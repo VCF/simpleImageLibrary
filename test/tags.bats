@@ -205,6 +205,17 @@ storeOn() {
   assert_not_exists lib/tags/SILMOVE
 }
 
+@test "SILREMOVE and SILREFETCH are reserved too" {
+  SIL_TAG="SilRemove, silrefetch/Sub"
+  run applyTags "$hash"
+  assert_failure
+  assert_output --partial "'SILREMOVE' is reserved for WebSIL, to remove images from the library - ignored: SilRemove"
+  assert_output --partial "Otherwise, use REMOVE with their hashes"
+  assert_output --partial "'SILREFETCH' is reserved for WebSIL, to download images again from their sources - ignored: silrefetch/Sub"
+  assert_not_exists lib/tags/SilRemove
+  assert_not_exists lib/tags/silrefetch
+}
+
 @test "a tag removes Untagged; a tag that existed does too" {
   markUntagged "$hash"
   assert_link_exists "lib/tags/Untagged/$hash.png"

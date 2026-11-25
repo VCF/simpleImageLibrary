@@ -9,9 +9,15 @@ declare -g _silDateTag="Date"
 ## up to date automatically, users can't apply or remove it
 declare -g _silUntaggedTag="Untagged"
 
-## Reserved top-level tags that WebSIL offers as tags, to queue copying or
-## moving images to another library (COPY, MOVE). Never applied as tags
-declare -g _silCopyTag="SILCOPY" _silMoveTag="SILMOVE"
+## Reserved top-level tags that WebSIL offers as tags, to queue SIL
+## operations on images rather than tagging them. Never applied as tags.
+## Tag -> "what it does|how to do it without WebSIL", for the warning
+declare -gA _silOpTags=(
+    [SILCOPY]="copy images to another library|put 'COPY <source library> -> <target library>' in a manifest, followed by their hashes"
+    [SILMOVE]="move images to another library|put 'MOVE <source library> -> <target library>' in a manifest, followed by their hashes"
+    [SILREMOVE]="remove images from the library|use REMOVE with their hashes"
+    [SILREFETCH]="download images again from their sources|use REFETCH with their hashes"
+)
 
 ## Letters allowed in tags beyond ASCII (TAG-03): the accented letters of
 ## Latin-1. Matched under a UTF-8 locale, as single characters
@@ -296,10 +302,10 @@ function relinkDays {
 
 #######################################
 # The reserved tag a tag path falls under, if any: the date tag (TAG-02),
-# the Untagged tag (TAG-03), or the SILCOPY and SILMOVE tags of WebSIL
-# (COPY, MOVE), matched case-insensitively.
+# the Untagged tag (TAG-03), or the operation tags of WebSIL (SILCOPY,
+# SILMOVE, SILREMOVE, SILREFETCH), matched case-insensitively.
 # Globals:
-#   _silDateTag, _silUntaggedTag, _silCopyTag, _silMoveTag
+#   _silDateTag, _silUntaggedTag, _silOpTags
 # Arguments:
 #   $1 - Tag path, eg Date/2026
 # Outputs:
@@ -309,7 +315,7 @@ function relinkDays {
 #######################################
 function reservedTag {
     local top="${1%%/*}" reserved
-    for reserved in "$_silDateTag" "$_silUntaggedTag" "$_silCopyTag" "$_silMoveTag"; do
+    for reserved in "$_silDateTag" "$_silUntaggedTag" "${!_silOpTags[@]}"; do
         if [[ "${top,,}" == "${reserved,,}" ]]; then
             printf '%s\n' "$reserved"
             return 0
@@ -324,7 +330,7 @@ function reservedTag {
 # may not use: the reserved tags (reservedTag), and tags parseTags leaves
 # out.
 # Globals:
-#   _silDateTag, _silCopyTag, _silMoveTag, _silRemaps
+#   _silDateTag, _silOpTags, _silRemaps
 # Arguments:
 #   $1 - TAG or UNTAG value
 #   $2 - 'TAG' (default) or 'UNTAG', for the warnings given
@@ -335,7 +341,7 @@ function reservedTag {
 #######################################
 function parseUserTags {
     local LC_ALL=C.UTF-8
-    local tags tag reserved verb rv=0
+    local tags tag reserved op rv=0
     local -A seen=()
     tags="$(parseTags "$1")" || rv=1
     while IFS= read -r tag; do
@@ -346,13 +352,10 @@ function parseUserTags {
         if reserved="$(reservedTag "$tag")"; then
             if [[ "$reserved" == "$_silDateTag" ]]; then
                 msgWarn "[!] '$_silDateTag' is reserved for automatic date tags - ignored: $tag"
-            elif [[ "$reserved" == "$_silCopyTag" || "$reserved" == "$_silMoveTag" ]]; then
-                verb=copy
-                [[ "$reserved" == "$_silMoveTag" ]] && verb=move
-                msgWarn "[!] '$reserved' is reserved for WebSIL, to ${verb} images to another library - ignored: $tag
-    It can only be a tag below another, eg Misc/$reserved. To $verb images, put
-    '${verb^^} <source library> -> <target library>' in a manifest, followed by
-    their hashes"
+            elif [[ -n "${_silOpTags[$reserved]:-}" ]]; then
+                op="${_silOpTags[$reserved]}"
+                msgWarn "[!] '$reserved' is reserved for WebSIL, to ${op%%|*} - ignored: $tag
+    It can only be a tag below another, eg Misc/$reserved. Otherwise, ${op#*|}"
             elif [[ "${2:-TAG}" == UNTAG ]]; then
                 msgWarn "[!] '$reserved' is added and removed automatically - ignored. To remove all tags from an image, use 'UNTAG=*'"
             else

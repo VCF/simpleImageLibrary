@@ -292,20 +292,20 @@ function sourcesFile {
 }
 
 #######################################
-# Write a sources file: its header, then entry lines sorted with
-# repeats removed (C locale, as for the fingerprint index).
+# Write a sources file: its header, then entry lines in the order given,
+# oldest first, with repeats (eg from a git union merge) removed.
 # Arguments:
 #   $1 - Path to write to (overwritten)
 # Inputs:
 #   Entry lines on STDIN; comment lines are dropped
 #######################################
-function sourcesWriteSorted {
+function sourcesWrite {
     cat > "$1" << 'EOF'
 # SIL image sources - see REQ-05 in docs/requirements.md
 # Each line: <image hash> <source URI>
 # One line per distinct source of each image; removed with the image
 EOF
-    grep -v '^#' | LC_ALL=C sort -u >> "$1"
+    awk '!/^#/ && !seen[$0]++' >> "$1"
 }
 
 #######################################
@@ -339,6 +339,7 @@ function sourceAdd {
 #######################################
 # Record a source already in its recorded form (sourceName), unless
 # already recorded, eg one copied from another library's sources file.
+# It is added at the end, so the file runs oldest to newest.
 # Arguments:
 #   $1 - Image hash
 #   $2 - Source, as recorded: a URL, or file:<name>
@@ -351,7 +352,7 @@ function sourceRecord {
     grep -qxF -- "$1 $2" "$file" 2> /dev/null && return 0
     tmp="$(silMktemp)" || return 1
     { [[ -f "$file" ]] && cat -- "$file"; printf '%s %s\n' "$1" "$2"; } \
-        | sourcesWriteSorted "$tmp"
+        | sourcesWrite "$tmp"
     placeLibraryFile "$tmp" "$file"
 }
 
@@ -379,7 +380,7 @@ function sourceLookup {
 }
 
 #######################################
-# List the recorded sources of an image.
+# List the recorded sources of an image, oldest first.
 # Arguments:
 #   $1 - Image hash
 # Outputs:
@@ -404,7 +405,7 @@ function sourcesRemove {
     file="$(sourcesFile)"
     grep -q "^$1 " -- "$file" 2> /dev/null || return 0
     tmp="$(silMktemp)" || return 1
-    grep -v "^$1 " -- "$file" | sourcesWriteSorted "$tmp"
+    grep -v "^$1 " -- "$file" | sourcesWrite "$tmp"
     placeLibraryFile "$tmp" "$file"
 }
 
@@ -423,6 +424,6 @@ function sourcesRehash {
     awk 'NR == FNR { map[$1] = $2; next }
          /^#/ { next }
          { h = $1; if (h in map) h = map[h]; print h substr($0, length($1) + 1) }' \
-        "$1" "$file" | sourcesWriteSorted "$tmp"
+        "$1" "$file" | sourcesWrite "$tmp"
     placeLibraryFile "$tmp" "$file"
 }

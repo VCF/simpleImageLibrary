@@ -1,4 +1,5 @@
-## Replacing a stored image with a larger duplicate - see KEEPLARGER in
+## Replacing a stored image: with a larger duplicate (KEEPLARGER), or with
+## a fresh download of its source (REFETCH of a hash) - see
 ## docs/parameters.md
 
 srcLib "tags"
@@ -147,8 +148,8 @@ function replaceStored {
 #######################################
 function keepLarger {
     local file="$1" fp="$2" bits="$3" source="$4"
-    local old="$_silOutcomeHash" oldFile oldDims newDims new
-    local oldMoves=0 newMoves=0 rc=0
+    local old="$_silOutcomeHash" oldFile oldDims newDims
+    local oldMoves=0 newMoves=0
     oldFile="$(findStoredImage "$old")" || return 0
     if ! oldDims="$(imageDimensions "$oldFile")" || ! newDims="$(imageDimensions "$file")"; then
         msgWarn "[!] Could not compare the size of ${old:0:12} and its duplicate; keeping the stored image"
@@ -163,6 +164,60 @@ function keepLarger {
         return 0
     fi
 
+    replaceWith "$file" "$fp" "$bits" "$source" "$oldDims" "$newDims" UPGRADED \
+        "($oldDims -> $newDims, $bits of 256 bits differ)"
+}
+
+#######################################
+# Replace the stored image a download matched with that download, whatever
+# its size, as REFETCH of a hash asks (refetchStored). Shown with both
+# file sizes, as a changed SHRINK is the usual reason.
+# Globals:
+#   _silOutcomeHash, the image matched; sets _silOutcome,
+#   _silOutcomeDetail, _silOutcomeHash
+# Arguments:
+#   $1 - The download, as it would be stored (after any shrinking)
+#   $2 - Its raw fingerprint
+#   $3 - Fingerprint bits differing from the stored image
+#   $4 - Its source URL
+# Returns:
+#   0 if the outcome is a success, 1 if replacing failed
+#######################################
+function refetchReplace {
+    local file="$1" fp="$2" bits="$3" source="$4"
+    local oldFile oldDims newDims sizes
+    oldFile="$(findStoredImage "$_silOutcomeHash")" || return 0
+    oldDims="$(imageDimensions "$oldFile")" || oldDims="?"
+    newDims="$(imageDimensions "$file")" || newDims="?"
+    sizes="$(humanSize "$(stat -c %s -- "$oldFile")") -> $(humanSize "$(stat -c %s -- "$file")")"
+    replaceWith "$file" "$fp" "$bits" "$source" "$oldDims" "$newDims" REFETCHED \
+        "($sizes, $oldDims -> $newDims, $bits of 256 bits differ)"
+}
+
+#######################################
+# Store a file and move the matched image's tags, sources and place to it
+# (replaceStored), unless the file is already stored, which is then the
+# outcome (DUPE). Shared by keepLarger and refetchReplace.
+# Globals:
+#   _silOutcomeHash, the image being replaced; sets _silOutcome,
+#   _silOutcomeDetail, _silOutcomeHash
+# Arguments:
+#   $1 - The replacement, as it would be stored
+#   $2 - Its raw fingerprint
+#   $3 - Fingerprint bits differing from the stored image
+#   $4 - Its source, as a URL or local path
+#   $5 - Size of the image being replaced, as WIDTHxHEIGHT
+#   $6 - Size of its replacement
+#   $7 - Outcome on success, eg UPGRADED
+#   $8 - What changed, for the outcome line
+# Returns:
+#   0 if the outcome is a success, 1 if replacing failed
+#######################################
+function replaceWith {
+    local file="$1" fp="$2" bits="$3" source="$4" oldDims="$5" newDims="$6"
+    local tag="$7" change="$8"
+    local old="$_silOutcomeHash" new rc=0
+
     ## A closer match can hide the same file, stored under its own hash
     new="$(fileHash "$file")" || return 0
     if findStoredImage "$new" > /dev/null; then
@@ -171,7 +226,7 @@ function keepLarger {
         return
     fi
 
-    msgStatus "  Replacing ${old:0:12} ($oldDims) with larger duplicate ($newDims)"
+    msgStatus "  Replacing ${old:0:12} ($oldDims) with ${new:0:12} ($newDims)"
     if ! storeImage "$file" new "$fp"; then
         setOutcome STOREFAIL "Could not write to the library"
         return
@@ -180,7 +235,7 @@ function keepLarger {
     case "$rc" in
         0)
             _silOutcomeHash="$new"
-            setOutcome UPGRADED "${new:0:12} - replaced ${old:0:12} ($oldDims -> $newDims, $bits of 256 bits differ)"
+            setOutcome "$tag" "${new:0:12} - replaced ${old:0:12} $change"
             ;;
         1)
             removeImage "$new"

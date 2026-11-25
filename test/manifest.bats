@@ -564,6 +564,41 @@ EOF2
   assert_output 2
 }
 
+@test "an empty SHRINK restores the setting from before the manifest" {
+  SIL_SHRINK=$(( 100 * 1024 ))
+  printf 'SHRINK=2mb\nSHRINK=\nTHRESHOLD=\n' > work/m.txt
+  run parseManifest work/m.txt
+  assert_success
+  assert_output --partial "SHRINK = 2097152 (2.0 MB), was 102400 (100.0 KB) (line 1)"
+  assert_output --partial "SHRINK = 102400 (100.0 KB), restored; was 2097152 (2.0 MB) (line 2)"
+  assert_output --partial "THRESHOLD = 90, restored; was 90 (line 3)"
+}
+
+@test "after LIBRARY, an empty SHRINK restores that library's own" {
+  printf 'SHRINK=300kb\n' > lib/sil.conf
+  printf 'SHRINK=2mb\nLIBRARY=%s\nSHRINK=\n' "$TEST_SANDBOX/lib" > work/m.txt
+  unset SIL_LIBRARY
+  run parseManifest work/m.txt
+  assert_success
+  assert_output --partial "SHRINK = 307200 (300.0 KB), restored; was 2097152 (2.0 MB) (line 3)"
+}
+
+@test "WebSIL blocks end REFETCH and REMOVE for the lines after them" {
+  processURI work/plasma.png 2> /dev/null
+  processURI work/animated.gif 2> /dev/null
+  plasma="$(fileHash work/plasma.png)"
+  anim="$(fileHash work/animated.gif)"
+  printf 'SHRINK=500kb\nREFETCH\n%s\nREFETCH=off\nSHRINK=\n%s\nREMOVE\n%s\nREMOVE=off\n%s\n' \
+    "$plasma" "$plasma" "$anim" "$plasma" > work/m.txt
+  run parseManifest work/m.txt
+  assert_failure
+  assert_output --partial "[NOSOURCE]"
+  assert_output --partial "SHRINK = 0, restored"
+  assert_output --partial "[REMOVED] ${anim:0:12}"
+  run grep -c '^| FOUND ' work/m.txt.md
+  assert_output 2
+}
+
 @test "LINK and REMAP before any library are reported and ignored" {
   unset SIL_LIBRARY
   printf 'LINK=A -> B\nREMAP=C -> D\n' > work/m.txt

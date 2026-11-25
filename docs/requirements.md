@@ -252,7 +252,10 @@ the closest match if it has a larger pixel area, as it would be stored (after
   only removed with their image (`REMOVE`, `REQ-11`). `REBUILD` changes hashes
   in it when it renames an image (`REQ-09`), and `KEEPLARGER` when it replaces
   one; neither removes a line
-* Lines are kept sorted (C locale) for git (`REQ-10`)
+* Lines are added at the end, so the file runs oldest to newest; `REFETCH`
+  of a hash lists an image's sources newest first. Git merges it by union
+  (`REQ-10`), keeping both sides' lines; a line both sides added is
+  repeated, and dropped the next time SIL rewrites the file
 
 # REQ-06 Manifest files
 
@@ -275,6 +278,11 @@ the closest match if it has a larger pixel area, as it would be stored (after
   not the current folder, so a manifest works wherever SIL is run from
 * Parameter changes last only until the end of the manifest; settings are then
   restored, so each manifest gives the same result however it is run
+* An empty value for a setting that isn't a flag (eg `SHRINK=`) restores the
+  value it had before the manifest changed it: from the command line, the
+  library's `sil.conf` (after any `LIBRARY` line), `~/.sil.conf` or the
+  default. `TAG=`, `UNTAG=`, `COPY=` and `MOVE=` clear their setting instead,
+  and a flag is set off with `NAME=off`
 * `LIBRARY` may be set in a manifest, before its first URI (later, it is
   ignored with a warning). The library is created if needed, and its
   `sil.conf` applied below the manifest's own settings (`REQ-02`). A relative
@@ -368,6 +376,7 @@ Successful outcomes, with their status tag:
 | ADDED   | Recovered and added to the library                          |
 | SHRINK  | Recovered, shrunk (`REQ-07`) and added                      |
 | UPGRADED | Recovered and replaced a smaller duplicate (`KEEPLARGER`, `REQ-05`). Reported with the new hash and the old one |
+| REFETCHED | With `REFETCH`, a hash URI's image was downloaded again from its source and replaced by the download. Reported with the new hash and the old one, and both file sizes |
 | DUPE    | Already in the library: recovered and matched by fingerprint (reported with how many bits differ), or a URL already recorded as a source and not downloaded (`REFETCH`). Reported with the existing image's hash; remaining operations (eg tagging) apply to the existing image |
 | FOUND   | A hash URI (`REQ-03`) matched a stored image, or with `UNTAG` a known source or identical file did (`REQ-11`); remaining operations apply to it |
 | REMOVED | The image was removed from the library (`REMOVE`, `REQ-11`) |
@@ -393,6 +402,8 @@ characters.
 | UNREADABLE  | Local file exists but cannot be read (permissions)          |
 | NOHASH      | A hash URI (`REQ-03`) does not match any image in the library |
 | NOTSTORED   | With `REMOVE` or `UNTAG`, the URI is not a known source or a stored file (`REQ-11`); nothing is downloaded |
+| NOSOURCE    | With `REFETCH`, a hash URI's image has no URL source to download again (eg it was added from a local file) |
+| NOMATCH     | With `REFETCH`, a hash URI's image was downloaded again, but no longer matches by fingerprint, so was left as it is |
 | STOREFAIL   | The image could not be written into the library (eg disk full) |
 | SHRINKFAIL  | The shrunk copy failed its fingerprint check (`REQ-07`), so the image was not added; retry with a different `SHRINK` (or `SHRINKVID`) |
 | NOLIBRARY   | The source or target of a `COPY` or `MOVE` block is missing, not a library, the same library, or in use by another run (`REQ-14`) |
@@ -699,7 +710,27 @@ changes in a web browser. `BUILDWEB` builds it (see
   a manifest, by download or the clipboard, naming images by hash and giving
   `LIBRARY`, so it can be run from any folder. Queued changes are kept in the
   browser until the data shows them done
-* The reserved tags `SILCOPY` and `SILMOVE` queue a `COPY` or `MOVE` block
+* WebSIL offers reserved tags that queue a SIL operation on the images
+  rather than a tag. The autocomplete and the tags typed show them in their
+  own color, described as `SIL:` operations: `SILCOPY`, `SILMOVE`,
+  `SILREMOVE` and `SILREFETCH`. Only one can be added at a time, and none
+  removed. Adding one to image after image joins one queue entry, as for
+  tags. In the manifest, every tag change comes first, then ends (`TAG=`,
+  `UNTAG=`), so no operation tags an image again; then copies and moves,
+  refetches (which give images new hashes, so follow anything naming the old
+  ones), and removals. Each operation is a block preceded by comments saying
+  what it does, which turns its setting off where it ends, so it never
+  reaches the lines after it
+* `SILREMOVE` queues a `REMOVE` block: `REMOVE`, the hashes, `REMOVE=off`. It
+  is done once the data no longer has its images
+* `SILREFETCH` first asks "Refetching ... optionally change SHRINK to [ ] KB".
+  Cancelling queues nothing. It queues a `REFETCH` block (`REFETCH` of a hash,
+  see [parameters.md](./parameters.md)): `REFETCH`, the hashes,
+  `REFETCH=off`. A `SHRINK` given is set before the block, and `SHRINK=`
+  after it restores the library's own (`REQ-06`). Refetches with different
+  `SHRINK` values are separate blocks. It is done, as a copy is, once the
+  data is rebuilt after it was queued
+* `SILCOPY` and `SILMOVE` queue a `COPY` or `MOVE` block
   (`REQ-14`) instead of a tag. Blocks come at the end of the manifest, after
   every tag change, so images are tagged before they are sent. Each block is
   preceded by comments saying what it does and how to give the target, which
@@ -733,8 +764,8 @@ changes in a web browser. `BUILDWEB` builds it (see
 * `R` resets the zoom, pan, info line, help and slideshow to how the view
   opens
 * Right-clicking an image, in the grid or the full window view, opens a tag
-  menu: a box to type a tag (autocomplete, new tags, `SILCOPY` and
-  `SILMOVE`, as in the selection bar), above the 10 tags most recently added
+  menu: a box to type a tag (autocomplete, new tags, and the operation tags,
+  as in the selection bar), above the 10 tags most recently added
   in this browser (from the menu or the selection bar), most recent first.
   The menu opens with the most recent tag under the pointer, and the box
   just above it. Recent tags every target image already has, or has queued,

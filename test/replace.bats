@@ -113,8 +113,8 @@ upgrade() {
 @test "sources move to the replacement, which adds its own" {
   upgrade
   run grep -v '^#' lib/images/sources.txt
-  assert_output "$BIG file:big.png
-$BIG file:small.png"
+  assert_output "$BIG file:small.png
+$BIG file:big.png"
   run sourceLookup file:small.png
   assert_output "$BIG"
 }
@@ -139,8 +139,8 @@ $BIG file:small.png"
   processURI big.png 2> /dev/null
   run cut -f7 lib/ReplacedImages.tsv
   assert_output "lowResURL
-file:again.png
-file:small.png"
+file:small.png
+file:again.png"
 }
 
 @test "an image with no sources is logged with a dash" {
@@ -274,6 +274,147 @@ file:small.png"
   assert_output --partial "[UPGRADED] ${BIG:0:12}"
   run sourceLookup https://example.com/pic
   assert_output "$BIG"
+}
+
+# --- REFETCH of a hash -------------------------------------------------
+
+## Replace downloads with a stand-in: each URL serves the file named after
+## its last part, eg https://example.com/small.png serves small.png; a URL
+## holding 'gone' is NOTFOUND. Called in each test, as setup's srcLib
+## would replace a stand-in defined here
+stubFetch() {
+  # shellcheck disable=SC2317 # stand-in, called by fetchURI
+  fetchURL() {
+    [[ "$1" == *gone* ]] && { fetchFailed NOTFOUND "HTTP 404"; return; }
+    cp "${1##*/}" "$2"
+  }
+}
+
+@test "REFETCH of a hash replaces it with a fresh download, shrunk as now set" {
+  stubFetch
+  processURI https://example.com/small.png 2> /dev/null
+  SIL_TAG=Dog; applyTags "$SMALL" 2> /dev/null; SIL_TAG=""
+  SIL_SHRINK=$(( 100 * 1024 ))
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_success
+  assert_output --partial "Refetching https://example.com/small.png"
+  assert_output --regexp "\[REFETCHED\] [0-9a-f]{12} - replaced ${SMALL:0:12} \(407\.3 KB -> [0-9.]+ KB, 320x240 -> 320x240,"
+  assert_not_exists "$(storedImagePath "$SMALL" png)"
+  new="$(sourceLookup https://example.com/small.png)"
+  assert_exists "$(storedImagePath "$new" jpg)"
+  assert_link_exists "lib/tags/Dog/$new.jpg"
+  assert_link_exists "lib/tags/Date/2026/2026-10-31/$new.jpg"
+  assert_exists "lib/replacedWithHigherRes/$SMALL.png"
+  run libraryCheck
+  assert_success
+}
+
+@test "REFETCH of a hash tries each source until one downloads" {
+  stubFetch
+  processURI https://example.com/small.png 2> /dev/null
+  ## Newest, so tried first
+  sourceAdd "$SMALL" https://example.com/gone/small.png
+  ## No terminal in tests, so no choice
+  # shellcheck disable=SC2317 # stand-in, called by refetchStored
+  askChoice() { return 1; }
+  SIL_SHRINK=$(( 100 * 1024 ))
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_success
+  assert_output --partial "2 sources, and no terminal to choose at: trying newest first"
+  assert_output --regexp "gone/small.png.*NOTFOUND: HTTP 404.*Refetching https://example.com/small.png.*REFETCHED"
+}
+
+@test "REFETCH of a hash with several sources asks which, newest first" {
+  stubFetch
+  processURI https://example.com/old/small.png 2> /dev/null
+  sourceAdd "$SMALL" https://example.com/mid/small.png
+  sourceAdd "$SMALL" https://example.com/new/small.png
+  ## Choose b), recording what was asked
+  # shellcheck disable=SC2317 # stand-in, called by refetchStored
+  askChoice() {
+    printf '%s\n' "$2" "${@:3}" > asked.txt
+    printf -v "$1" '%s' 1
+  }
+  SIL_SHRINK=$(( 100 * 1024 ))
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_success
+  assert_output --partial "Refetching https://example.com/mid/small.png"
+  refute_output --partial "Refetching https://example.com/new/small.png"
+  refute_output --partial "Refetching https://example.com/old/small.png"
+  assert_output --partial "[REFETCHED]"
+  run cat asked.txt
+  assert_output "Multiple sources available for REFETCH on hash ${SMALL:0:12}.
+Please choose URL to fetch (shown newest to oldest):
+https://example.com/new/small.png
+https://example.com/mid/small.png
+https://example.com/old/small.png"
+}
+
+@test "REFETCH of a hash fails if no source downloads, leaving it unchanged" {
+  stubFetch
+  processURI small.png 2> /dev/null
+  sourceAdd "$SMALL" https://example.com/gone/small.png
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_failure
+  assert_output --partial "[NOTFOUND] No source of ${SMALL:0:12} could be downloaded; left unchanged"
+  assert_exists "$(storedImagePath "$SMALL" png)"
+}
+
+@test "REFETCH of a hash with only a local source is NOSOURCE" {
+  stubFetch
+  processURI small.png 2> /dev/null
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_failure
+  assert_output --partial "[NOSOURCE] ${SMALL:0:12} has no URL source to download again; left unchanged"
+}
+
+@test "REFETCH of a hash that now serves another picture is NOMATCH" {
+  stubFetch
+  processURI https://example.com/small.png 2> /dev/null
+  convert -size 320x240 gradient:black-white small.png
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_failure
+  assert_output --partial "[NOMATCH] No longer matches ${SMALL:0:12}"
+  assert_exists "$(storedImagePath "$SMALL" png)"
+  run find lib/images -type f -name '*.png'
+  assert_equal "${#lines[@]}" 1
+}
+
+@test "REFETCH of a hash to an identical file is a DUPE, unchanged" {
+  stubFetch
+  processURI https://example.com/small.png 2> /dev/null
+  SIL_REFETCH=1
+  run processURI "$SMALL"
+  assert_success
+  assert_output --partial "[DUPE] ${SMALL:0:12} - already in library, unchanged"
+  assert_not_exists lib/replacedWithHigherRes
+}
+
+@test "a hash with REMOVE and REFETCH is removed, not downloaded" {
+  stubFetch
+  processURI https://example.com/small.png 2> /dev/null
+  SIL_REFETCH=1
+  SIL_REMOVE=1
+  run processURI "$SMALL"
+  assert_success
+  assert_output --partial "[REMOVED]"
+  refute_output --partial "Refetching"
+}
+
+@test "REFETCHED, NOSOURCE and NOMATCH have report legends" {
+  isSuccessTag REFETCHED
+  isSuccessTag NOSOURCE && return 1
+  isSuccessTag NOMATCH && return 1
+  srcLib "report"
+  [[ -n "${_silOutcomeMeaning[REFETCHED]}" ]]
+  [[ -n "${_silOutcomeMeaning[NOSOURCE]}" ]]
+  [[ -n "${_silOutcomeMeaning[NOMATCH]}" ]]
 }
 
 @test "new libraries already ignore the replaced folder" {

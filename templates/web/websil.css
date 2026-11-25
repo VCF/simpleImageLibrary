@@ -16,6 +16,7 @@
   --exclude: #e7716b;
   --select: #f5c542;
   --pending: #57c78a;
+  --op: #c792ea;
   --bar: #5b9cf5;
   --tile: 180px;
   color-scheme: dark;
@@ -33,6 +34,7 @@
     --exclude: #c2413a;
     --select: #c48a00;
     --pending: #1f8a50;
+    --op: #8a3fb5;
     --bar: #2f6fd6;
     color-scheme: light;
   }
@@ -103,6 +105,9 @@ input.size { width: 6.5em; }
 }
 .chip.not { background: var(--exclude); }
 .chip.new { background: var(--pending); }
+/* Operation tags (SILCOPY etc) are SIL operations, not tags */
+.chip.op { background: var(--op); }
+#complete .alias.op { color: var(--op); font-weight: 600; }
 .chip button { background: none; border: 0; padding: 0 4px; color: inherit; line-height: 1; }
 
 .notice {
@@ -275,6 +280,9 @@ dialog code { background: var(--raise); padding: 2px 6px; border-radius: 4px; us
 .stat b { display: block; font-size: 22px; font-weight: 600; }
 .stat span { color: var(--ink2); font-size: 12px; }
 .muted { color: var(--ink2); }
+.error { color: var(--exclude); }
+#refetchDlg h2 { margin: 0 0 8px; font-size: 18px; }
+#rfShrink { width: 6em; }
 
 .hist { width: 100%; height: auto; display: block; }
 .hist .b { fill: var(--bar); }

@@ -605,6 +605,41 @@ function restoreParams {
 }
 
 #######################################
+# Test whether a manifest line gives a setting an empty value that
+# restores it (restoreParam): one that isn't a flag (where 'NAME=' means
+# on) or cleared by an empty value (TAG, UNTAG, COPY, MOVE).
+# Globals:
+#   _silParamType, _silParamClearable
+# Arguments:
+#   $1 - Canonical parameter name
+#   $2 - The line, eg 'SHRINK='
+# Returns:
+#   0 if the line restores the setting, 1 otherwise
+#######################################
+function emptyRestores {
+    [[ "$2" == *=* && -z "$(unquote "$(trim "${2#*=}")")" ]] || return 1
+    [[ "${_silParamType[$1]}" != flag && -z "${_silParamClearable[$1]:-}" ]]
+}
+
+#######################################
+# Restore one parameter from values saved by saveParams.
+# Globals:
+#   Sets SIL_<NAME>
+# Arguments:
+#   $1 - Canonical parameter name
+#   $2 - Name of the array given to saveParams
+#######################################
+function restoreParam {
+    local -n _restoreOne="$2"
+    local _saved="${_restoreOne[$1]:-unset}"
+    if [[ "$_saved" == unset ]]; then
+        unset "SIL_$1"
+    else
+        printf -v "SIL_$1" '%s' "${_saved#=}"
+    fi
+}
+
+#######################################
 # Reload every parameter for a newly chosen library, in REQ-02 order:
 # defaults < ~/.sil.conf < library sil.conf < command line < the given
 # tokens (eg those a manifest has set so far).

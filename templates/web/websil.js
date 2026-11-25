@@ -24,13 +24,20 @@
   const TAG_LEVEL_RE = /^[A-Za-z0-9 _\-À-ÖØ-öø-ÿ]+$/;
   const VIDEO_EXT = new Set(['mp4', 'webm', 'mov']);
   /**
-   * Reserved tags that queue a COPY or MOVE block, rather than a tag
-   * (REQ-14), with what the autocomplete says of them.
+   * Reserved tags that queue a SIL operation on the images, rather than a
+   * tag: a COPY or MOVE block (REQ-14), REMOVE, or REFETCH. Each has what
+   * the autocomplete says of it, and what a toast says was queued.
    */
-  const SEND_TAGS = {
-    SILCOPY: { op: 'COPY', note: 'copy to another library' },
-    SILMOVE: { op: 'MOVE', note: 'move to another library' },
+  const OP_TAGS = {
+    SILCOPY: { op: 'COPY', note: 'SIL: copy to another library', verb: 'copy {n} to another library' },
+    SILMOVE: { op: 'MOVE', note: 'SIL: move to another library', verb: 'move {n} to another library' },
+    SILREMOVE: { op: 'REMOVE', note: 'SIL: remove from the library', verb: 'remove {n} from the library' },
+    SILREFETCH: { op: 'REFETCH', note: 'SIL: download again from source', verb: 'download {n} again from source' },
   };
+  /** Queue operations that are COPY or MOVE blocks, which need a target library. */
+  const SEND_OPS = new Set(['COPY', 'MOVE']);
+  /** Order of operation blocks in a manifest, after every tag change. */
+  const OP_ORDER = ['COPY', 'MOVE', 'REFETCH', 'REMOVE'];
   /** Target written in COPY and MOVE blocks, for the user to replace. SIL refuses it. */
   const SEND_PLACEHOLDER = 'update/this/path/to/your/desired/destination/library';
   /** Upper edges of the size histogram's bins, in bytes; the last is open. */
@@ -90,9 +97,12 @@
   /** Tags typed in the selection bar, waiting for Add or Remove. */
   let editTags = [];
   /**
-   * Queued changes, in order. COPY and MOVE have no tags, and note when
-   * they were queued (epoch seconds), to compare with the data's build.
-   * @type {{op: ('TAG'|'UNTAG'|'COPY'|'MOVE'), tags: string[], hashes: string[], at: ?number}[]}
+   * Queued changes, in order. Operations (OP_TAGS) have no tags, and note
+   * when they were queued (epoch seconds), to compare with the data's
+   * build. REFETCH may give a SHRINK for its images, in KB ('' for the
+   * library's own).
+   * @type {{op: ('TAG'|'UNTAG'|'COPY'|'MOVE'|'REMOVE'|'REFETCH'), tags: string[],
+   *     hashes: string[], at: ?number, shrink: ?string}[]}
    */
   let pending = [];
   let pendingHashes = new Set();
@@ -230,8 +240,8 @@
    * @returns {string} The tag path, or '' if nothing usable remains
    */
   function cleanTag(text) {
-    const send = text.trim().toUpperCase();
-    if (SEND_TAGS[send]) return send;
+    const op = text.trim().toUpperCase();
+    if (OP_TAGS[op]) return op;
     const levels = text.split(/[/:]/)
       .map((l) => [...l].filter((c) => TAG_LEVEL_RE.test(c)).join('').trim())
       .filter(Boolean);
@@ -369,7 +379,8 @@
    * @param {boolean} opts.allowNew - Offer the typed text as a new tag
    * @param {function(): void} opts.onBackspace - Empty input and Backspace
    * @param {Object[]} [opts.extra] - Entries offered besides the library's
-   *     tags, eg SILCOPY, each with a 'note' to show in place of a count
+   *     tags, eg SILCOPY, each with a 'note' to show in place of a count,
+   *     and 'op' set to mark it as a SIL operation
    * @returns {void}
    */
   function attachComplete(input, opts) {
@@ -405,7 +416,7 @@
         name.textContent = (it.negate ? '!' : '') + it.label;
         const note = document.createElement('span');
         if (it.isNew) { note.textContent = 'new tag'; note.className = 'alias'; }
-        else if (it.note) { note.textContent = it.note; note.className = 'alias'; }
+        else if (it.note) { note.textContent = it.note; note.className = it.op ? 'alias op' : 'alias'; }
         else if (it.alias) { note.textContent = '→ ' + it.target; note.className = 'alias'; }
         else { note.textContent = it.count.toLocaleString(); note.className = 'n'; }
         row.append(name, note);
@@ -976,8 +987,8 @@
 
   /**
    * Queue the tag picked in the menu to be added to its images, and close
-   * it. SILCOPY and SILMOVE queue a copy or move instead, as in the
-   * selection bar.
+   * it. An operation tag (OP_TAGS) queues its operation instead, as in the
+   * selection bar; SILREFETCH first asks for a SHRINK.
    * @param {string} tag - Tag path, as cleanTag gives it
    * @returns {void}
    */
@@ -986,18 +997,72 @@
     const n = hashes.length === 1 ? 'this image' : `${hashes.length.toLocaleString()} images`;
     closeTagMenu();
     if (!tag || !hashes.length) return;
-    if (SEND_TAGS[tag]) {
-      const op = SEND_TAGS[tag].op;
-      pending.push({ op, tags: [], hashes: [...hashes], at: Date.now() / 1000 });
-      toast(`Queued: ${op === 'COPY' ? 'copy' : 'move'} ${n} to another library`);
+    const done = () => {
+      savePending();
+      refreshTiles();
+      if (!$('lightbox').hidden) showLightbox();
+    };
+    if (OP_TAGS[tag]) {
+      askShrink(OP_TAGS[tag].op, hashes.length, (shrink) => {
+        queueOp(OP_TAGS[tag].op, hashes, shrink);
+        toast('Queued: ' + OP_TAGS[tag].verb.replace('{n}', n));
+        done();
+      });
     } else {
       queueTag('TAG', hashes, tag);
       noteRecent([tag]);
       toast(`Queued: add ${tag} to ${n}`);
+      done();
     }
-    savePending();
-    refreshTiles();
-    if (!$('lightbox').hidden) showLightbox();
+  }
+
+  /**
+   * Queue a SIL operation (OP_TAGS) on some images. Joins the last queue
+   * entry if it is the same operation (and SHRINK), so stepping through
+   * images makes one manifest block. The caller saves.
+   * @param {('COPY'|'MOVE'|'REMOVE'|'REFETCH')} op
+   * @param {string[]} hashes
+   * @param {string} [shrink=''] - REFETCH only: SHRINK in KB, '' for the library's
+   * @returns {void}
+   */
+  function queueOp(op, hashes, shrink = '') {
+    const last = pending[pending.length - 1];
+    const at = Date.now() / 1000;
+    if (last && last.op === op && (last.shrink || '') === shrink) {
+      for (const h of hashes) if (!last.hashes.includes(h)) last.hashes.push(h);
+      last.at = at;
+    } else pending.push({ op, tags: [], hashes: [...hashes], at, shrink });
+  }
+
+  /**
+   * Before queueing REFETCH, offer to change SHRINK for the images
+   * refetched. Other operations go straight on.
+   * @param {string} op - The operation about to be queued
+   * @param {number} count - Images it is for
+   * @param {function(string): void} onOk - Called with the SHRINK in KB,
+   *     or '' to keep the library's; not called if the user cancels
+   * @returns {void}
+   */
+  function askShrink(op, count, onOk) {
+    if (op !== 'REFETCH') { onOk(''); return; }
+    const dlg = $('refetchDlg'), input = $('rfShrink');
+    $('rfHead').textContent = `Refetching ${count === 1 ? 'this image' : count.toLocaleString() + ' images'}`;
+    input.value = '';
+    $('rfError').hidden = true;
+    dlg.onclose = null;
+    $('rfForm').onsubmit = (e) => {
+      if (e.submitter && e.submitter.value === 'cancel') return;
+      const v = input.value.trim();
+      if (v && !/^\d+(\.\d+)?$/.test(v)) {
+        e.preventDefault();
+        $('rfError').hidden = false;
+        input.focus();
+        return;
+      }
+      dlg.onclose = () => { dlg.onclose = null; onOk(v); };
+    };
+    dlg.showModal();
+    input.focus();
   }
 
   // -------------------------------------------------------------- tag tree
@@ -1108,14 +1173,16 @@
     try { pending = JSON.parse(localStorage.getItem(storeKey) || '{}').pending || []; } catch (e) { pending = []; }
     const has = (im, t) => im.tags.some((x) => x.toLowerCase() === t.toLowerCase());
     // A copy leaves no mark in the data, so is taken as done once the data
-    // is rebuilt after it was queued, as running the manifest does
-    pending = pending.filter((p) => p.op !== 'COPY' || !(data.built > p.at));
+    // is rebuilt after it was queued, as running the manifest does. So is a
+    // refetch: one that replaced its image has no hash left in the data,
+    // but one that didn't (eg no web source) leaves no mark
+    pending = pending.filter((p) => (p.op !== 'COPY' && p.op !== 'REFETCH') || !(data.built > p.at));
     pending = pending.map((p) => ({
       ...p,
       hashes: p.hashes.filter((h) => {
         const im = imageByHash.get(h);
         if (!im) return false;
-        if (p.op === 'COPY' || p.op === 'MOVE') return true;
+        if (OP_ORDER.includes(p.op)) return true;
         return p.op === 'TAG' ? !p.tags.every((t) => has(im, t)) : p.tags.some((t) => has(im, t));
       }),
     })).filter((p) => p.hashes.length);
@@ -1124,8 +1191,9 @@
 
   /**
    * Queue the selection bar's tags to be added to, or removed from, the
-   * selected images. Adding SILCOPY or SILMOVE queues a copy or move of
-   * them to another library instead, after any tags added with it.
+   * selected images. Adding an operation tag (OP_TAGS) queues that SIL
+   * operation on them instead, after any tags added with it; SILREFETCH
+   * first asks for a SHRINK, and nothing is queued if that is cancelled.
    * @param {('TAG'|'UNTAG')} op
    * @returns {void}
    */
@@ -1135,28 +1203,30 @@
     $('tagInput').value = '';
     if (!editTags.length) { toast('Type a tag first'); $('tagInput').focus(); return; }
     if (!selected.size) { toast('Select some images first'); return; }
-    const sends = editTags.filter((t) => SEND_TAGS[t]);
-    const tags = editTags.filter((t) => !SEND_TAGS[t]);
-    if (sends.length && op === 'UNTAG') { toast(`${sends.join(' and ')} can only be added, to queue a copy or move`); return; }
-    if (sends.length > 1) { toast('Choose SILCOPY or SILMOVE, not both'); return; }
-    const done = [];
-    if (tags.length) {
-      pending.push({ op, tags, hashes: [...selected] });
-      if (op === 'TAG') noteRecent(tags);
-      done.push(`${op === 'TAG' ? 'add' : 'remove'} ${tags.join(', ')}`);
-    }
-    if (sends.length) {
-      const send = SEND_TAGS[sends[0]].op;
-      pending.push({ op: send, tags: [], hashes: [...selected], at: Date.now() / 1000 });
-      done.push(`${send === 'COPY' ? 'copy' : 'move'} to another library`);
-    }
-    toast(`Queued: ${done.join(', then ')} for ${selected.size} image(s)`);
-    editTags = [];
-    selected.clear();
-    renderEditChips();
-    savePending();
-    showOnlySelected(false);
-    refreshTiles();
+    const ops = editTags.filter((t) => OP_TAGS[t]);
+    const tags = editTags.filter((t) => !OP_TAGS[t]);
+    if (ops.length && op === 'UNTAG') { toast(`${ops.join(' and ')} can only be added, to queue a SIL operation`); return; }
+    if (ops.length > 1) { toast(`Choose one of ${ops.join(', ')}`); return; }
+    const hashes = [...selected];
+    askShrink(ops.length ? OP_TAGS[ops[0]].op : '', hashes.length, (shrink) => {
+      const done = [];
+      if (tags.length) {
+        pending.push({ op, tags, hashes });
+        if (op === 'TAG') noteRecent(tags);
+        done.push(`${op === 'TAG' ? 'add' : 'remove'} ${tags.join(', ')}`);
+      }
+      if (ops.length) {
+        queueOp(OP_TAGS[ops[0]].op, hashes, shrink);
+        done.push(OP_TAGS[ops[0]].verb.replace('{n} ', ''));
+      }
+      toast(`Queued: ${done.join(', then ')} for ${hashes.length} image(s)`);
+      editTags = [];
+      selected.clear();
+      renderEditChips();
+      savePending();
+      showOnlySelected(false);
+      refreshTiles();
+    });
   }
 
   /**
@@ -1165,7 +1235,7 @@
    */
   function renderEditChips() {
     $('tagChips').replaceChildren(...editTags.map((t) => chip(t,
-      SEND_TAGS[t] || tagSpelling.has(t.toLowerCase()) ? '' : 'new',
+      OP_TAGS[t] ? 'op' : tagSpelling.has(t.toLowerCase()) ? '' : 'new',
       () => { editTags = editTags.filter((x) => x !== t); renderEditChips(); })));
   }
 
@@ -1195,9 +1265,45 @@
   }
 
   /**
+   * A queued REMOVE or REFETCH as a manifest block, with comments
+   * explaining it. The block turns its flag off, and restores SHRINK if it
+   * set one, so nothing after it is affected.
+   * @param {{op: ('REMOVE'|'REFETCH'), hashes: string[], shrink: ?string}} p
+   * @returns {string[]} The block's lines
+   */
+  function opBlock(p) {
+    const n = p.hashes.length;
+    if (p.op === 'REMOVE') {
+      return [
+        `# Remove ${n} image(s) from this library: each file, its tags, and its`,
+        '# records. A library under git keeps them in its history.',
+        'REMOVE', ...p.hashes, 'REMOVE=off',
+      ];
+    }
+    const lines = [
+      `# Download ${n} image(s) again from the web addresses they came from. Each`,
+      '# download replaces its image if it still matches it, keeping its tags and',
+      '# date; the old file is kept in replacedWithHigherRes/. Images with no web',
+      '# address recorded are left as they are (NOSOURCE).',
+    ];
+    if (p.shrink) {
+      lines.push(
+        p.shrink === '0' ? '# Not shrunk, for these images only:' : `# Shrunk to about ${p.shrink} KB, for these images only:`,
+        `SHRINK=${p.shrink}kb`,
+      );
+    }
+    lines.push('REFETCH', ...p.hashes, 'REFETCH=off');
+    if (p.shrink) lines.push('# Back to the library\'s own SHRINK:', 'SHRINK=');
+    return lines;
+  }
+
+  /**
    * The queued changes as a SIL manifest. LIBRARY is given, so it works
-   * from any folder, eg Downloads. Copies and moves come last, so that
-   * images are tagged before they are sent.
+   * from any folder, eg Downloads. Operations come after every tag change,
+   * which then ends, so that images are tagged before they are sent, and
+   * nothing is tagged twice: copies and moves, then refetches (which give
+   * images new hashes, so must follow anything naming the old ones), then
+   * removals.
    * @returns {string}
    */
   function manifestText() {
@@ -1208,9 +1314,8 @@
       `LIBRARY=${libraryPath}`,
     ];
     let tag = '', untag = '';
-    const sends = pending.filter((p) => p.op === 'COPY' || p.op === 'MOVE');
     for (const p of pending) {
-      if (sends.includes(p)) continue;
+      if (OP_ORDER.includes(p.op)) continue;
       lines.push('');
       const value = p.tags.join(',');
       if (p.op === 'TAG') {
@@ -1222,7 +1327,13 @@
       }
       lines.push(...p.hashes);
     }
-    for (const p of sends) lines.push('', ...sendBlock(p));
+    if (tag) lines.push('TAG=');
+    if (untag) lines.push('UNTAG=');
+    for (const op of OP_ORDER) {
+      for (const p of pending.filter((x) => x.op === op)) {
+        lines.push('', ...(SEND_OPS.has(op) ? sendBlock(p) : opBlock(p)));
+      }
+    }
     return lines.join('\n') + '\n';
   }
 
@@ -1244,7 +1355,7 @@
     body.replaceChildren();
     if (!pending.length) {
       body.innerHTML = '<p class="muted">Nothing queued. Select images, type tags in the bar that appears, and use Add tags or Remove tags. ' +
-        'To copy or move images to another library, add the tag SILCOPY or SILMOVE.</p>';
+        'To have SIL copy, move, remove or refetch images, add the tag SILCOPY, SILMOVE, SILREMOVE or SILREFETCH.</p>';
       $('pendingDlg').showModal();
       return;
     }
@@ -1265,7 +1376,7 @@
       A queued copy is cleared from this list once the page's data is rebuilt.</p>
       <textarea readonly id="manifestText"></textarea>`;
     $('cmd').textContent = cmd;
-    $('sendNote').hidden = !pending.some((p) => p.op === 'COPY' || p.op === 'MOVE');
+    $('sendNote').hidden = !pending.some((p) => SEND_OPS.has(p.op));
     $('manifestText').value = manifestText();
     $('dlBtn').addEventListener('click', () => {
       const a = document.createElement('a');
@@ -1517,13 +1628,13 @@
     attachComplete($('tagInput'), {
       onPick: (tag) => { if (!editTags.includes(tag)) editTags.push(tag); renderEditChips(); },
       allowNew: true,
-      extra: Object.entries(SEND_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, count: 0 })),
+      extra: Object.entries(OP_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, op: true, count: 0 })),
       onBackspace: () => { editTags.pop(); renderEditChips(); },
     });
     attachComplete($('tmInput'), {
       onPick: menuPick,
       allowNew: true,
-      extra: Object.entries(SEND_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, count: 0 })),
+      extra: Object.entries(OP_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, op: true, count: 0 })),
       onBackspace: () => {},
     });
     $('filterBox').addEventListener('click', () => $('filterInput').focus());
@@ -1678,6 +1789,8 @@
     });
 
     document.addEventListener('keydown', (e) => {
+      // A dialog, eg the refetch SHRINK, takes the keys while open
+      if (document.querySelector('dialog[open]')) return;
       // The menu takes the keys while open; its input closes the
       // autocomplete on Escape, which reaches here to close the menu
       if (!$('tagMenu').hidden) {

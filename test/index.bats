@@ -188,8 +188,32 @@ teardown() {
   sourceAdd "$a" some/dir/local.png
   sourceAdd "$b" https://example.com/other
   run sourcesOf "$a"
-  assert_output "file:local.png
-https://example.com/a b"
+  assert_output "https://example.com/a b
+file:local.png"
+}
+
+@test "sources run oldest to newest, kept so by rehashing and removal" {
+  local a=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  local b=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  local c=cccccccccccccccccccccccccccccccccccccccc
+  sourceAdd "$a" https://example.com/z
+  sourceAdd "$b" https://example.com/y
+  sourceAdd "$a" https://example.com/x
+  sourceAdd "$c" https://example.com/w
+  run grep -v '^#' lib/images/sources.txt
+  assert_output "$a https://example.com/z
+$b https://example.com/y
+$a https://example.com/x
+$c https://example.com/w"
+  ## A merge can repeat a line; any rewrite drops the repeat
+  printf '%s https://example.com/y\n' "$b" >> lib/images/sources.txt
+  printf '%s %s\n' "$a" "$c" > map.txt
+  sourcesRehash map.txt
+  sourcesRemove "$b"
+  run grep -v '^#' lib/images/sources.txt
+  assert_output "$c https://example.com/z
+$c https://example.com/x
+$c https://example.com/w"
 }
 
 @test "sourceRecord keeps a source as recorded; sourceAdd records it first" {

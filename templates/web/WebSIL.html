@@ -117,6 +117,21 @@
   <div id="pendingBody"></div>
 </dialog>
 
+<dialog id="refetchDlg">
+  <form method="dialog" id="rfForm">
+    <h2 id="rfHead">Refetching</h2>
+    <p class="muted">SIL will download each image again from the web address it came from,
+    and replace it if the download still matches.</p>
+    <label>Optionally change SHRINK to <input id="rfShrink" inputmode="decimal" size="8" autocomplete="off"> KB</label>
+    <p class="muted">Leave empty for the library's own SHRINK. 0 keeps downloads as they are.</p>
+    <p id="rfError" class="error" hidden>SHRINK must be a number of KB, eg 500.</p>
+    <div class="buttons">
+      <button class="primary" value="ok">Queue refetch</button>
+      <button value="cancel" formnovalidate>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
 <div id="tooltip" role="tooltip" hidden></div>
 <div id="toast" role="status" hidden></div>
 <div id="tagMenu" role="dialog" aria-label="Add a tag" hidden>

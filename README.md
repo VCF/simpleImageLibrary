@@ -141,7 +141,7 @@ types are:
 | Parameter | Value | Default | Where | Function |
 | --------- | ----- | ------- | ----- | -------- |
 | `LIBRARY` | Path | See above | G C M | The library to use. Created if needed |
-| `TAG`, `TAGS` | Tags | None | C M | Tags to apply, comma separated. `/` or `:` separates levels of a hierarchy, eg `Animal/Dog`. Case-insensitive. `Date`, `Untagged`, `SILCOPY` and `SILMOVE` are reserved |
+| `TAG`, `TAGS` | Tags | None | C M | Tags to apply, comma separated. `/` or `:` separates levels of a hierarchy, eg `Animal/Dog`. Case-insensitive. `Date`, `Untagged`, `SILCOPY`, `SILMOVE`, `SILREMOVE` and `SILREFETCH` are reserved |
 | `UNTAG`, `UNTAGS` | Tags | None | C M | Tags to remove from images already in the library. `*` removes all but the date tag |
 | `REMOVE` | Flag | Off | C M | Remove images from the library, with their tags and records |
 | `LINK` | `SOURCE -> TARGET` | None | C M | Make tag `SOURCE` a symlink to tag `TARGET`, as an alias. Asks before moving any images already in `SOURCE` |
@@ -152,7 +152,7 @@ types are:
 | `SHRINKVID` | `HIGH`, `MEDIUM`, `LOW`, `OFF` | `OFF` | G L C M | Convert animated GIF and WebP images, and videos, to animated AVIF at this quality. Removes transparency and sound |
 | `FLATTEN` | Flag | Off | G L C M | Allow `SHRINK` to shrink images with transparency, by placing them on white |
 | `THRESHOLD` | Percent | `90%` | G L C M | How similar two images must be to count as duplicates. Use a high value, eg `98%`, to keep near-identical images apart |
-| `REFETCH` | Flag | Off | G L C M | Download a URL even if it is already recorded as a source of a stored image |
+| `REFETCH` | Flag | Off | G L C M | Download a URL even if it is already recorded as a source of a stored image. Given a hash, download the image again from its recorded sources and replace it, eg with a different `SHRINK` |
 | `KEEPLARGER` | Flag | Off | G L C M | When a duplicate has more pixels than the stored image, replace the stored image, keeping its tags, sources and date. Logged in `ReplacedImages.tsv`, with the old file kept in `replacedWithHigherRes/` |
 | `SHARED` | Flag | Off | G L C | Off, library files and folders can only be read by their owner (`600` and `700`). On, by everyone (`644` and `755`). Applies to what SIL creates from then on; `REBUILD` applies it to everything |
 | `TOR`, `USETOR` | Flag | Off | G L C M | Download through `torsocks`. Onion addresses always are |
@@ -216,6 +216,10 @@ not even a network connection.
   of the manifest, after the tag changes. Edit the manifest to give the target
   library in place of the placeholder before running it; SIL refuses the block
   until then. `SILMOVE` deletes the images from this library once copied
+* **Remove or refetch** images: Add the tag `SILREMOVE` or `SILREFETCH`.
+  `SILREFETCH` offers to change `SHRINK` for the images, then downloads each
+  again from its recorded web source, replacing it if it still matches.
+  Each is its own block in the manifest, which ends where its images do
 
 * **Summary**: counts and sizes of images by type, and a histogram of sizes
 

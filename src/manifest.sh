@@ -14,13 +14,18 @@ declare -gA _silManifestBlocked=(
     [SHARED]="it applies to the whole library; set it in sil.conf"
 )
 
+## Settings as the manifest found them, once its library is chosen: what
+## an empty value (eg 'SHRINK=') restores
+declare -gA _silManifestBase=()
+
 #######################################
 # Process a manifest (REQ-06). Parameter lines change settings for the
 # URIs after them; every other line is a URI. Relative paths are
 # relative to the manifest's folder. Unless the command line names a
 # library, a manifest inside a library starts out using it. LIBRARY may be
 # set before the first URI, and the library's settings are then loaded
-# (REQ-02). LINK and REMAP
+# (REQ-02). An empty value for a setting that isn't a flag (eg 'SHRINK=')
+# restores what it was before the manifest changed it. LINK and REMAP
 # are carried out at their line, LINK waiting for the user if it must ask.
 # GITWEB is recorded in the web page's stamp at its line, so it lasts.
 # STOPSIL ends the manifest at its line, leaving the remaining lines unread.
@@ -50,7 +55,7 @@ declare -gA _silManifestBlocked=(
 function parseManifest {
     local path="$1"
     local base line lineNum=0 canon lib home was now rv=0 urisSeen=0
-    local mode value
+    local mode value token
     local -a tokens=()
 
     if [[ ! -f "$path" || ! -r "$path" ]]; then
@@ -70,6 +75,7 @@ function parseManifest {
         msgInfo "  Library: $home (contains this manifest)"
         syncRemaps || rv=1
     fi
+    saveParams _silManifestBase
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         lineNum=$(( lineNum + 1 ))
@@ -112,7 +118,11 @@ function parseManifest {
                 lib="$SIL_LIBRARY"
                 [[ "$lib" == /* || "$lib" == "~"* ]] || lib="$base/$lib"
                 useLibrary "$lib"
-                reloadParamsForLibrary "$SIL_LIBRARY" "${tokens[@]}"
+                reloadParamsForLibrary "$SIL_LIBRARY"
+                saveParams _silManifestBase
+                for token in "${tokens[@]}"; do
+                    setParamToken "$token"
+                done
                 msgInfo "  Library: $SIL_LIBRARY (line $lineNum)"
                 syncRemaps || rv=1
                 continue
@@ -161,6 +171,17 @@ function parseManifest {
                 continue
             fi
             was="$(paramValueText "$canon")"
+            if emptyRestores "$canon" "$line"; then
+                restoreParam "$canon" _silManifestBase
+                ## Later libraries (LIBRARY, COPY) then use their own value
+                for token in "${!tokens[@]}"; do
+                    [[ "$(paramCanonical "$(trim "${tokens[$token]%%=*}")")" == "$canon" ]] \
+                        && unset 'tokens[token]'
+                done
+                tokens=("${tokens[@]}")
+                msgInfo "  $canon = $(paramValueText "$canon"), restored; was $was (line $lineNum)"
+                continue
+            fi
             setParamToken "$line" "$path line $lineNum"
             tokens+=("$line")
             ## TAG and UNTAG aren't echoed: the tags applied are shown

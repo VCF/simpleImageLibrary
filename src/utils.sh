@@ -227,6 +227,40 @@ function humanSize {
 }
 
 #######################################
+# Ask the person running SIL to choose one of several options, lettered
+# a), b) and so on, waiting for an answer. Asked at the terminal, not on
+# STDIN, which may be a manifest being read.
+# Arguments:
+#   $1 - Name of the variable to receive the index chosen, from 0
+#   $2 - The question, shown above the options
+#   $@ - The options (at most 26)
+# Returns:
+#   0 once one is chosen; 1 if there is no terminal to ask at
+#######################################
+function askChoice {
+    local _var="$1" _question="$2" _letters="abcdefghijklmnopqrstuvwxyz"
+    local _answer _i
+    shift 2
+    { : < /dev/tty; } 2> /dev/null || return 1
+    while true; do
+        printf '%s\n' "$_question" > /dev/tty
+        for (( _i = 0; _i < $# && _i < 26; _i++ )); do
+            printf '  %s) %s\n' "${_letters:_i:1}" "${@:_i+1:1}" > /dev/tty
+        done
+        read -r -p "Choice: " _answer < /dev/tty 2> /dev/tty || _answer=""
+        _answer="${_answer,,}"
+        if [[ "$_answer" =~ ^[a-z]$ ]]; then
+            _i="${_letters%%"$_answer"*}"
+            _i="${#_i}"
+            if (( _i < $# )); then
+                printf -v "$_var" '%s' "$_i"
+                return 0
+            fi
+        fi
+    done
+}
+
+#######################################
 # The current time in microseconds, as a start mark for elapsedText.
 # EPOCHREALTIME's decimal point follows the locale, so either is dropped.
 # Outputs:
