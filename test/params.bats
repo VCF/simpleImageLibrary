@@ -220,6 +220,32 @@ teardown() {
   assert_output --partial "HIGH, MEDIUM, LOW"
 }
 
+@test "color parameters accept accent names in any case, and hex colors" {
+  local -A cases=(
+    [Teal]=teal [ROSE]=rose [blue]=blue
+    ['#3A7BD5']='#3a7bd5' [3a7bd5]='#3a7bd5' ['#37b']='#3377bb' [ABC]='#aabbcc'
+  )
+  local k
+  for k in "${!cases[@]}"; do
+    setParamToken "WEBACCENT=$k"
+    assert_equal "$SIL_WEBACCENT" "${cases[$k]}"
+  done
+}
+
+@test "color parameters reject other values, with examples" {
+  local bad
+  for bad in purple '#12345' '#ggg' 'rgb(1,2,3)'; do
+    run setParamToken "WEBACCENT=$bad"
+    assert_failure
+    assert_output --partial "Invalid color for WEBACCENT"
+    assert_output --partial "teal"
+  done
+}
+
+@test "WEBACCENT defaults to blue" {
+  assert_equal "$SIL_WEBACCENT" blue
+}
+
 @test "SHARED defaults to off; only false-like values keep it off" {
   run flagIsSet SHARED
   assert_failure

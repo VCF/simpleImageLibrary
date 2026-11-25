@@ -90,9 +90,31 @@
   };
   /** Where per-browser display settings are kept, for every library. */
   const PREFS_KEY = 'websil:prefs';
+  /** Per-browser display settings: fit (tiles) and theme. */
+  let prefs = {};
+  /** Themes the theme button steps through, with its icon and name for each. */
+  const THEMES = {
+    auto: { icon: 'i-auto', name: 'System' },
+    dark: { icon: 'i-moon', name: 'Dark' },
+    light: { icon: 'i-sun', name: 'Light' },
+  };
+  /**
+   * WEBACCENT colors by name: the shade for the dark theme, then the light.
+   * Keep the names in step with _silAccentNames in src/params.sh.
+   */
+  const ACCENTS = {
+    blue: ['#6ea8fe', '#2563eb'],
+    teal: ['#2dd4bf', '#0f8a7c'],
+    green: ['#6dd38a', '#1f8a43'],
+    amber: ['#f5b544', '#b25f00'],
+    violet: ['#a78bfa', '#6d4fd6'],
+    rose: ['#fb7185', '#c0264a'],
+  };
   /** @type {Set<string>} Selected image hashes. */
   const selected = new Set();
   let selecting = false;
+  /** Whether anything was selected at the last updateSelBar, to open the bar on a first selection. */
+  let hadSelection = false;
   let lastClicked = -1;
   /** Tags typed in the selection bar, waiting for Add or Remove. */
   let editTags = [];
@@ -294,9 +316,14 @@
       default: view.sort((a, b) => a.rand - b.rand);
     }
     $('count').textContent = view.length === images.length
-      ? `${images.length.toLocaleString()} images`
-      : `${view.length.toLocaleString()} of ${images.length.toLocaleString()} images`;
+      ? images.length.toLocaleString()
+      : `${view.length.toLocaleString()} / ${images.length.toLocaleString()}`;
+    $('count').title = `${view.length.toLocaleString()} of ${images.length.toLocaleString()} images shown`;
     $('shuffleBtn').hidden = s.sort !== 'random';
+    // The filter button shows a dot while any filter under it is set
+    const set = [s.dateFrom || s.dateTo, s.sizeMin !== null || s.sizeMax !== null, s.type].filter(Boolean).length;
+    $('filterDot').hidden = !set;
+    $('filterSummary').textContent = set ? `${set} filter${set > 1 ? 's' : ''} set` : 'No filters set';
     renderChips();
     renderTreeMarks();
     resetGrid();
@@ -566,13 +593,18 @@
   }
 
   /**
-   * Show or hide the selection bar, with its count.
+   * Show or hide the selection bar, with its count. It shows while
+   * selecting, which a first selection turns on.
    * @returns {void}
    */
   function updateSelBar() {
-    $('selBar').hidden = !selecting && selected.size === 0;
+    // A first selection, eg by Ctrl+click, opens the bar; the Select button
+    // can then close it again, keeping the selection
+    if (selected.size && !hadSelection) selecting = true;
+    hadSelection = selected.size > 0;
+    $('selBar').hidden = !selecting;
     $('selCount').textContent = `${selected.size.toLocaleString()} selected`;
-    $('selAllBtn').textContent = `Select all shown (${view.length.toLocaleString()})`;
+    $('selAllBtn').dataset.tip = `Select all shown (${view.length.toLocaleString()})`;
     $('onlySelBtn').setAttribute('aria-pressed', state.onlySelected);
     document.body.classList.toggle('selecting', selecting);
     $('selectBtn').setAttribute('aria-pressed', selecting);
@@ -1160,6 +1192,7 @@
     const n = pending.reduce((sum, p) => sum + p.hashes.length, 0);
     $('pendingCount').textContent = n.toLocaleString();
     $('pendingCount').classList.toggle('on', n > 0);
+    $('pendingBtn').dataset.tip = n ? `Queued changes (${n.toLocaleString()})` : 'Queued changes';
     refreshVocab();
     try { localStorage.setItem(storeKey, JSON.stringify({ pending })); } catch (e) { /* private mode */ }
   }
@@ -1598,14 +1631,79 @@
     applyFilters();
   }
 
+  // ---------------------------------------------------------- appearance
+
   /**
-   * Show a short message at the bottom of the window.
+   * Keep the display settings (prefs) for every library in this browser.
+   * @returns {void}
+   */
+  function savePrefs() {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* private mode */ }
+  }
+
+  /**
+   * Apply the theme in prefs: System follows the browser's preference,
+   * Dark and Light override it. Updates the theme button to match.
+   * @returns {void}
+   */
+  function applyTheme() {
+    const theme = THEMES[prefs.theme] ? prefs.theme : 'auto';
+    if (theme === 'auto') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    $('themeBtn').dataset.tip = 'Theme: ' + THEMES[theme].name;
+    $('themeBtn').querySelector('use').setAttribute('href', '#' + THEMES[theme].icon);
+  }
+
+  /**
+   * Text color for a background, dark or white, whichever reads better.
+   * @param {string} hex - Background, as #rrggbb
+   * @returns {string} A #rrggbb color
+   */
+  function inkFor(hex) {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.55 ? '#0b1220' : '#ffffff';
+  }
+
+  /**
+   * Color the page and its browser tab icon with the library's WEBACCENT.
+   * A named color has its own shade for each theme; a hex color is used as
+   * given in the dark theme, and darkened for the light one.
+   * @param {string} [accent] - A name from ACCENTS, or #rrggbb; blue if unknown
+   * @returns {void}
+   */
+  function applyAccent(accent) {
+    let shades = ACCENTS[accent] || ACCENTS.blue;
+    if (/^#[0-9a-f]{6}$/.test(accent || '')) {
+      const dark = [1, 3, 5].map((i) => Math.round(parseInt(accent.slice(i, i + 2), 16) * 0.72)
+        .toString(16).padStart(2, '0'));
+      shades = [accent, '#' + dark.join('')];
+    }
+    const root = document.documentElement.style;
+    root.setProperty('--accD', shades[0]);
+    root.setProperty('--accL', shades[1]);
+    root.setProperty('--accInkD', inkFor(shades[0]));
+    root.setProperty('--accInkL', inkFor(shades[1]));
+    // The toolbar's logo, drawn on the accent
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+      `<rect width="24" height="24" rx="6" fill="${shades[0]}"/>` +
+      `<g transform="translate(3 3) scale(.75)" fill="none" stroke="${inkFor(shades[0])}" ` +
+      'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+      $('i-logo').innerHTML + '</g></svg>';
+    $('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  }
+
+  /**
+   * Show a short message at the bottom center of the window. Over the full
+   * window view it sits just above the info line, which can wrap.
    * @param {string} text
    * @param {number} [ms=2600] - How long to show it
    * @returns {void}
    */
   function toast(text, ms = 2600) {
     const t = $('toast');
+    const cap = $('lbCaption');
+    const above = !$('lightbox').hidden && cap.offsetHeight ? cap.offsetHeight + 12 : 0;
+    t.style.bottom = above ? above + 'px' : '';
     t.textContent = text;
     t.hidden = false;
     clearTimeout(toast.timer);
@@ -1649,18 +1747,43 @@
     });
     $('shuffleBtn').addEventListener('click', () => { shuffle(); applyFilters(); });
 
-    let prefs = {};
-    try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch (e) { /* private mode */ }
     const setFit = (fit) => {
-      $('fitSel').value = fit === 'fill' ? 'fill' : 'fit';
+      for (const b of $('fitSeg').children) b.setAttribute('aria-pressed', b.dataset.fit === (fit === 'fill' ? 'fill' : 'fit'));
       document.body.classList.toggle('fill', fit === 'fill');
     };
     setFit(prefs.fit);
-    $('fitSel').addEventListener('change', () => {
-      setFit($('fitSel').value);
-      prefs.fit = $('fitSel').value;
-      try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* private mode */ }
+    $('fitSeg').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      setFit(b.dataset.fit);
+      prefs.fit = b.dataset.fit;
+      savePrefs();
     });
+    $('themeBtn').addEventListener('click', () => {
+      const names = Object.keys(THEMES);
+      prefs.theme = names[(names.indexOf(prefs.theme || 'auto') + 1) % names.length];
+      applyTheme();
+      savePrefs();
+    });
+    // The filter popover closes on Escape, or a click outside it
+    const setPop = (open) => {
+      $('filterPop').hidden = !open;
+      $('filterBtn').setAttribute('aria-expanded', open);
+      // Under its button, as far as the toolbar's edge allows
+      const bar = $('bar').getBoundingClientRect();
+      $('filterPop').style.right = Math.max(8, bar.right - $('filterBtn').getBoundingClientRect().right - 40) + 'px';
+    };
+    $('filterBtn').addEventListener('click', () => setPop($('filterPop').hidden));
+    document.addEventListener('pointerdown', (e) => {
+      if (!$('filterPop').hidden && !$('filterPop').contains(e.target) && !$('filterBtn').contains(e.target)) setPop(false);
+    });
+    $('filterPop').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { setPop(false); $('filterBtn').focus(); }
+    });
+    // What scrolls under the toolbar starts below it, however tall it grows
+    new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--barH', $('bar').offsetHeight + 'px');
+    }).observe($('bar'));
     $('resetBtn').addEventListener('click', () => {
       for (const id of ['dateFrom', 'dateTo', 'sizeMin', 'sizeMax', 'typeSel']) $(id).value = '';
       state.include = []; state.exclude = [];
@@ -1680,6 +1803,7 @@
     $('selNoneBtn').addEventListener('click', () => {
       selected.clear();
       selecting = false;
+      hadSelection = false;
       showOnlySelected(false);
       refreshTiles();
     });
@@ -1865,6 +1989,9 @@
    * @returns {void}
    */
   function start() {
+    try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {}; } catch (e) { /* private mode */ }
+    applyTheme();
+    applyAccent(data && data.accent);
     const errors = window.SIL_ERRORS || [];
     const rebuild = `sil LIBRARY=${shellQuote(libraryPath)} BUILDWEB`;
     if (!data) {
@@ -1894,8 +2021,8 @@
    * @returns {void}
    */
   function run() {
-    $('brand').textContent = 'WebSIL · ' + (libraryPath.split('/').pop() || 'library');
-    document.title = $('brand').textContent;
+    document.title = 'WebSIL · ' + (libraryPath.split('/').pop() || 'library');
+    $('brand').dataset.tip = document.title;
     loadData();
     buildTree();
     wire();

@@ -13,6 +13,8 @@
 ##   percent - integer 0-100, from eg '25' or '25%'
 ##   number  - positive decimal, eg '2' or '1.5'
 ##   level   - HIGH, MEDIUM, LOW or OFF, from eg 'hi', 'm', 'Lo', 'no'
+##   color   - a name from _silAccentNames, or a hex color as '#rrggbb',
+##             from eg 'Teal', '#3A7', '3a7bd5'
 declare -gA _silParamType=(
     [LIBRARY]=value
     [TAG]=value
@@ -33,6 +35,7 @@ declare -gA _silParamType=(
     [REBUILD]=flag
     [BUILDWEB]=flag
     [GITWEB]=flag
+    [WEBACCENT]=color
     [TOR]=flag
     [STOPSIL]=flag
     [COPY]=value
@@ -70,7 +73,12 @@ declare -gA _silParamDefault=(
     [SHARED]=0
     [THRESHOLD]=90
     [TOR]=0
+    [WEBACCENT]=blue
 )
+
+## Accent colors WEBACCENT knows by name. WebSIL holds a dark and a light
+## shade of each, in websil.js
+declare -ga _silAccentNames=(blue teal green amber violet rose)
 
 ## Parameters that an empty value clears (eg 'TAG='), rather than halting.
 ## COPY and MOVE are set by their block in a manifest, and cleared where it
@@ -212,6 +220,19 @@ function normalizeParamValue {
                 *)                  return 1 ;;
             esac
             ;;
+        color)
+            local hex="${value,,}"
+            hex="${hex#\#}"
+            if [[ " ${_silAccentNames[*]} " == *" ${value,,} "* ]]; then
+                printf '%s\n' "${value,,}"
+            elif [[ "$hex" =~ ^[0-9a-f]{6}$ ]]; then
+                printf '#%s\n' "$hex"
+            elif [[ "$hex" =~ ^([0-9a-f])([0-9a-f])([0-9a-f])$ ]]; then
+                printf '#%s\n' "${BASH_REMATCH[1]}${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[3]}"
+            else
+                return 1
+            fi
+            ;;
         *)
             printf '%s\n' "$value"
             ;;
@@ -316,6 +337,7 @@ function setParamToken {
             [percent]="25 or 25%"
             [number]="2 or 1.5"
             [level]="HIGH, MEDIUM, LOW (or H, M, L) or OFF"
+            [color]="${_silAccentNames[*]}, or a hex color such as #3a7bd5"
         )
         msgError "[!] Invalid $type for $canon: '$value'
     Expected eg: ${example[$type]}

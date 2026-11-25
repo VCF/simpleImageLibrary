@@ -53,6 +53,14 @@ function imageRow {
   assert_file_exists "$SIL_LIBRARY/web/silStamp.js"
 }
 
+@test "buildWeb records the WEBACCENT color, blue by default" {
+  buildWeb 2> /dev/null
+  grep -q '"accent":"blue"' "$SIL_LIBRARY/web/imageData.js"
+  SIL_WEBACCENT='#3a7bd5'
+  buildWeb 2> /dev/null
+  grep -q '"accent":"#3a7bd5"' "$SIL_LIBRARY/web/imageData.js"
+}
+
 @test "buildWeb records tags, sizes and dates, leaving out the date tag" {
   buildWeb 2> /dev/null
   local js="$SIL_LIBRARY/web/imageData.js" size
@@ -201,6 +209,13 @@ function imageRow {
   assert_success
   assert_output --partial "BUILDWEB can't be set in a manifest"
   assert_not_exists "$SIL_LIBRARY/web"
+}
+
+@test "WEBACCENT in a manifest is ignored with a warning" {
+  printf '%s\n' "WEBACCENT=rose" "$plasma" > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" m.txt
+  assert_success
+  assert_output --partial "WEBACCENT can't be set in a manifest"
 }
 
 @test "buildWeb data is valid JavaScript for tag folders SIL wouldn't make" {

@@ -72,6 +72,8 @@ Web page:
                        queueing tag changes in a web browser
   GITWEB               With BUILDWEB, share the web page through git rather
                        than ignoring it (alias WEBGIT). Kept until changed
+  WEBACCENT=COLOR      The web page's color: blue, teal, green, amber, violet,
+                       rose, or a hex color such as #3a7bd5 (default: blue)
 
 Manifests only:
   STOPSIL              Stop reading the manifest at this line (alias SILSTOP)

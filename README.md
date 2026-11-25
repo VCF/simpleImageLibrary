@@ -160,6 +160,7 @@ types are:
 | `REBUILD` | Flag | Off | C | Repair the library from its stored images, keeping tags. Runs before `CHECK` if both are given |
 | `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
 | `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
+| `WEBACCENT` | Color | `blue` | G L C | The web page's accent color: `blue`, `teal`, `green`, `amber`, `violet`, `rose`, or a hex color such as `#3a7bd5`. Applied by `BUILDWEB` |
 | `STOPSIL`, `SILSTOP` | Flag | Off | M | Stop reading the manifest at this line |
 | `COPY`, `CP`, `SILCOPY` | `SOURCE -> TARGET` | None | M | Copy the images whose hashes follow, one per line, from library `SOURCE` to library `TARGET`, with their tags and sources. `SOURCE ->` may be left out, for the library in use. Both must exist. The block ends at the next line that isn't a hash. In the target they are added as new images, with its settings, and dated today. `SILCOPY` is a reserved tag |
 | `MOVE`, `MV`, `SILMOVE` | `SOURCE -> TARGET` | None | M | As `COPY`, then remove each image from `SOURCE` once its copy succeeded. `SILMOVE` is a reserved tag |
@@ -173,7 +174,7 @@ data in `web/`. Open it in any web browser; it needs nothing outside the library
 not even a network connection.
 
 * **Browse** a grid of images, each either fitted whole into its tile or
-  cropped to fill it (Tiles: Fit or Fill). Click one to fill the window, then
+  cropped to fill it (Fit or Fill, under the filter button). Click one to fill the window, then
   move with the arrow keys or Page Up/Down, and leave with Escape. Its tags are
   shown there; click a tag's × to queue removing it. The image's name is
   shortened to the start of its hash: enough characters to tell it from every
@@ -193,9 +194,13 @@ not even a network connection.
   tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
   tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images
   can also be filtered by the date added, size and type, and sorted by date,
-  size or at random
+  size or at random, from the filter button beside the tag box
+* **Look**: the toolbar's buttons are icons; hover one for its name. The theme
+  button switches between the system's light or dark setting, Dark and Light.
+  Each library's page can have its own accent color, set with `WEBACCENT`
 * **Change tags**: select images (Select, or Ctrl+click, Shift+click for a
-  range), type tags, and Add or Remove them. A new tag, once queued, is offered
+  range), type tags, and Add or Remove them. The selection bar opens with the
+  first image selected; Select hides or shows it again, keeping the selection. A new tag, once queued, is offered
   by autocomplete like the library's own. Show only selected narrows the
   grid to the selection to check it first. A web page can't change files, so
   changes are queued and saved as a manifest naming each image by its hash.

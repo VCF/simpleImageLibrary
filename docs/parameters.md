@@ -39,6 +39,7 @@ be set in a library's `sil.conf` also has a commented example in
   * Percent: a whole number 0-100, with optional `%`, eg `25` or `25%`
   * Number: a positive number, decimals allowed, eg `2` or `1.5`
   * Level: `HIGH`, `MEDIUM`, `LOW` or `OFF`, any case (see `SHRINKVID`)
+  * Color: a color name or hex color (see `WEBACCENT`)
 
 ## Configuration files
 
@@ -558,6 +559,24 @@ people who can clone a library but won't run `sil` to build their own page
   changes `web/imageData.js`, so these show as changes to commit. Two people
   building the page will conflict in them: keep either side, and rerun
   `sil BUILDWEB`
+
+## WEBACCENT
+
+* Default: `blue`
+* Color: one of `blue`, `teal`, `green`, `amber`, `violet` or `rose` (any
+  case), or a hex color, `#3a7bd5` or `#37b` (the `#` may be left out)
+
+The accent color of the library's web page: its buttons, tag chips, selected
+controls and browser tab icon. Giving libraries different colors makes their
+pages easy to tell apart
+
+* Can't be set in a manifest, which can't build the page
+* Applied by `BUILDWEB`, which writes it into `web/imageData.js`. Set it in the
+  library's `sil.conf` to keep it for every build, or give it with a build:
+  `sil WEBACCENT=teal BUILDWEB`
+* Each named color has a shade for the page's dark theme and one for its light
+  theme. A hex color is used as given in the dark theme, and darkened for the
+  light one, so choose a mid-tone color, neither very light nor very dark
 
 ## TOR
 

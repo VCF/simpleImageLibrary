@@ -12,6 +12,7 @@ declare -gA _silManifestBlocked=(
     [REBUILD]="it is an action on the whole library; run sil REBUILD"
     [BUILDWEB]="it is an action on the whole library; run sil BUILDWEB"
     [SHARED]="it applies to the whole library; set it in sil.conf"
+    [WEBACCENT]="it colors the web page, built by BUILDWEB; set it in sil.conf"
 )
 
 ## Settings as the manifest found them, once its library is chosen: what
