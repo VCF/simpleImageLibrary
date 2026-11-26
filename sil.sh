@@ -75,8 +75,10 @@ fi
 ## Exit status is 1 if anything failed, for use in scripts
 status=0
 
-## Act on any hand edits to the library's remapped tags (REMAP)
+## Act on any hand edits to the library's remapped tags (REMAP), then
+## clean its tag tree if CLEANTREE was just turned on
 syncRemaps || status=1
+syncCleanTree || status=1
 
 ## REQ-09 maintenance actions; rebuild first so a check sees the result
 if flagIsSet REBUILD; then
@@ -101,6 +103,10 @@ fi
 if [[ -n "${SIL_LINK:-}" ]]; then
     msgInfo "LINK $SIL_LINK"
     linkTag "$SIL_LINK" || status=1
+fi
+## REMAP and LINK may have merged a parent tag with one below it
+if [[ -n "${SIL_REMAP:-}${SIL_LINK:-}" ]]; then
+    syncCleanTree || status=1
 fi
 ## GITWEB is recorded in the stamp now, and applied to .gitignore by BUILDWEB
 if [[ -n "${SIL_GITWEB:-}" ]] && ! flagIsSet BUILDWEB; then

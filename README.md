@@ -161,6 +161,7 @@ types are:
 | `UNTAG`, `UNTAGS` | Tags | None | C M | Tags to remove from images already in the library. `*` removes all but the date tag |
 | `LINK` | `SOURCE -> TARGET` | None | C M | Make tag `SOURCE` a symlink to tag `TARGET`, as an alias. Asks before moving any images already in `SOURCE` |
 | `REMAP`, `MAPTAG`, `TAGMAP`, `MAP` | `SOURCE -> TARGET` | None | C M | Quietly replace tag `SOURCE` with `TARGET`, for existing images and from now on. Kept in `RemappedTags.txt` in the library, which can be edited by hand |
+| `CLEANTREE` | Flag | Off | G L C | Remove a parent tag from images that also have a tag below it: `Animal` and `Animal/Dog` leave `Animal/Dog`. Turning it on cleans the whole library; while on, each tagged image is cleaned |
 
 ### Image recovery
 
@@ -217,7 +218,11 @@ not even a network connection.
   and `H` or `?` lists every key
 * **Filter** by tags, typed with autocomplete or picked from the tag tree. All
   tags given must match, and `!` excludes a tag, eg `SciFi` and `!Fantasy`. A
-  tag also matches the tags below it: `Animal` includes `Animal/Dog`. Images
+  tag also matches the tags below it: `Animal` includes `Animal/Dog`. `=`
+  matches only the tag itself (`=Animal`; Alt+click in the tree), and `*` any
+  characters, across levels: `Animal` with `!Animal/*` finds animals not yet
+  given a more specific tag. The `?` button in the filter box explains it all,
+  with examples. Images
   can also be filtered by the date added, size and type, and sorted by date,
   size or at random, from the filter button beside the tag box
 * **Look**: the toolbar's buttons are icons; hover one for its name. The theme

@@ -505,3 +505,10 @@ EOF
   run awk '{ print index($0, " = ") }' <<< "$output"
   assert_equal "$(sort -u <<< "$output" | wc -l)" 1
 }
+
+@test "CLEANTREE defaults to off, and is a flag" {
+  run flagIsSet CLEANTREE
+  assert_failure
+  setParamToken CLEANTREE=on
+  flagIsSet CLEANTREE
+}

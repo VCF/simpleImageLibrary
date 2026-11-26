@@ -420,3 +420,21 @@ assertUnchanged() {
   assert_output --partial "This library stores its images in an older layout"
   assertUnchanged
 }
+
+@test "CLEANTREE on the command line cleans the library's tags" {
+  local plasma="$PROJECT_ROOT/test/data/images/plasma.png"
+  "$PROJECT_ROOT/sil" LIBRARY=lib TAG=Animal,Animal/Dog "$plasma" 2> /dev/null
+  assert_dir_exists lib/tags/Animal/Dog
+  [[ -n "$(find lib/tags/Animal -maxdepth 1 -type l)" ]]
+  run "$PROJECT_ROOT/sil" LIBRARY=lib CLEANTREE
+  assert_success
+  assert_output --partial "CLEANTREE: removed 1 redundant parent tags from 1 images"
+  [[ -z "$(find lib/tags/Animal -maxdepth 1 -type l)" ]]
+}
+
+@test "CLEANTREE in a manifest is ignored with a warning" {
+  printf '%s\n' "CLEANTREE" "$PROJECT_ROOT/test/data/images/plasma.png" > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY=lib m.txt
+  assert_success
+  assert_output --partial "CLEANTREE can't be set in a manifest"
+}

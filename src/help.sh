@@ -42,6 +42,8 @@ Tags and images:
   LINK='SRC -> DEST'   Make tag SRC an alias of tag DEST
   REMAP='SRC -> DEST'  Quietly replace tag SRC with tag DEST, now and later
                        (alias MAPTAG, TAGMAP, MAP)
+  CLEANTREE            Remove a parent tag from images with a tag below it,
+                       eg Animal when Animal/Dog is there too (default off)
 
 Shrinking:
   SHRINK=SIZE          Target size for still images, eg 500kb (default 0, off)

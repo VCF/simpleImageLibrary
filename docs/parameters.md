@@ -276,6 +276,36 @@ SIL reads the file each time it runs, and treats it as the truth:
 * `REMAP` itself only appends or replaces its own line; comments and the rest of
   the file are kept
 
+### CLEANTREE
+
+* Default: off
+* Flag parameter
+* Can't be set in a manifest, as it applies to the whole library's tags. Set
+  it in the library's `sil.conf`, `~/.sil.conf` or on the command line
+
+Removes a parent tag from images that also have a tag below it, as the child
+tag already says more. An image tagged `Animal` and `Animal/Dog` keeps only
+`Animal/Dog`; it is still found by `Animal` in WebSIL, which matches the tags
+below a tag
+
+* Turned on in a library where it was off (or never set), the whole tag tree is
+  cleaned at the start of the run, reporting the number of tags removed:
+  `CLEANTREE: removed 12 redundant parent tags from 9 images`
+* While it is on, each image given a tag (`TAG`, a WebSIL manifest, `COPY`) is
+  cleaned straight after, reported as eg
+  `Removed parent tag (CLEANTREE): Animal`. This includes giving an image the
+  parent of a tag it has: `TAG=Animal` on an image tagged `Animal/Dog` adds,
+  then removes, `Animal`
+* `REMAP` and `LINK` merge tags in bulk, so may leave an image with both; the
+  whole tree is cleaned again after them
+* Turning it off changes nothing. Removing a child tag later (`UNTAG`) doesn't
+  bring the parent back; tag the image with it again if wanted
+* The date and `Untagged` tags are never touched. `LINK` aliases aren't
+  followed: a tag is judged at its real folder
+* Whether the tree has been cleaned is kept in `<LIBRARY>/.tmp/cleantree`,
+  removed by any run with `CLEANTREE` off. If it is lost, the tree is just
+  checked again
+
 ## SHRINK
 
 * Default: `0` (off)

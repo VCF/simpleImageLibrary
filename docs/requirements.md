@@ -746,6 +746,13 @@ changes in a web browser. `BUILDWEB` builds it (see
   queued
 * Tag filters match a tag and every tag below it. All required tags must
   match, and no excluded (`!`) one
+  * `=` before a tag matches only images with that tag itself, not the tags
+    below it. In the tag tree, Alt+click adds one
+  * `*` matches any characters, `/` included, so `Animal/*` is every tag below
+    `Animal`. Typed in the filter box, a pattern is offered with the number of
+    images it matches
+  * A `?` button in the filter box (or `?` when not typing) shows this syntax,
+    the tag tree's clicks, and examples
 * The full window view has a slideshow, off whenever the view opens. Space
   starts or pauses it. It moves on every 5 seconds; while it runs, Up and Down
   step the delay through 1, 3, 5, 10, 15, 30 and 60 seconds, without wrapping.

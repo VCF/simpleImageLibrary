@@ -26,6 +26,10 @@ declare -g _silTagLatin1='ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛ
 ## Set by applyTags: how many tags the image got or already had
 declare -g _silTagsApplied=0
 
+## Marker in a library's .tmp folder that its tag tree has been cleaned
+## (CLEANTREE) and kept clean since; see syncCleanTree
+declare -g _silCleanTreeFile="cleantree"
+
 ## File of tag remaps in a library (REMAP), kept for hand editing
 declare -g _silRemapFile="RemappedTags.txt"
 
@@ -401,7 +405,10 @@ function applyTags {
         fi
     done <<< "$tags"
     [[ -n "$applied" ]] && msgInfo "  Tagged: $applied"
-    (( _silTagsApplied )) && dropUntagged "$1"
+    if (( _silTagsApplied )); then
+        dropUntagged "$1"
+        flagIsSet CLEANTREE && cleanImageTags "$1"
+    fi
     return "$rv"
 }
 
@@ -607,6 +614,126 @@ function applyUntags {
 }
 
 #######################################
+# Pick out the tag links that CLEANTREE removes: an image's link in a
+# folder that has another of its links in a folder below it. With
+# Animal/x.jpg and Animal/Dog/x.jpg, Animal/x.jpg is redundant.
+# Inputs:
+#   Link paths (physical), one per line, on STDIN
+# Outputs:
+#   The redundant link paths, sorted, to STDOUT
+#######################################
+function redundantTagLinks {
+    LC_ALL=C awk '
+        {
+            k = match($0, /\/[^\/]*$/)
+            img = substr($0, k + 1)
+            dir[img, ++count[img]] = substr($0, 1, k - 1)
+        }
+        END {
+            for (img in count)
+                for (i = 1; i <= count[img]; i++)
+                    for (j = 1; j <= count[img]; j++)
+                        if (index(dir[img, j], dir[img, i] "/") == 1) {
+                            print dir[img, i] "/" img
+                            break
+                        }
+        }' | LC_ALL=C sort
+}
+
+#######################################
+# Remove a stored image's parent tags that a tag below them makes
+# redundant (CLEANTREE): an image with Animal and Animal/Dog loses Animal.
+# The parent's folder still holds the child, so no folder is left empty.
+# Globals:
+#   SIL_LIBRARY
+# Arguments:
+#   $1 - Image hash
+# Outputs:
+#   Tags removed to STDERR
+#######################################
+function cleanImageTags {
+    local root link removed=""
+    root="$(realpath -- "$SIL_LIBRARY/tags")"
+    while IFS= read -r link; do
+        [[ -n "$link" ]] || continue
+        rm -f -- "$link"
+        link="${link%/*}"
+        removed="${removed:+$removed, }${link#"$root"/}"
+    done < <(userTagLinks "$1" | redundantTagLinks)
+    [[ -n "$removed" ]] && msgInfo "  Removed parent tag (CLEANTREE): $removed"
+    return 0
+}
+
+#######################################
+# Remove every redundant parent tag in the library (CLEANTREE; see
+# cleanImageTags). The date and Untagged tags are left alone, and LINK
+# aliases aren't followed, so each tag is judged at its real folder.
+# Globals:
+#   SIL_LIBRARY, _silDateTag, _silUntaggedTag
+# Outputs:
+#   What was removed to STDERR
+# Returns:
+#   0 on success, 1 if a link can't be removed
+#######################################
+function cleanTagTree {
+    local root link rv=0
+    local -a links
+    local -A images=()
+    root="$(realpath -- "$SIL_LIBRARY/tags")"
+    mapfile -t links < <(find "$root" \( -path "$root/$_silDateTag" -o -path "$root/$_silUntaggedTag" \) -prune \
+        -o -type l ! -xtype d -print | redundantTagLinks)
+    for link in "${links[@]}"; do
+        rm -f -- "$link" || { rv=1; continue; }
+        images[${link##*/}]=1
+    done
+    if (( ${#links[@]} )); then
+        msgInfo "CLEANTREE: removed ${#links[@]} redundant parent tags from ${#images[@]} images"
+    else
+        msgInfo "CLEANTREE: no redundant parent tags found"
+    fi
+    return "$rv"
+}
+
+#######################################
+# Keep the library's marker of a clean tag tree (CLEANTREE) in step with
+# the setting. With CLEANTREE on and no marker, the whole tree is cleaned
+# (cleanTagTree) and the marker made; from then on, applyTags keeps each
+# image clean. With it off, the marker is removed, so turning it on again
+# cleans the whole tree. Cheap when nothing has changed, so it is called
+# after anything that may move tags (REMAP, LINK) as well as on choosing a
+# library.
+# Globals:
+#   SIL_LIBRARY, SIL_CLEANTREE, _silCleanTreeFile
+# Outputs:
+#   What was cleaned to STDERR
+# Returns:
+#   0 on success, 1 if the tree can't be cleaned
+#######################################
+function syncCleanTree {
+    local marker
+    [[ -n "${SIL_LIBRARY:-}" ]] || return 0
+    marker="$SIL_LIBRARY/.tmp/$_silCleanTreeFile"
+    if ! flagIsSet CLEANTREE; then
+        rm -f -- "$marker"
+        return 0
+    fi
+    [[ -e "$marker" ]] && return 0
+    cleanTagTree || return 1
+    : > "$marker"
+}
+
+#######################################
+# Note that tags have been moved in bulk (REMAP, LINK), which may have left
+# an image with a parent and child tag, so the next syncCleanTree cleans the
+# whole tree again if CLEANTREE is on.
+# Globals:
+#   SIL_LIBRARY, _silCleanTreeFile
+#######################################
+function cleanTreeStale {
+    rm -f -- "$SIL_LIBRARY/.tmp/$_silCleanTreeFile"
+}
+
+#######################################
 # Ask the person running SIL a yes/no question, waiting for an answer.
 # The question is asked at the terminal, not on STDIN, which may be a
 # manifest being read.
@@ -663,6 +790,7 @@ function moveTagContents {
         fi
     done
     find "$from" -mindepth 1 -depth -type d -empty -delete
+    (( ${#items[@]} )) && cleanTreeStale
     return "$rv"
 }
 

@@ -60,7 +60,7 @@
       <input id="filterInput" autocomplete="off" spellcheck="false"
              placeholder="Filter by tag, ! to exclude">
       <span id="count" class="tally" aria-live="polite"></span>
-      <kbd title="Press / to filter">/</kbd>
+      <button type="button" id="filterHelpBtn" class="ib hb tipr" aria-expanded="false" aria-controls="filterHelp" data-tip="Filter help (?); / to filter" aria-label="Filter help">?</button>
     </div>
     <button type="button" id="filterBtn" class="ib" aria-expanded="false" data-tip="Dates, size, type, sort and tiles" aria-label="Dates, size, type, sort and tiles"><svg class="i"><use href="#i-filter"/></svg><span class="dot" id="filterDot" hidden></span></button>
     <button type="button" id="shuffleBtn" class="ib" hidden data-tip="Shuffle: a new random order" aria-label="Shuffle"><svg class="i"><use href="#i-shuffle"/></svg></button>
@@ -94,6 +94,30 @@
     <div class="foot"><span id="filterSummary" class="muted"></span><button type="button" id="resetBtn" class="linkbtn"><svg class="i sm"><use href="#i-reset"/></svg>Reset filters</button></div>
   </div>
 
+  <div id="filterHelp" class="keyhelp" role="dialog" aria-label="Filter help" hidden>
+    <table>
+      <tr><th>Animal</th><td>Tagged Animal, or any tag below it, eg Animal/Dog</td></tr>
+      <tr><th>!Animal</th><td>Leave out images tagged Animal, or any tag below it</td></tr>
+      <tr><th>=Animal</th><td>Tagged Animal itself: tags below it don't count. Combines with !, as !=Animal</td></tr>
+      <tr><th>*</th><td>Any characters, across levels: Animal/* is every tag below Animal</td></tr>
+      <tr><th>Several</th><td>Every filter must match</td></tr>
+      <tr><th>Tag tree</th><td>Click to require, Shift+click to exclude, Alt+click to match exactly. Click again to remove</td></tr>
+      <tr><th>/</th><td>Type a filter</td></tr>
+      <tr><th>Backspace</th><td>In an empty filter box, remove the last filter</td></tr>
+      <tr><th>? Esc</th><td>Show / hide this help</td></tr>
+    </table>
+    <h3>Examples</h3>
+    <table class="examples">
+      <tr><th>Animal !Animal/*</th><td>Animals with no more specific tag: Animal alone is kept; Animal/Dog, or Animal with Animal/Dog, is left out</td></tr>
+      <tr><th>=Animal</th><td>Every image tagged Animal itself, including those also tagged Animal/Dog</td></tr>
+      <tr><th>Animal/*</th><td>Animals given a more specific tag, eg Animal/Cat or Animal/Dog/Puppy</td></tr>
+      <tr><th>Animal !Animal/Dog</th><td>Animals, but no dogs, nor tags below Dog such as Animal/Dog/Puppy</td></tr>
+      <tr><th>Animal !=Animal</th><td>Animals tagged only below Animal: the bare Animal tag is left out</td></tr>
+      <tr><th>*/Dog</th><td>Dog below any tag: Animal/Dog, Toy/Dog</td></tr>
+      <tr><th>*cat*</th><td>Any tag containing "cat", at any level: Cat, Animal/Wildcat, Category</td></tr>
+    </table>
+  </div>
+
   <div class="selbar" id="selBar" hidden>
     <span class="n"><svg class="i sm"><use href="#i-select"/></svg><span id="selCount">0 selected</span></span>
     <div class="chipbox search" id="tagBox">
@@ -116,7 +140,7 @@
       <button type="button" id="expandBtn" class="mini">Expand all</button>
       <button type="button" id="collapseBtn" class="mini">Collapse all</button>
     </div>
-    <p class="hint">Click a tag to require it, Shift+click to exclude it. Click it again to remove it.</p>
+    <p class="hint">Click a tag to require it, Shift+click to exclude it, Alt+click to match it exactly (not tags below). Click it again to remove it.</p>
     <div id="treeBody"></div>
   </aside>
   <main>
@@ -130,7 +154,7 @@
   <div id="lbMedia"></div>
   <div id="lbCaption"></div>
   <button type="button" id="lbClose" class="lbbtn" title="Close (Esc)">✕</button>
-  <div id="lbHelp" hidden>
+  <div id="lbHelp" class="keyhelp" hidden>
     <table>
       <tr><th>← → PgUp PgDn</th><td>Previous / next image (or click either side)</td></tr>
       <tr><th>Home End</th><td>First / last image</td></tr>

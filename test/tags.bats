@@ -789,3 +789,110 @@ EOF
   removeImage "$hash"
   assert_link_exists "lib/tags/Shared/$other.gif"
 }
+
+@test "redundantTagLinks picks parents of another tag, not siblings or prefixes" {
+  run redundantTagLinks <<'LINKS'
+/t/Animal/a.png
+/t/Animal/Dog/a.png
+/t/Ani/a.png
+/t/Animal/Cat/a.png
+/t/Plant/b.png
+/t/Plant/Tree/Oak/b.png
+/t/Plant/Tree/c.png
+/t/Plant/c.png
+/t/Rock/c.png
+LINKS
+  assert_success
+  assert_output "/t/Animal/a.png
+/t/Plant/b.png
+/t/Plant/c.png"
+}
+
+@test "with CLEANTREE, applyTags removes parents of the image's tags" {
+  SIL_CLEANTREE=1
+  tagImage "$hash" Animal
+  tagImage "$hash" Plant
+  SIL_TAG="Animal/Dog/Puppy"
+  run applyTags "$hash"
+  assert_success
+  assert_output --partial "Removed parent tag (CLEANTREE): Animal"
+  assert_not_exists "lib/tags/Animal/$hash.png"
+  assert_link_exists "lib/tags/Animal/Dog/Puppy/$hash.png"
+  assert_link_exists "lib/tags/Plant/$hash.png"
+}
+
+@test "with CLEANTREE, tagging an image with a parent it has below adds nothing" {
+  SIL_CLEANTREE=1
+  tagImage "$hash" Animal/Dog
+  SIL_TAG="Animal"
+  applyTags "$hash" 2> /dev/null
+  assert_not_exists "lib/tags/Animal/$hash.png"
+  assert_link_exists "lib/tags/Animal/Dog/$hash.png"
+}
+
+@test "without CLEANTREE, a parent and child tag are both kept" {
+  tagImage "$hash" Animal
+  SIL_TAG="Animal/Dog"
+  run applyTags "$hash"
+  refute_output --partial "CLEANTREE"
+  assert_link_exists "lib/tags/Animal/$hash.png"
+}
+
+@test "syncCleanTree cleans the whole tree once when turned on, and forgets when off" {
+  local other
+  storeImage "$PROJECT_ROOT/test/data/images/transparent.png" other
+  tagImage "$hash" Animal
+  tagImage "$hash" Animal/Dog
+  tagImage "$other" Animal
+  tagImage "$other" Animal/Cat
+  tagImage "$other" Plant
+  ## A LINK alias isn't followed: Pets/Dog is the real Animal/Dog folder
+  mkdir lib/tags/Pets
+  ln -s ../Animal/Dog lib/tags/Pets/Dog
+  tagImage "$hash" Pets
+
+  SIL_CLEANTREE=0
+  run syncCleanTree
+  assert_success
+  refute_output --partial "CLEANTREE"
+  assert_not_exists lib/.tmp/cleantree
+
+  SIL_CLEANTREE=1
+  run syncCleanTree
+  assert_success
+  assert_output --partial "CLEANTREE: removed 2 redundant parent tags from 2 images"
+  assert_file_exists lib/.tmp/cleantree
+  assert_not_exists "lib/tags/Animal/$hash.png"
+  assert_not_exists "lib/tags/Animal/$other.png"
+  assert_link_exists "lib/tags/Pets/$hash.png"
+  assert_link_exists "lib/tags/Plant/$other.png"
+
+  ## Marked clean, so not scanned again
+  tagImage "$hash" Animal
+  run syncCleanTree
+  refute_output --partial "CLEANTREE"
+  assert_link_exists "lib/tags/Animal/$hash.png"
+
+  SIL_CLEANTREE=0
+  syncCleanTree
+  assert_not_exists lib/.tmp/cleantree
+  SIL_CLEANTREE=1
+  run syncCleanTree
+  assert_output --partial "removed 1 redundant parent tags from 1 images"
+}
+
+@test "syncCleanTree reports a tree with nothing to clean" {
+  tagImage "$hash" Animal/Dog
+  SIL_CLEANTREE=1
+  run syncCleanTree
+  assert_output --partial "CLEANTREE: no redundant parent tags found"
+}
+
+@test "moving tags in bulk marks the tree for cleaning again" {
+  : > lib/.tmp/cleantree
+  tagImage "$hash" Politics
+  # shellcheck disable=SC2317 # stand-in answer, called by linkTag
+  askYesNo() { return 0; }
+  linkTag "Politics -> Meme/Politics" 2> /dev/null
+  assert_not_exists lib/.tmp/cleantree
+}

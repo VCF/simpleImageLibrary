@@ -73,10 +73,6 @@ button.primary { background: var(--accent); color: var(--accentInk); border-colo
 button.quiet { background: none; border-color: transparent; color: var(--ink2); }
 button[aria-pressed="true"], button[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-kbd {
-  font: 11px ui-monospace, monospace; padding: 1px 6px; border-radius: 5px;
-  border: 1px solid var(--line); color: var(--ink2); background: var(--panel);
-}
 
 .sprite { position: absolute; }
 svg.i {
@@ -277,6 +273,8 @@ button.mini { font-size: 12px; padding: 1px 7px; }
 #tree .tn:hover { color: var(--accent); }
 #tree .tn.in { color: var(--accent); font-weight: 600; }
 #tree .tn.out { color: var(--exclude); text-decoration: line-through; }
+/* An exact (=) filter: the tag itself, not the tags below it */
+#tree .tn.exact { outline: 1px dashed currentColor; outline-offset: 1px; border-radius: 3px; }
 #tree .n { color: var(--ink2); margin-left: auto; font-variant-numeric: tabular-nums; }
 #tree .alias { color: var(--ink2); font-style: italic; }
 
@@ -353,13 +351,24 @@ body.selecting .tile { cursor: pointer; }
   position: absolute; top: 10px; right: 12px; background: rgb(0 0 0 / 0.5);
   color: #fff; border-color: #555; font-size: 16px;
 }
-#lbHelp {
-  position: absolute; top: 52px; right: 12px; max-width: calc(100vw - 24px);
+/* Key and syntax help: the full window view's, and the filter box's */
+.keyhelp {
   background: rgb(20 21 24 / 0.92); color: #eee; border: 1px solid #444;
   border-radius: 8px; padding: 8px 12px; font-size: 13px;
 }
-#lbHelp th { text-align: left; padding: 2px 14px 2px 0; white-space: nowrap; color: #cfe0ff; font-weight: 600; }
-#lbHelp td { padding: 2px 0; }
+.keyhelp th { text-align: left; padding: 2px 14px 2px 0; white-space: nowrap; color: #cfe0ff; font-weight: 600; vertical-align: top; }
+.keyhelp td { padding: 2px 0; }
+.keyhelp h3 { margin: 10px 0 4px; font-size: 13px; color: #cfe0ff; }
+.keyhelp .examples th { font: 12px/1.6 ui-monospace, monospace; font-weight: 600; }
+#lbHelp { position: absolute; top: 52px; right: 12px; max-width: calc(100vw - 24px); }
+#filterHelp {
+  position: fixed; z-index: 30; top: calc(var(--barH) + 4px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--barH) - 16px); overflow: auto;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.4);
+}
+/* The filter box's help button: small, inside the box */
+.chipbox .hb { width: 22px; height: 22px; border-radius: 6px; font-weight: 700; font-size: 13px; }
 
 dialog {
   background: var(--panel); color: var(--ink); border: 1px solid var(--line);
@@ -417,7 +426,7 @@ dialog code { background: var(--raise); padding: 2px 6px; border-radius: 4px; us
 
 @media (max-width: 640px) {
   :root { --tile: 110px; }
-  kbd, .brand { display: none; }
+  .brand { display: none; }
   #bar .tools { flex-wrap: wrap; }
   #bar .search { order: 1; flex-basis: 100%; margin: 2px 0 0; }
   #tree { position: fixed; inset: 0 30% 0 0; z-index: 10; width: auto; }

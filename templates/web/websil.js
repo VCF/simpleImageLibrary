@@ -76,6 +76,7 @@
    * @property {?string} date - Day added, YYYY-MM-DD, from the date tag
    * @property {string[]} tags - Tag paths, eg Animal/Dog
    * @property {Set<string>} anc - Lowercased tags and all their ancestors, for filtering
+   * @property {Set<string>} own - Lowercased tags, without ancestors, for exact (=) filters
    * @property {string} src   - Path from the page to the file
    * @property {boolean} video
    * @property {string} [px] - Size in pixels, eg 1000x520, once the full
@@ -95,6 +96,8 @@
   let vocab = [];
   /** Lowercased tag path -> images having it or a tag below it. */
   const tagCount = new Map();
+  /** Lowercased tag path -> images having that tag itself. */
+  const ownCount = new Map();
   /** Lowercased tag path -> the path as the library spells it. */
   const tagSpelling = new Map();
 
@@ -203,8 +206,10 @@
         for (let i = 1; i <= parts.length; i++) anc.add(parts.slice(0, i).join('/'));
       }
       anc.forEach((a) => tagCount.set(a, (tagCount.get(a) || 0) + 1));
+      const own = new Set(tags.map((t) => t.toLowerCase()));
+      own.forEach((t) => ownCount.set(t, (ownCount.get(t) || 0) + 1));
       return {
-        hash, ext, bytes, date, tags, anc,
+        hash, ext, bytes, date, tags, anc, own,
         src: `images/${hash.slice(0, 2)}/${hash}.${ext}`,
         video: VIDEO_EXT.has(ext),
         rand: 0,
@@ -315,9 +320,10 @@
    */
   function applyFilters() {
     const s = state;
+    const inc = s.include.map(termMatcher), exc = s.exclude.map(termMatcher);
     view = images.filter((im) =>
-      s.include.every((t) => im.anc.has(t)) &&
-      !s.exclude.some((t) => im.anc.has(t)) &&
+      inc.every((m) => m(im)) &&
+      !exc.some((m) => m(im)) &&
       (!s.dateFrom || (im.date && im.date >= s.dateFrom)) &&
       (!s.dateTo || (im.date && im.date <= s.dateTo)) &&
       (s.sizeMin === null || im.bytes >= s.sizeMin) &&
@@ -348,34 +354,92 @@
   }
 
   /**
-   * Add a tag filter, or swap it between required and excluded.
-   * @param {string} tag - Tag path, any case
+   * Split a filter term into its parts. A term is a lowercased tag path,
+   * with '=' first for an exact match: the tag itself, not the tags below
+   * it. The path may hold '*' wildcards (see termMatcher).
+   * @param {string} term - eg 'animal', '=animal', 'animal/*'
+   * @returns {{exact: boolean, path: string}}
+   */
+  function termParts(term) {
+    return { exact: term.startsWith('='), path: term.replace(/^=/, '') };
+  }
+
+  /**
+   * Compile a filter term into a test of an image. A plain path matches
+   * the tag or any tag below it; an exact one only the tag itself. Each
+   * '*' matches any characters, '/' included, so 'animal/*' is every tag
+   * below Animal, at any depth.
+   * @param {string} term - See termParts
+   * @returns {function(Img): boolean} True if the image matches
+   */
+  function termMatcher(term) {
+    const { exact, path } = termParts(term);
+    const tagsOf = (im) => (exact ? im.own : im.anc);
+    if (!path.includes('*')) return (im) => tagsOf(im).has(path);
+    const re = new RegExp('^' + path.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+    return (im) => {
+      for (const t of tagsOf(im)) if (re.test(t)) return true;
+      return false;
+    };
+  }
+
+  /**
+   * A filter term as shown: '=' kept, the path spelled as the library
+   * spells it.
+   * @param {string} term
+   * @returns {string} eg '=Animal'
+   */
+  function termLabel(term) {
+    const { exact, path } = termParts(term);
+    return (exact ? '=' : '') + (tagSpelling.get(path) || path);
+  }
+
+  /**
+   * The filter term naming a tag, in a list of terms, in either form.
+   * @param {string[]} list - state.include or state.exclude
+   * @param {string} path - Lowercased tag path
+   * @returns {string|undefined} The term, eg '=animal'
+   */
+  function termFor(list, path) {
+    return list.find((x) => termParts(x).path === path);
+  }
+
+  /**
+   * Add a tag filter, replacing any for the same tag, so it swaps between
+   * required and excluded, or recursive and exact.
+   * @param {string} tag - Tag path or pattern, any case
    * @param {boolean} negate - true to exclude images with it
+   * @param {boolean} [exact=false] - true to match only the tag itself
    * @returns {void}
    */
-  function addFilter(tag, negate) {
-    const t = tag.toLowerCase();
-    state.include = state.include.filter((x) => x !== t);
-    state.exclude = state.exclude.filter((x) => x !== t);
-    (negate ? state.exclude : state.include).push(t);
+  function addFilter(tag, negate, exact = false) {
+    const path = tag.toLowerCase();
+    const other = (x) => termParts(x).path !== path;
+    state.include = state.include.filter(other);
+    state.exclude = state.exclude.filter(other);
+    (negate ? state.exclude : state.include).push((exact ? '=' : '') + path);
     applyFilters();
   }
 
   /**
-   * Tag tree click: remove a tag already in the filter, or add it. A
-   * Shift+click on a required tag switches it to excluded.
+   * Tag tree click: add a tag to the filter, or change or remove it. A
+   * plain click on a tag already in the filter removes it. Shift+click
+   * excludes, and Alt+click matches exactly; given on a tag already in the
+   * filter that way, they remove it, otherwise they switch it to that way.
    * @param {string} tag - Tag path, any case
    * @param {boolean} negate - Shift was held
+   * @param {boolean} exact - Alt was held
    * @returns {void}
    */
-  function toggleFilter(tag, negate) {
-    const t = tag.toLowerCase();
-    const isIn = state.include.includes(t), isOut = state.exclude.includes(t);
-    if (isOut || (isIn && !negate)) {
-      state.include = state.include.filter((x) => x !== t);
-      state.exclude = state.exclude.filter((x) => x !== t);
+  function toggleFilter(tag, negate, exact) {
+    const path = tag.toLowerCase();
+    const isIn = termFor(state.include, path), isOut = termFor(state.exclude, path);
+    const same = (negate ? isOut : isIn) === (exact ? '=' : '') + path;
+    if ((isIn || isOut) && (same || (!negate && !exact))) {
+      state.include = state.include.filter((x) => termParts(x).path !== path);
+      state.exclude = state.exclude.filter((x) => termParts(x).path !== path);
       applyFilters();
-    } else addFilter(t, negate);
+    } else addFilter(path, negate, exact);
   }
 
   /**
@@ -385,10 +449,10 @@
   function renderChips() {
     const box = $('filterChips');
     box.replaceChildren(
-      ...state.include.map((t) => chip(tagSpelling.get(t) || t, '', () => {
+      ...state.include.map((t) => chip(termLabel(t), '', () => {
         state.include = state.include.filter((x) => x !== t); applyFilters();
       })),
-      ...state.exclude.map((t) => chip('!' + (tagSpelling.get(t) || t), 'not', () => {
+      ...state.exclude.map((t) => chip('!' + termLabel(t), 'not', () => {
         state.exclude = state.exclude.filter((x) => x !== t); applyFilters();
       })));
   }
@@ -419,9 +483,12 @@
    * Give an input a tag autocomplete list.
    * @param {HTMLInputElement} input
    * @param {Object} opts
-   * @param {function(string, boolean): void} opts.onPick - Called with the
-   *     chosen tag path, and whether it was given with a leading '!'
+   * @param {function(string, boolean, boolean): void} opts.onPick - Called
+   *     with the chosen tag path, whether it was given with a leading '!',
+   *     and with opts.filter, whether with a leading '=' (exact)
    * @param {boolean} opts.allowNew - Offer the typed text as a new tag
+   * @param {boolean} [opts.filter] - A filter box: '=' may lead too, and
+   *     text with '*' is offered as a pattern, with the images it matches
    * @param {function(): void} opts.onBackspace - Empty input and Backspace
    * @param {Object[]} [opts.extra] - Entries offered besides the library's
    *     tags, eg SILCOPY, each with a 'note' to show in place of a count,
@@ -437,18 +504,31 @@
 
     function open() {
       const raw = input.value;
-      const negate = raw.startsWith('!');
-      const q = raw.replace(/^!/, '').trim().toLowerCase();
+      const prefix = raw.match(opts.filter ? /^\s*[!=]*/ : /^!?/)[0];
+      const negate = prefix.includes('!'), exact = prefix.includes('=');
+      const typedText = raw.slice(prefix.length).trim();
+      const q = typedText.toLowerCase();
       if (!q) { close(); return; }
-      const scored = [];
-      for (const v of choices()) {
-        const l = v.label.toLowerCase();
-        let score = l === q ? 0 : l.startsWith(q) ? 1 : l.includes('/' + q) ? 2 : l.includes(q) ? 3 : -1;
-        if (score >= 0) scored.push([score, v]);
+      if (opts.filter && q.includes('*')) {
+        const match = termMatcher((exact ? '=' : '') + q);
+        const n = images.reduce((c, im) => c + (match(im) ? 1 : 0), 0);
+        const note = `pattern, ${n.toLocaleString()} image${n === 1 ? '' : 's'}`;
+        items = [{ label: typedText, target: q, note, count: n, negate, exact }];
+      } else {
+        const scored = [];
+        for (const v of choices()) {
+          const l = v.label.toLowerCase();
+          let score = l === q ? 0 : l.startsWith(q) ? 1 : l.includes('/' + q) ? 2 : l.includes(q) ? 3 : -1;
+          if (score >= 0) scored.push([score, v]);
+        }
+        scored.sort((a, b) => a[0] - b[0] || b[1].count - a[1].count || a[1].label.localeCompare(b[1].label));
+        // An exact filter counts images with the tag itself
+        items = scored.slice(0, 12).map(([, v]) => ({
+          ...v, negate, exact,
+          count: exact && !v.note ? ownCount.get(v.target.toLowerCase()) || 0 : v.count,
+        }));
       }
-      scored.sort((a, b) => a[0] - b[0] || b[1].count - a[1].count || a[1].label.localeCompare(b[1].label));
-      items = scored.slice(0, 12).map(([, v]) => ({ ...v, negate }));
-      const typed = cleanTag(raw.replace(/^!/, ''));
+      const typed = cleanTag(typedText);
       if (opts.allowNew && typed && !choices().some((v) => v.label.toLowerCase() === typed.toLowerCase())) {
         items.push({ label: typed, target: typed, isNew: true, count: 0 });
       }
@@ -458,7 +538,7 @@
         const row = document.createElement('div');
         row.setAttribute('role', 'option');
         const name = document.createElement('span');
-        name.textContent = (it.negate ? '!' : '') + it.label;
+        name.textContent = (it.negate ? '!' : '') + (it.exact ? '=' : '') + it.label;
         const note = document.createElement('span');
         if (it.isNew) { note.textContent = 'new tag'; note.className = 'alias'; }
         else if (it.note) { note.textContent = it.note; note.className = it.op ? 'alias op' : 'alias'; }
@@ -485,7 +565,7 @@
       if (!it) return;
       input.value = '';
       close();
-      opts.onPick(it.target, !!it.negate);
+      opts.onPick(it.target, !!it.negate, !!it.exact);
     }
 
     input.addEventListener('input', open);
@@ -1251,7 +1331,7 @@
             tw.textContent = sub.hidden ? '▸' : '▾';
           });
         }
-        name.addEventListener('click', (e) => toggleFilter(name.dataset.tag, e.shiftKey));
+        name.addEventListener('click', (e) => toggleFilter(name.dataset.tag, e.shiftKey, e.altKey));
         ul.append(li);
       }
       return ul;
@@ -1280,8 +1360,10 @@
    */
   function renderTreeMarks() {
     for (const b of document.querySelectorAll('#tree .tn')) {
-      b.classList.toggle('in', state.include.includes(b.dataset.tag));
-      b.classList.toggle('out', state.exclude.includes(b.dataset.tag));
+      const isIn = termFor(state.include, b.dataset.tag), isOut = termFor(state.exclude, b.dataset.tag);
+      b.classList.toggle('in', !!isIn);
+      b.classList.toggle('out', !!isOut);
+      b.classList.toggle('exact', (isIn || isOut || '').startsWith('='));
     }
   }
 
@@ -1820,6 +1902,16 @@
   }
 
   /**
+   * Show or hide the filter box's help.
+   * @param {boolean} open
+   * @returns {void}
+   */
+  function setFilterHelp(open) {
+    $('filterHelp').hidden = !open;
+    $('filterHelpBtn').setAttribute('aria-expanded', open);
+  }
+
+  /**
    * Connect the controls, and handle the keyboard.
    * @returns {void}
    */
@@ -1827,6 +1919,7 @@
     attachComplete($('filterInput'), {
       onPick: addFilter,
       allowNew: false,
+      filter: true,
       onBackspace: () => {
         if (state.exclude.length) state.exclude.pop(); else state.include.pop();
         applyFilters();
@@ -1893,6 +1986,16 @@
     });
     $('filterPop').addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { setPop(false); $('filterBtn').focus(); }
+    });
+    // The filter help closes from its button, ? or Escape, or a click
+    // outside it. Its button is inside the filter box, which would take the
+    // click to focus its input
+    $('filterHelpBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setFilterHelp($('filterHelp').hidden);
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!$('filterHelp').hidden && !$('filterHelp').contains(e.target) && !$('filterHelpBtn').contains(e.target)) setFilterHelp(false);
     });
     // What scrolls under the toolbar starts below it, however tall it grows
     new ResizeObserver(() => {
@@ -2077,8 +2180,11 @@
         }
         return;
       }
+      // Escape in the filter box closes its help as well as its list
+      if (e.key === 'Escape' && !$('filterHelp').hidden) { setFilterHelp(false); return; }
       if (e.target.matches('input, select, textarea') || document.querySelector('dialog[open]')) return;
       if (e.key === '/') { $('filterInput').focus(); e.preventDefault(); }
+      else if (e.key === '?') { setFilterHelp($('filterHelp').hidden); e.preventDefault(); }
       else if (e.key === 'Escape' && selected.size) { selected.clear(); refreshTiles(); }
     });
 

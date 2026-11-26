@@ -13,6 +13,7 @@ declare -gA _silManifestBlocked=(
     [BUILDWEB]="it is an action on the whole library; run sil BUILDWEB"
     [SHARED]="it applies to the whole library; set it in sil.conf"
     [WEBACCENT]="it colors the web page, built by BUILDWEB; set it in sil.conf"
+    [CLEANTREE]="it applies to the whole library's tags; set it in sil.conf"
     [WEBPIXELRATIO]="it sets the web page's 1:1 zoom, built by BUILDWEB; set it in sil.conf"
 )
 
@@ -76,6 +77,7 @@ function parseManifest {
         reloadParamsForLibrary "$home"
         msgInfo "  Library: $home (contains this manifest)"
         syncRemaps || rv=1
+        syncCleanTree || rv=1
     fi
     saveParams _silManifestBase
 
@@ -127,6 +129,7 @@ function parseManifest {
                 done
                 msgInfo "  Library: $SIL_LIBRARY (line $lineNum)"
                 syncRemaps || rv=1
+                syncCleanTree || rv=1
                 continue
             fi
             if [[ "$canon" == LINK || "$canon" == REMAP ]]; then
@@ -144,6 +147,7 @@ function parseManifest {
                 else
                     remapAdd "$SIL_REMAP" || rv=1
                 fi
+                syncCleanTree || rv=1
                 continue
             fi
             ## Kept in the web page's stamp at once, as manifest settings
