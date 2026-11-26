@@ -37,6 +37,7 @@ declare -gA _silParamType=(
     [BUILDWEB]=flag
     [GITWEB]=flag
     [WEBACCENT]=color
+    [WEBPIXELRATIO]=number
     [TOR]=flag
     [STOPSIL]=flag
     [COPY]=value

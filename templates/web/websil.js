@@ -54,6 +54,18 @@
   const recentKey = 'websil:recent:' + libraryPath;
   /** Recent tags the right-click menu lists. */
   const RECENT_MAX = 10;
+  /**
+   * Time zone for times the page writes. Browsers that resist
+   * fingerprinting (eg Firefox's privacy.resistFingerprinting, Tor,
+   * LibreWolf) hide theirs behind a zone at UTC+0 (UTC, or Atlantic/Reykjavik
+   * shown as GMT), so a browser at UTC+0 uses the zone of the computer that
+   * built the page instead. undefined is the browser's own.
+   */
+  const TIME_ZONE = (() => {
+    const built = data && data.timeZone;
+    if (!built || new Date().getTimezoneOffset() !== 0) return undefined;
+    try { new Intl.DateTimeFormat(undefined, { timeZone: built }); return built; } catch (e) { return undefined; }
+  })();
 
   /**
    * One stored image.
@@ -66,6 +78,8 @@
    * @property {Set<string>} anc - Lowercased tags and all their ancestors, for filtering
    * @property {string} src   - Path from the page to the file
    * @property {boolean} video
+   * @property {string} [px] - Size in pixels, eg 1000x520, once the full
+   *   window view has loaded it
    * @property {number} rand  - Position in the random order; see shuffle
    */
   /** @type {Img[]} */
@@ -139,13 +153,15 @@
    * Lightbox zoom levels, in the order + steps through them, each giving
    * the scale for an image's natural size in a window of the given size.
    * 1:1 is in screen pixels, which a HiDPI display has several of per CSS
-   * pixel.
+   * pixel (pixelRatio).
    */
   const ZOOMS = [
     { name: 'Fit all', scale: (w, h, vw, vh) => Math.min(vw / w, vh / h) },
     { name: 'Fit edge', scale: (w, h, vw, vh) => Math.max(vw / w, vh / h) },
-    { name: '1:1', scale: () => 1 / (window.devicePixelRatio || 1) },
+    { name: '1:1', scale: () => 1 / pixelRatio().ratio },
   ];
+  /** Screen pixels per page pixel that P steps through, after the default. */
+  const PIXEL_RATIOS = [1, 1.25, 1.5, 2];
   let zoom = 0;
   /** The point of the image at the window's centre, as fractions of its width and height. */
   let panX = 0.5;
@@ -163,6 +179,8 @@
   let recentTags = [];
   /** @type {string[]} Hashes of the images the right-click menu would tag. */
   let menuHashes = [];
+  /** @type {?Img} The image right-clicked, which the menu can open in a new tab. */
+  let menuImage = null;
   /** A left click closed the tag menu; the click it ends shouldn't act too. */
   let swallowClick = false;
   /** Last pointer position, where / opens the tag menu in the lightbox. Null until it moves. */
@@ -650,12 +668,14 @@
       if (im.video) {
         media = document.createElement('video');
         Object.assign(media, { src: im.src, controls: true, autoplay: true, loop: true, muted: true });
+        media.addEventListener('loadedmetadata', () => notePixels(im, media.videoWidth, media.videoHeight));
       } else {
         media = document.createElement('img');
         media.src = im.src;
         media.alt = im.tags.join(', ');
         media.draggable = false;
         media.addEventListener('load', placeImage);
+        media.addEventListener('load', () => notePixels(im, media.naturalWidth, media.naturalHeight));
       }
       box.replaceChildren(media);
       box.dataset.hash = im.hash;
@@ -667,6 +687,20 @@
       if (next && !next.video) new Image().src = next.src;
     }
     renderCaption();
+  }
+
+  /**
+   * Record an image's size in pixels once its media has loaded, and show it
+   * if the info line is still on that image.
+   * @param {Img} im
+   * @param {number} w - Width in pixels, 0 if unknown
+   * @param {number} h - Height in pixels
+   * @returns {void}
+   */
+  function notePixels(im, w, h) {
+    if (!w || !h || im.px) return;
+    im.px = `${w}x${h}`;
+    if (lbIndex >= 0 && view[lbIndex] === im) renderCaption();
   }
 
   /**
@@ -689,14 +723,17 @@
     if (extended) add(`${lbIndex + 1} / ${view.length}`);
     add(im.date || 'no date');
     add(humanSize(im.bytes));
+    if (extended && im.px) add(im.px + ' px');
     if (extended) add(im.ext);
     const tags = document.createElement('span');
     tags.className = 'lbtags';
-    if (!im.tags.length) {
+    const adding = queuedTags(im);
+    if (!im.tags.length && !adding.length) {
       tags.textContent = 'no tags';
       tags.classList.add('muted');
     }
     for (const t of im.tags) tags.append(lightboxTag(im, t));
+    for (const t of adding) tags.append(lightboxTag(im, t, true));
     cap.append(tags);
     if (extended) add(shortHash(im.hash), 'muted');
     if (selected.has(im.hash)) add('selected', 'sel');
@@ -748,6 +785,34 @@
   }
 
   /**
+   * Screen pixels per CSS pixel, for 1:1 zoom: the one chosen with P in this
+   * browser, else the library's WEBPIXELRATIO, else the browser's own.
+   * Browsers that resist fingerprinting (eg Tor, which always says 2) hide
+   * the real one, so it can't be found by the page.
+   * @returns {{ratio: number, from: string}} The ratio, and where it came from
+   */
+  function pixelRatio() {
+    if (prefs.pixelRatio > 0) return { ratio: prefs.pixelRatio, from: 'set with P' };
+    if (data && data.pixelRatio > 0) return { ratio: data.pixelRatio, from: 'WEBPIXELRATIO' };
+    return { ratio: window.devicePixelRatio || 1, from: 'from the browser' };
+  }
+
+  /**
+   * Step the pixel ratio 1:1 zoom uses, in this browser: the default
+   * (WEBPIXELRATIO, or the browser's), then each of PIXEL_RATIOS.
+   * @returns {void}
+   */
+  function pixelRatioStep() {
+    const i = PIXEL_RATIOS.indexOf(prefs.pixelRatio);
+    if (i + 1 < PIXEL_RATIOS.length) prefs.pixelRatio = PIXEL_RATIOS[i + 1];
+    else delete prefs.pixelRatio;
+    savePrefs();
+    placeImage();
+    const p = pixelRatio();
+    toast(`1:1 zoom: ${+p.ratio.toFixed(3)} screen px per page px (${p.from})`, 2500);
+  }
+
+  /**
    * Step through the zoom levels, wrapping at either end, and say which
    * is now in use.
    * @param {number} step - +1 closer, -1 back
@@ -757,7 +822,9 @@
     zoom = (zoom + step + ZOOMS.length) % ZOOMS.length;
     placeImage();
     const im = view[lbIndex];
-    toast(`Zoom: ${ZOOMS[zoom].name}` + (im.video ? ' (images only)' : ''), 1000);
+    // 1:1 says the pixel ratio it uses, as one wrong makes 1:1 wrong (P changes it)
+    const ratio = ZOOMS[zoom].name === '1:1' ? `, ${+pixelRatio().ratio.toFixed(3)} screen px per page px (P changes)` : '';
+    toast(`Zoom: ${ZOOMS[zoom].name}${ratio}` + (im.video ? ' (images only)' : ''), ratio ? 2500 : 1000);
   }
 
   /**
@@ -790,36 +857,71 @@
 
   /**
    * One of the lightbox image's tags, with a button to queue its removal,
-   * or to undo that.
+   * or to undo that. A tag queued to be added has a button to unqueue it.
    * @param {Img} im
    * @param {string} tag
+   * @param {boolean} [adding=false] - The tag is queued to be added, not one the image has
    * @returns {HTMLElement}
    */
-  function lightboxTag(im, tag) {
-    const queued = untagEntry(im.hash, tag);
+  function lightboxTag(im, tag, adding = false) {
+    const queued = !adding && untagEntry(im.hash, tag);
     const el = document.createElement('span');
-    el.className = 'lbtag' + (queued ? ' gone' : '');
+    el.className = 'lbtag' + (queued ? ' gone' : '') + (adding ? ' adding' : '');
     el.textContent = tag;
-    // Removals queued with other tags, from the selection bar, can't be
-    // undone one tag at a time
-    if (queued && queued.tags.length > 1) return el;
+    if (adding) el.title = 'Queued to be added';
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = queued ? '↺' : '×';
-    b.title = queued ? 'Keep this tag' : 'Remove this tag';
+    b.title = adding ? 'Don\'t add this tag' : queued ? 'Keep this tag' : 'Remove this tag';
     // Keep focus off the button, so Space still starts or pauses the slideshow
     b.addEventListener('mousedown', (e) => e.preventDefault());
     b.addEventListener('click', () => {
-      if (queued) {
-        queued.hashes = queued.hashes.filter((h) => h !== im.hash);
-        pending = pending.filter((p) => p.hashes.length);
-      } else queueTag('UNTAG', [im.hash], tag);
+      if (adding) unqueueTag('TAG', im.hash, tag);
+      else if (queued) unqueueTag('UNTAG', im.hash, tag);
+      else queueTag('UNTAG', [im.hash], tag);
       savePending();
       refreshTiles();
       showLightbox();
     });
     el.append(b);
     return el;
+  }
+
+  /**
+   * Tags queued to be added to an image that it doesn't have yet, in queue
+   * order.
+   * @param {Img} im
+   * @returns {string[]}
+   */
+  function queuedTags(im) {
+    const has = (list, t) => list.some((x) => x.toLowerCase() === t.toLowerCase());
+    const out = [];
+    for (const p of pending) {
+      if (p.op !== 'TAG' || !p.hashes.includes(im.hash)) continue;
+      for (const t of p.tags) if (!has(im.tags, t) && !has(out, t)) out.push(t);
+    }
+    return out;
+  }
+
+  /**
+   * Take one tag off the queue for one image, from each TAG or UNTAG entry
+   * naming both. Other tags of an entry stay queued for the image, as an
+   * entry of their own just after it, so the manifest order holds.
+   * @param {('TAG'|'UNTAG')} op
+   * @param {string} hash
+   * @param {string} tag
+   * @returns {void}
+   */
+  function unqueueTag(op, hash, tag) {
+    const t = tag.toLowerCase();
+    const hits = pending.filter((p) => p.op === op && p.hashes.includes(hash) &&
+      p.tags.some((x) => x.toLowerCase() === t));
+    for (const p of hits) {
+      p.hashes = p.hashes.filter((h) => h !== hash);
+      const rest = p.tags.filter((x) => x.toLowerCase() !== t);
+      if (rest.length) pending.splice(pending.indexOf(p) + 1, 0, { op, tags: rest, hashes: [hash] });
+    }
+    pending = pending.filter((p) => p.hashes.length);
   }
 
   /**
@@ -974,15 +1076,18 @@
   }
 
   /**
-   * Open the tag menu for some images: a box to type a tag, over the recent
-   * tags, placed so the most recent is under the pointer, and the box just
-   * above it.
+   * Open the tag menu for some images: a button to open the image clicked
+   * in a new tab, then a box to type a tag, over the recent tags. It is placed
+   * so the most recent tag is under the pointer, even if that puts part of
+   * it off the window.
+   * @param {Img} im - Image clicked, which the button opens
    * @param {string[]} hashes - Images a tag picked will be added to
    * @param {number} x - Pointer position, in CSS pixels from the window's left
    * @param {number} y - Pointer position, from the window's top
    * @returns {void}
    */
-  function openTagMenu(hashes, x, y) {
+  function openTagMenu(im, hashes, x, y) {
+    menuImage = im;
     menuHashes = hashes;
     const menu = $('tagMenu');
     $('tmHead').textContent = hashes.length > 1
@@ -1000,9 +1105,8 @@
     const first = $('tmRecent').firstElementChild || $('tmInput');
     const r = menu.getBoundingClientRect();
     const f = first.getBoundingClientRect();
-    const fit = (pos, size, room) => Math.max(4, Math.min(room - size - 4, pos));
-    menu.style.left = fit(x - r.width / 2, r.width, window.innerWidth) + 'px';
-    menu.style.top = fit(y - (f.top - r.top + f.height / 2), r.height, window.innerHeight) + 'px';
+    menu.style.left = (x - r.width / 2) + 'px';
+    menu.style.top = (y - (f.top - r.top + f.height / 2)) + 'px';
     $('tmInput').focus();
   }
 
@@ -1015,6 +1119,7 @@
     $('tagMenu').hidden = true;
     $('tmInput').blur();
     menuHashes = [];
+    menuImage = null;
   }
 
   /**
@@ -1341,7 +1446,7 @@
    */
   function manifestText() {
     const lines = [
-      `# WebSIL changes, ${new Date().toLocaleString()}`,
+      `# WebSIL changes, ${new Date().toLocaleString(undefined, { timeZone: TIME_ZONE, timeZoneName: 'short' })}`,
       '# Images are named by hash. Run with:',
       `#   sil LIBRARY=${shellQuote(libraryPath)} BUILDWEB <this file>`,
       `LIBRARY=${libraryPath}`,
@@ -1375,8 +1480,12 @@
    * @returns {string}
    */
   function manifestName() {
-    const d = new Date(), z = (n) => String(n).padStart(2, '0');
-    return `WebSIL_Manifest_${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.txt`;
+    const f = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: TIME_ZONE, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date()).forEach((p) => { f[p.type] = p.value; });
+    return `WebSIL_Manifest_${f.year}-${f.month}-${f.day}_${f.hour}${f.minute}.txt`;
   }
 
   /**
@@ -1729,6 +1838,11 @@
       extra: Object.entries(OP_TAGS).map(([t, v]) => ({ label: t, target: t, note: v.note, op: true, count: 0 })),
       onBackspace: () => { editTags.pop(); renderEditChips(); },
     });
+    $('tmOpen').addEventListener('click', () => {
+      const im = menuImage;
+      closeTagMenu();
+      if (im) window.open(im.src, '_blank', 'noopener');
+    });
     attachComplete($('tmInput'), {
       onPick: menuPick,
       allowNew: true,
@@ -1831,7 +1945,7 @@
       if (!tile || e.shiftKey) return;
       e.preventDefault();
       const im = view[Number(tile.dataset.i)];
-      openTagMenu(selected.has(im.hash) ? [...selected] : [im.hash], e.clientX, e.clientY);
+      openTagMenu(im, selected.has(im.hash) ? [...selected] : [im.hash], e.clientX, e.clientY);
     });
     // A click outside the menu closes it, without also acting on what it hit
     document.addEventListener('pointerdown', (e) => {
@@ -1896,7 +2010,7 @@
     const lightboxMenu = (x, y) => {
       if (lbIndex < 0) return;
       if (slideTimer) { stopSlideshow(); showLightbox(); }
-      openTagMenu([view[lbIndex].hash], x, y);
+      openTagMenu(view[lbIndex], [view[lbIndex].hash], x, y);
     };
     lbMedia.addEventListener('contextmenu', (e) => {
       if (e.shiftKey) return;
@@ -1959,6 +2073,7 @@
           else if (k === '+' || k === '=') zoomStep(1);
           else if (k === '-' || k === '_') zoomStep(-1);
           else if (k === 'r') resetLightbox();
+          else if (k === 'p') pixelRatioStep();
         }
         return;
       }

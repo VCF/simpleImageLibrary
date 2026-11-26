@@ -76,6 +76,8 @@ Web page:
                        than ignoring it (alias WEBGIT). Kept until changed
   WEBACCENT=COLOR      The web page's color: blue, teal, green, amber, violet,
                        rose, or a hex color such as #3a7bd5 (default: blue)
+  WEBPIXELRATIO=N      Screen pixels per page pixel for the page's 1:1 zoom,
+                       for browsers that hide it, eg Tor (default: browser's)
 
 Manifests only:
   STOPSIL              Stop reading the manifest at this line (alias SILSTOP)

@@ -61,6 +61,32 @@ function imageRow {
   grep -q '"accent":"#3a7bd5"' "$SIL_LIBRARY/web/imageData.js"
 }
 
+@test "buildWeb records the time zone, for browsers that hide theirs" {
+  TZ='America/New_York' buildWeb 2> /dev/null
+  grep -q '"timeZone":"America/New_York"' "$SIL_LIBRARY/web/imageData.js"
+}
+
+@test "buildWeb records WEBPIXELRATIO, null by default" {
+  buildWeb 2> /dev/null
+  grep -q '"pixelRatio":null,' "$SIL_LIBRARY/web/imageData.js"
+  SIL_WEBPIXELRATIO=1.25
+  buildWeb 2> /dev/null
+  grep -q '"pixelRatio":1.25,' "$SIL_LIBRARY/web/imageData.js"
+}
+
+@test "WEBPIXELRATIO in a manifest is ignored with a warning" {
+  printf '%s\n' "WEBPIXELRATIO=1" "$plasma" > m.txt
+  run "$PROJECT_ROOT/sil" LIBRARY="$SIL_LIBRARY" m.txt
+  assert_success
+  assert_output --partial "WEBPIXELRATIO can't be set in a manifest"
+}
+
+@test "localTimeZone ignores TZ values that aren't zone names" {
+  TZ='/etc/../bad"zone' run localTimeZone
+  assert_success
+  assert_output ''
+}
+
 @test "buildWeb records tags, sizes and dates, leaving out the date tag" {
   buildWeb 2> /dev/null
   local js="$SIL_LIBRARY/web/imageData.js" size

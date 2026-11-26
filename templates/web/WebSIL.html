@@ -137,6 +137,7 @@
       <tr><th>Space</th><td>Start / pause the slideshow</td></tr>
       <tr><th>↑ ↓</th><td>Slideshow slower / faster, while it runs</td></tr>
       <tr><th>+ −</th><td>Zoom: Fit all, Fit edge, 1:1</td></tr>
+      <tr><th>P</th><td>Screen pixels per page pixel for 1:1, if it's wrong (eg Tor Browser): browser's, 1, 1.25, 1.5, 2</td></tr>
       <tr><th>Wheel, drag</th><td>Pan a zoomed image; Shift+wheel pans sideways</td></tr>
       <tr><th>Right-click, /</th><td>Add a tag to the image, at the pointer (Shift+right-click: the browser's menu)</td></tr>
       <tr><th>X</th><td>Select / unselect the image</td></tr>
@@ -175,10 +176,14 @@
 
 <div id="tooltip" role="tooltip" hidden></div>
 <div id="toast" role="status" hidden></div>
-<div id="tagMenu" role="dialog" aria-label="Add a tag" hidden>
+<div id="tagMenu" role="dialog" aria-label="Image menu" hidden>
+  <div id="tmActions">
+    <button type="button" id="tmOpen">Open image in new tab</button>
+  </div>
   <div id="tmHead"></div>
   <input id="tmInput" autocomplete="off" spellcheck="false" placeholder="Tag to add">
   <div id="tmRecent"></div>
+  <div id="tmFoot">Shift-Right-Click for browser menu</div>
 </div>
 <div id="complete" role="listbox" hidden></div>
 

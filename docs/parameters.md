@@ -597,6 +597,27 @@ pages easy to tell apart
   theme. A hex color is used as given in the dark theme, and darkened for the
   light one, so choose a mid-tone color, neither very light nor very dark
 
+## WEBPIXELRATIO
+
+* Default: none, using the browser's own ratio
+* Number: screen pixels per page (CSS) pixel, eg `1`, `1.5` or `2`
+
+How many screen pixels the library's web page takes a page pixel to be, for
+its 1:1 zoom, which shows one image pixel on one screen pixel. Browsers say
+this themselves, but those that resist fingerprinting hide it: Tor Browser
+always says 2, so on an ordinary screen 1:1 shows images at half size. Set
+`1` for such a screen; a HiDPI screen at 200% scaling is `2`
+
+* Can't be set in a manifest, which can't build the page
+* Applied by `BUILDWEB`, which writes it into `web/imageData.js`. Set it in the
+  library's `sil.conf` to keep it for every build:
+  `sil WEBPIXELRATIO=1 BUILDWEB`
+* `P` in the page's full window view steps through the default, `1`, `1.25`,
+  `1.5` and `2`, kept per browser, in place of this. Tor Browser forgets it
+  when closed, which is why this setting exists
+* It applies to every browser opening the library that has no `P` choice, so
+  an honest browser on a HiDPI screen will be wrong until `P` is set there
+
 ## TOR
 
 * ALIAS: `USETOR`

@@ -189,6 +189,7 @@ types are:
 | `BUILDWEB` | Flag | Off | C | Build or update `WebSIL.html`, a page for browsing the library in a web browser. See [WebSIL](#websil) |
 | `GITWEB`, `WEBGIT` | Flag | Off | C M | Share the web page through git, for people who won't build their own. Kept with the page, and applied to the library's `.gitignore` by `BUILDWEB`: `sil GITWEB=on BUILDWEB` |
 | `WEBACCENT` | Color | `blue` | G L C | The web page's accent color: `blue`, `teal`, `green`, `amber`, `violet`, `rose`, or a hex color such as `#3a7bd5`. Applied by `BUILDWEB` |
+| `WEBPIXELRATIO` | Number | Browser's | G L C | Screen pixels per page pixel for the page's 1:1 zoom, for browsers that hide it: Tor Browser always reports 2, so on an ordinary screen set `1`. `P` in the page's full window view overrides it per browser. Applied by `BUILDWEB` |
 
 # WebSIL
 
@@ -199,7 +200,8 @@ not even a network connection.
 * **Browse** a grid of images, each either fitted whole into its tile or
   cropped to fill it (Fit or Fill, under the filter button). Click one to fill the window, then
   move with the arrow keys or Page Up/Down, and leave with Escape. Its tags are
-  shown there; click a tag's × to queue removing it. The image's name is
+  shown there; click a tag's × to queue removing it. Tags queued to be added
+  are shown too, in green, and their × unqueues them. The image's name is
   shortened to the start of its hash: enough characters to tell it from every
   other image in the library, plus two, eg `0060d...`
 * **Slideshow**: in the full window view, Space starts or pauses a slideshow,
@@ -233,8 +235,9 @@ not even a network connection.
   sil LIBRARY=~/Pictures/sil BUILDWEB ~/Downloads/WebSIL_Manifest_2026-11-21_1042.txt
   ```
 
-* **Right-click** an image, in the grid or the full window view, to add a tag
-  to it: type one, with autocomplete or as a new tag, or pick one of the 10
+* **Right-click** an image, in the grid or the full window view, to open it in
+  a new tab, or add a tag to it: type one, with autocomplete or as a new tag,
+  or pick one of the 10
   tags last added in this browser, listed most recent first under the
   pointer. Right-clicking a selected image in the grid tags every selected
   image. Shift+right-click gives the browser's own menu. In the full window

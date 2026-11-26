@@ -240,7 +240,16 @@ svg.i.sm { width: 15px; height: 15px; }
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
   display: flex; flex-direction: column; gap: 4px;
 }
+#tmActions {
+  display: flex; flex-direction: column; gap: 4px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 2px;
+}
+#tmActions button { text-align: left; }
 #tmHead { color: var(--ink2); font-size: 12px; padding: 0 2px; }
+#tmFoot {
+  color: var(--ink2); font-size: 11px; padding: 4px 2px 0;
+  border-top: 1px solid var(--line); margin-top: 2px;
+}
 #tmInput { width: 100%; }
 #tmRecent { display: flex; flex-direction: column; }
 #tmRecent:empty::after { content: "No recent tags yet"; color: var(--ink2); font-size: 12px; padding: 4px; }
@@ -339,6 +348,7 @@ body.selecting .tile { cursor: pointer; }
 .lbtag button:hover { color: #fff; }
 .lbtag.gone { background: rgb(90 35 32 / 0.7); color: #f3b5b1; text-decoration: line-through; }
 .lbtag.gone button { text-decoration: none; }
+.lbtag.adding { background: rgb(28 82 50 / 0.75); color: #b6f2cb; }
 .lbbtn {
   position: absolute; top: 10px; right: 12px; background: rgb(0 0 0 / 0.5);
   color: #fff; border-color: #555; font-size: 16px;
