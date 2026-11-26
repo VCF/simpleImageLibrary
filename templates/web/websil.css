@@ -235,6 +235,7 @@ svg.i.sm { width: 15px; height: 15px; }
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
   display: flex; flex-direction: column; gap: 4px;
+  max-height: calc(100vh - 16px); overflow-y: auto;
 }
 #tmActions {
   display: flex; flex-direction: column; gap: 4px;

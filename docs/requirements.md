@@ -792,7 +792,7 @@ changes in a web browser. `BUILDWEB` builds it (see
   as in the selection bar), above the 10 tags most recently added
   in this browser (from the menu or the selection bar), most recent first.
   The menu opens with the most recent tag under the pointer, and the box
-  just above it, even if that puts part of it outside the window. Recent tags every target image already has, or has queued,
+  just above it, shifted as little as needed to keep it all in the window. Recent tags every target image already has, or has queued,
   are shown ticked and can't be picked. Picking a tag queues adding it and
   closes the menu; so do Escape, a click outside it, scrolling and resizing.
   In the grid, right-clicking a selected image targets the whole selection,

@@ -1158,8 +1158,8 @@
   /**
    * Open the tag menu for some images: a button to open the image clicked
    * in a new tab, then a box to type a tag, over the recent tags. It is placed
-   * so the most recent tag is under the pointer, even if that puts part of
-   * it off the window.
+   * so the most recent tag is under the pointer, then moved as little as
+   * needed to fit in the window.
    * @param {Img} im - Image clicked, which the button opens
    * @param {string[]} hashes - Images a tag picked will be added to
    * @param {number} x - Pointer position, in CSS pixels from the window's left
@@ -1185,8 +1185,12 @@
     const first = $('tmRecent').firstElementChild || $('tmInput');
     const r = menu.getBoundingClientRect();
     const f = first.getBoundingClientRect();
-    menu.style.left = (x - r.width / 2) + 'px';
-    menu.style.top = (y - (f.top - r.top + f.height / 2)) + 'px';
+    // Kept a margin from the edges; a menu taller than the window (CSS caps
+    // its height) is held to the top
+    const m = 8;
+    const fit = (want, size, room) => Math.max(m, Math.min(want, room - size - m));
+    menu.style.left = fit(x - r.width / 2, r.width, window.innerWidth) + 'px';
+    menu.style.top = fit(y - (f.top - r.top + f.height / 2), r.height, window.innerHeight) + 'px';
     $('tmInput').focus();
   }
 
