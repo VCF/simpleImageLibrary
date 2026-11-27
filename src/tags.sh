@@ -26,6 +26,10 @@ declare -g _silTagLatin1='ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛ
 ## Set by applyTags: how many tags the image got or already had
 declare -g _silTagsApplied=0
 
+## Tag links made and removed by TAG and UNTAG over the run, for the
+## run summary. Tags an image already had, or didn't have, aren't counted
+declare -g _silTagsAdded=0 _silTagsRemoved=0
+
 ## Marker in a library's .tmp folder that its tag tree has been cleaned
 ## (CLEANTREE) and kept clean since; see syncCleanTree
 declare -g _silCleanTreeFile="cleantree"
@@ -377,7 +381,7 @@ function parseUserTags {
 # Apply every tag in SIL_TAG to a stored image. An image given any tag
 # loses its Untagged tag (TAG-03).
 # Globals:
-#   SIL_TAG; sets _silTagsApplied
+#   SIL_TAG; sets _silTagsApplied, adds to _silTagsAdded
 # Arguments:
 #   $1 - Image hash
 # Outputs:
@@ -399,6 +403,7 @@ function applyTags {
         if tagImage "$1" "$tag"; then
             applied="${applied:+$applied, }$tag$existed"
             _silTagsApplied=$(( _silTagsApplied + 1 ))
+            [[ -z "$existed" ]] && _silTagsAdded=$(( _silTagsAdded + 1 ))
         else
             msgWarn "[!] Could not apply tag: $tag"
             rv=1
@@ -566,7 +571,7 @@ function untagImage {
 # its tags, except its date tag. An image left with no tags is given the
 # Untagged tag (TAG-03).
 # Globals:
-#   SIL_UNTAG, SIL_LIBRARY
+#   SIL_UNTAG, SIL_LIBRARY; adds to _silTagsRemoved
 # Arguments:
 #   $1 - Image hash
 # Outputs:
@@ -584,6 +589,7 @@ function applyUntags {
             rm -f -- "$link"
             tag="$(dirname -- "$link")"
             removed="${removed:+$removed, }${tag#"$root"/}"
+            _silTagsRemoved=$(( _silTagsRemoved + 1 ))
             pruneTagFolder "$tag"
         done <<< "$(userTagLinks "$1" | LC_ALL=C sort)"
         if [[ -n "$removed" ]]; then
@@ -601,6 +607,7 @@ function applyUntags {
         [[ -n "$tag" ]] || continue
         if untagImage "$1" "$tag"; then
             removed="${removed:+$removed, }$tag"
+            _silTagsRemoved=$(( _silTagsRemoved + 1 ))
         else
             absent="${absent:+$absent, }$tag"
         fi

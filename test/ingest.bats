@@ -292,6 +292,24 @@ assert_no_temp_files() {
   assert_output --partial "1 failed: 1 NOFILE"
 }
 
+@test "outcomeSummary counts tags added and removed, not those already had" {
+  SIL_TAG="A, B"
+  processURI "$DATA/plasma.png" 2> /dev/null
+  processURI "$DATA/plasma.png" 2> /dev/null
+  run outcomeSummary
+  assert_output --partial "Done: 1 ADDED, 1 DUPE, +2 TAGGED"
+  SIL_TAG=C
+  SIL_UNTAG="A, Absent"
+  processURI "$DATA/plasma.png" 2> /dev/null
+  run outcomeSummary
+  assert_output --partial "Done: 1 ADDED, 1 DUPE, 1 FOUND, +3/-1 TAGGED"
+  SIL_TAG=
+  SIL_UNTAG='*'
+  processURI "$DATA/plasma.png" 2> /dev/null
+  run outcomeSummary
+  assert_output --partial "+3/-3 TAGGED"
+}
+
 # --- sources and date tags -------------------------------------------
 
 @test "a new image gets today's date tag; a DUPE does not" {

@@ -379,9 +379,11 @@ function processURI {
 }
 
 #######################################
-# Report the totals of all outcomes so far, and how long they took.
+# Report the totals of all outcomes so far, the tags added and removed
+# (as +added/-removed TAGGED, '/-removed' only when some were), and how
+# long they took.
 # Globals:
-#   _silOutcomes, _silSuccessTags
+#   _silOutcomes, _silSuccessTags, _silTagsAdded, _silTagsRemoved
 # Arguments:
 #   $1 - Optional start mark (clockMark); adds the elapsed time
 # Outputs:
@@ -397,6 +399,11 @@ function outcomeSummary {
         failed="${failed:+$failed, }${_silOutcomes[$tag]} $tag"
         nFailed=$(( nFailed + _silOutcomes[$tag] ))
     done
+    if (( _silTagsAdded || _silTagsRemoved )); then
+        tag="+$_silTagsAdded"
+        (( _silTagsRemoved )) && tag="$tag/-$_silTagsRemoved"
+        ok="${ok:+$ok, }$tag TAGGED"
+    fi
     msgInfo "Done: ${ok:-nothing added}${1:+. $(elapsedText "$1")}"
     (( nFailed )) && msgWarn "[!] $nFailed failed: $failed"
     return 0
